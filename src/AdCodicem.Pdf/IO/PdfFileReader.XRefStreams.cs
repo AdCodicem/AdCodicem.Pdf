@@ -153,25 +153,25 @@ internal sealed partial class PdfFileReader
             cutByGuard = _guardsReached != guards;
 
             // A guard that cut the reading at an offset the chain names hid what lay past the cut, whatever it cut: a
-            // dictionary, which the parser keeps as far as it read it (#279); the object's header — its number, its
+            // dictionary, which the parser keeps as far as it read it, a token the cut parted dropped (#279); the object's
+            // header — its number, its
             // generation or its obj keyword running on past the guard, or white space or a comment between its tokens —,
             // which leaves no object read (#289); or a token where no header starts, such as dashes read from inside a
             // comment. The guard is MaxTrailerLength, the only one this reading counts: its windows are a trailer's, a
             // value it reads through a reference is read without loading, no guard counted (ReadWithoutLoading), and the
             // stream's data is neither read nor decoded yet. Where a /Prev or startxref names the offset, any /W makes a
-            // stream of any /Type the section there (#263): the cut may have hidden a /Prev the chain would follow — /XRef
-            // parted, inside the name or inside a #xx escape, a stream of another /Type that gives a /W, a /Type given
-            // twice whose later /XRef lies past the cut, or the whole dictionary past a header the cut parted —, which the
-            // reading, finding an object of another type there or none, does not follow, wherever it lies. Where an
-            // /XRefStm names the offset, the chain never follows that stream's /Prev, but the guard's cut is what would end
-            // the chain there (#264), as #279's closing reads it. Either way no stream passed over is reported anywhere in
-            // the document (ReportStreamsPassedOver), whatever the cut left: the reader cannot tell what it hid without
-            // reading past the guard (ADR 34), and a cut that hid nothing — a dictionary of another type that gives no /W,
-            // a token no header starts — withholds the reports too. What is there is read as written all the same — an
-            // object of another type, or none, the section then looked for as one not there —, until #279 and #289 settle
-            // it; where the reading takes it for the guard's section, the chain's own cut withholds them already. A place
-            // the search tries is a guess, and what the guard cut there, a dictionary or a header, hides no link the chain
-            // names.
+            // stream of any /Type the section there (#263): the cut may have hidden a /Prev the chain would follow — a stream
+            // of another /Type, whole before the cut, that gives a /W, a /Type given twice whose later /XRef lies past the
+            // cut, or the whole dictionary past a header the cut parted —, which the reading, finding an object of another
+            // type there or none, does not follow, wherever it lies. Where an /XRefStm names the offset, the chain never
+            // follows that stream's /Prev, but the guard's cut is what would end the chain there (#264). Either way no
+            // stream passed over is reported anywhere in the document (ReportStreamsPassedOver), whatever the cut left: the
+            // reader cannot tell what it hid without reading past the guard (ADR 34), and a cut that hid nothing — a
+            // dictionary of another type that gives no /W, a token no header starts — withholds the reports too. What is
+            // there is read as written all the same — an object of another type, or none, the section then looked for as
+            // one not there —, until #289 settles what a header the guard cut is; where the reading takes it for the
+            // guard's section, the chain's own cut withholds them already. A place the search tries is a guess, and what
+            // the guard cut there, a dictionary or a header, hides no link the chain names.
             if (!candidate && cutByGuard)
             {
                 _guardMayHideLink = true;
@@ -186,11 +186,11 @@ internal sealed partial class PdfFileReader
                 // guard's, which says so (ADR 34), rather than a section missing. One whose /Type is no name has not said
                 // it either: such a /Type declares nothing, as everywhere the reader asks what a dictionary declares, and
                 // the dictionary declares a section only through a /W, which the cut may have hidden
-                // (DeclaresOnlyCrossReferenceStream). An array, a dictionary whose /Type names another type, or a stream
-                // whose dictionary was read whole is no cross-reference stream, cut or not — a /Type the cut parted among
-                // them, its name read as far as it was read until #279 settles it —, and a header the cut parted leaves
-                // no object to tell, the section looked for as one not there (#289): where a guard cut any of them, the
-                // cut withholds only the report of streams passed over, as set above.
+                // (DeclaresOnlyCrossReferenceStream). Nor has one whose /Type the cut parted, which the parser drops, the
+                // dictionary then lacking it (#279). An array, a dictionary whose /Type names another type, written whole
+                // before the cut, or a stream whose dictionary was read whole is no cross-reference stream, cut or not,
+                // and a header the cut parted leaves no object to tell, the section looked for as one not there (#289):
+                // where a guard cut any of them, the cut withholds only the report of streams passed over, as set above.
                 section.CutByLimit = true;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,

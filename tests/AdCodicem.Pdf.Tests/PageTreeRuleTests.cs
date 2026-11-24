@@ -1388,7 +1388,7 @@ public class PageTreeRuleTests
     [Fact]
     public void An_object_whose_type_a_limit_cut_short_is_no_orphaned_page()
     {
-        // Review of #175 (L2-05): the cut falls inside /Pages, and the parser keeps /Page.
+        // Review of #175 (L2-05): the cut falls inside /Pages, which the parser drops as a name the cut parted (#279).
         var file = WithObject(7, "<< /Parent 2 0 R /Foo (" + new string('x', 150) + ") /Type /Pages" + new string(' ', 200) + "/Kids [] /Count 0 >>");
         var pages = Encoding.Latin1.GetString(file).IndexOf("/Pages" + new string(' ', 200), StringComparison.Ordinal);
         var header = Encoding.Latin1.GetString(file).IndexOf("7 0 obj", StringComparison.Ordinal);
@@ -1396,7 +1396,7 @@ public class PageTreeRuleTests
         using var document = PdfDocument.Open(file, CutAt(pages - header + "/Page".Length));
         var report = new PdfValidator().Validate(document);
 
-        document.GetObject(new PdfObjectId(7)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue("the cut left /Page of /Pages");
+        document.GetObject(new PdfObjectId(7)).AsDictionary().Required().GetRaw(PdfName.Type).Should().BeNull("the cut parted /Pages");
         report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
     }
 
@@ -1465,20 +1465,20 @@ public class PageTreeRuleTests
     [Fact]
     public void A_count_read_before_the_cut_of_a_node_whose_kids_are_an_array_read_whole_is_not_judged()
     {
-        // Mutant W-count-judged-cut: node 2 gives /Count 5 0 R, object 5 holding 1; the cut falls after the "5", which reads
-        // as a count of 5. Its kids, in object 4, are read whole and counted: a node a limit cut is doubtful all the same,
-        // and its /Count is not judged against the one page below it.
+        // Mutant W-count-judged-cut: node 2 gives /Count 5, read whole before a string the cut falls in — the cut drops a 5
+        // that may start "5 0 R" (#262). Its kids, in object 4, are read whole and counted: a node a limit cut is doubtful
+        // all the same, and its /Count is not judged against the one page below it, as it is read whole.
         var file = PdfTemplate.Build(PdfTemplate.Sound
-            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R /Count 5" + new string(' ', 200) + "0 R >>", StringComparison.Ordinal)
-            .Replace("xref\n0 4\n", "4 0 obj\n[3 0 R]\nendobj\n5 0 obj\n1\nendobj\nxref\n0 6\n", StringComparison.Ordinal)
-            .Replace("{row:3}\n", "{row:3}\n{row:4}\n{row:5}\n", StringComparison.Ordinal)
-            .Replace("/Size 4", "/Size 6", StringComparison.Ordinal));
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R /Count 5 /Pad (" + new string('x', 200) + ") >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n[3 0 R]\nendobj\nxref\n0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal));
 
         using var document = PdfDocument.Open(file, CutAt(128));
 
-        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().GetRaw(PdfName.Count).Should().BeOfType<PdfInteger>("the cut left the 5 of 5 0 R").Which.Value.Should().Be(5);
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty("the node is cut, and its count may be what the cut left of a reference");
-        Validate(file).Findings.Should().BeEmpty("read whole, the count is 1, the one page below the node");
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().GetRaw(PdfName.Count).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(5);
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty("the node is cut, and what it lacks may lie past the cut");
+        Validate(file).Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeTrue("read whole, the count is judged against the one page below the node");
     }
 
     [Fact]

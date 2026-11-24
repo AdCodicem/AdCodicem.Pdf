@@ -285,15 +285,16 @@ public class HostileInputTests
     public void Sections_whose_lengths_name_one_object_a_guard_cut_read_it_once()
     {
         // A hundred cross-reference streams, chained by /Prev, each with /Length 5 0 R and rows that spell an endstream
-        // first; the newest table places object 5, which holds 28 then 2,000,000 spaces, past MaxObjectLength. Each section
-        // takes its data again to the 28 the cut left, which an endstream confirms, and the chain goes on: the cut object
-        // was read again for each section, and opening read the file several times over (#224). Each section's rows that
-        // spell the endstream, of reserved types, are reported once for it (#221).
+        // first; the newest table places object 5, which holds 28 then a string of 2,000,000 spaces, past MaxObjectLength:
+        // the cut falls in the string, the 28 before it whole and no reference's number, which a cut in white space after it
+        // would drop (#262). Each section takes its data again to the 28 the cut left, which an endstream confirms, and the
+        // chain goes on: the cut object was read again for each section, and opening read the file several times over
+        // (#224). Each section's rows that spell the endstream, of reserved types, are reported once for it (#221).
         const int Sections = 100;
         var file = new HandWrittenFile(version: "1.5");
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        var five = file.Object(5, "28" + new string(' ', 2_000_000));
+        var five = file.Object(5, "28 (" + new string(' ', 2_000_000) + ")");
         var rows = Row(1, one) + Row(1, two);
         long previous = -1;
 
@@ -407,11 +408,11 @@ public class HostileInputTests
     public void Streams_whose_length_a_guard_cut_and_whose_data_share_a_stretch_of_a_file_read_it_a_bounded_number_of_times()
     {
         // A hundred streams, each header a space past where the data of the one before starts, each /Length object 999, which
-        // MaxObjectLength cuts in the white space after the integer it starts with, 256 KB, that each stream's own endstream
-        // follows: the integer was taken for each stream's length unchecked, and reading each one's raw data read the
-        // stretch again, 90 times the file. It is weighed as a declared length is: past what the lengths taken unread may
-        // keep, the data ends at the header the index places inside it, which is said, the length the cut left named; the
-        // last, inside whose data the index places nothing, reads empty (#280).
+        // MaxObjectLength cuts in a string after the integer it starts with, 256 KB, whole and no reference's number, that
+        // each stream's own endstream follows: the integer was taken for each stream's length unchecked, and reading each
+        // one's raw data read the stretch again, 90 times the file. It is weighed as a declared length is: past what the
+        // lengths taken unread may keep, the data ends at the header the index places inside it, which is said, the length
+        // the cut left named; the last, inside whose data the index places nothing, reads empty (#280).
         const int Streams = 100;
         const int Length = 256 * 1024;
         var file = OverlappingWithCutLength(Streams, Length);
@@ -7484,8 +7485,9 @@ public class HostileInputTests
 
     /// <summary>
     /// Writes a file of <paramref name="streams"/> streams, objects 3 and on, each one's header a space past where the data
-    /// of the one before starts, each <c>/Length</c> object 999, which holds <paramref name="length"/> followed by 20,000
-    /// spaces: each stream's own <c>endstream</c> follows the first <paramref name="length"/> bytes of its data.
+    /// of the one before starts, each <c>/Length</c> object 999, which holds <paramref name="length"/> followed by a string of
+    /// 20,000 spaces, which no reference's generation is: each stream's own <c>endstream</c> follows the first
+    /// <paramref name="length"/> bytes of its data.
     /// </summary>
     internal static byte[] OverlappingWithCutLength(int streams, int length)
     {
@@ -7514,7 +7516,7 @@ public class HostileInputTests
 
         body.Append("\nendobj\n");
         file.Raw(body.ToString());
-        rows[999] = (1, file.Object(999, length.ToString(CultureInfo.InvariantCulture) + new string(' ', 20_000)), 0);
+        rows[999] = (1, file.Object(999, length.ToString(CultureInfo.InvariantCulture) + " (" + new string(' ', 20_000) + ")"), 0);
         file.CrossReferenceStream(1000, 1001, rows, "/Root 1 0 R");
         return file.Bytes;
     }

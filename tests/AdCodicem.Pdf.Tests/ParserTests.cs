@@ -1282,6 +1282,118 @@ public class ParserTests
         }
     }
 
+    [Theory]
+    [InlineData("/Fl")]
+    [InlineData("1")]
+    [InlineData("1.")]
+    [InlineData("tru")]
+    [InlineData("[1 /Fl")]
+    [InlineData("[1 (x) 1.")]
+    [InlineData("<< /A 1 /Filter /Fl")]
+    [InlineData("<< /A 1 /Decode 1.")]
+    public void Drops_a_name_a_number_or_a_keyword_a_guard_s_edge_parts(string text)
+    {
+        // The bytes end where a guard stops the reading, and the data goes on with a regular byte: what they hold of the last
+        // token is none the file wrote. It reads as null alone, an array leaves it out, a dictionary the key whose value it
+        // was; and the parse says it met the edge, for the guard to be reported (#279).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, fileEdge: new FixedEdge(endsTokens: false), guardEdge: true);
+
+        var value = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        Describe(value).Should().Be(text[0] switch
+        {
+            '[' => text.Contains('(', StringComparison.Ordinal) ? "[1 (x)]" : "[1]",
+            '<' => "<</A 1>>",
+            _ => "null",
+        });
+    }
+
+    [Theory]
+    [InlineData("[3 0 R 4", true)]
+    [InlineData("[3 0 R 4", false)]
+    [InlineData("[3 0 R 4 0", true)]
+    [InlineData("[3 0 R 4 0", false)]
+    [InlineData("[3 0 R 4 0 R", false)]
+    [InlineData("<< /A 3 0 R /B 4", true)]
+    [InlineData("<< /A 3 0 R /B 4 0", true)]
+    [InlineData("<< /A 3 0 R /B 4 0 R", false)]
+    public void Drops_the_number_and_the_generation_of_a_reference_a_guard_s_edge_may_cut(string text, bool spaceAfter)
+    {
+        // The bytes end where a guard stops the reading, after the number of a reference, its generation, or an R a regular
+        // byte goes on: the integers before the edge may start a reference, "4 0 R", which it hides, and are dropped, even
+        // whole, a space after them — no two integers the file did not write as such (#262).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, fileEdge: new FixedEdge(spaceAfter), guardEdge: true);
+
+        var value = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        Describe(value).Should().Be(text[0] == '[' ? "[3 0 R]" : "<</A 3 0 R>>");
+    }
+
+    [Theory]
+    [InlineData("/FlateDecode", "/FlateDecode")]
+    [InlineData("1.5", "1.5")]
+    [InlineData("true", "true")]
+    [InlineData("(abc)", "(abc)")]
+    [InlineData("<414243>", "(ABC)")]
+    [InlineData("[1 /FlateDecode", "[1 /FlateDecode]")]
+    public void Keeps_a_token_a_guard_s_edge_reaches_that_the_data_goes_on_past_with_no_regular_byte(string text, string read)
+    {
+        // A closed string is whole wherever it ends, and a name, a real or a keyword the data goes on past with white space
+        // or a delimiter ends at the edge: kept, and the edge is not met in a value alone, which reads as under a larger
+        // window (#282). An array the edge leaves open has met it.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, fileEdge: new FixedEdge(endsTokens: true), guardEdge: true);
+
+        var value = parser.ParseObject();
+
+        Describe(value).Should().Be(read);
+        parser.IsTruncated.Should().Be(text[0] == '[');
+    }
+
+    [Theory]
+    [InlineData("/FlateDecode", "null")]
+    [InlineData("[1 (x", "[1 (x)]")]
+    [InlineData("[1 [", "[1 []]")]
+    [InlineData("<< /A <<", "<</A <<>>>>")]
+    public void Takes_a_token_a_guard_s_edge_reaches_as_parted_where_nothing_says_what_follows_it(string text, string read)
+    {
+        // With nothing to ask what follows the bytes, a name the guard's edge reaches may go on, and is dropped. A string the
+        // edge leaves open is kept as far as it was read, and a container the edge opens is read as one left open there:
+        // neither is a token the edge parts.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, guardEdge: true);
+
+        Describe(parser.ParseObject()).Should().Be(read);
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Keeps_what_the_edge_of_a_window_that_may_grow_leaves_of_a_reference()
+    {
+        // A window the reader may grow is read again whole wherever its edge leaves a token: what it held is kept as read,
+        // the parse asking for a larger one.
+        var parser = new PdfObjectParser("[3 0 R 4 0"u8.ToArray(), endsData: false, fileEdge: new FixedEdge(endsTokens: true));
+
+        Describe(parser.ParseObject()).Should().Be("[3 0 R 4 0]");
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    /// <summary>Writes a value as the tests compare it: names, numbers, strings and references in their PDF form.</summary>
+    private static string Describe(PdfObject value) => value switch
+    {
+        PdfArray array => "[" + string.Join(' ', array.Select(Describe)) + "]",
+        PdfDictionary dictionary => "<<" + string.Join(' ', dictionary.Select(entry => "/" + entry.Key.Value + " " + Describe(entry.Value))) + ">>",
+        PdfString text => "(" + text.ToText() + ")",
+        PdfName name => "/" + name.Value,
+        _ => value.ToString() ?? string.Empty,
+    };
+
+    /// <summary>Says of every token that reaches the end of a parser's buffer that the data goes on past it, or not, with a regular byte.</summary>
+    private sealed class FixedEdge(bool endsTokens) : IPdfFileEdge
+    {
+        public bool TokenEndsAt(long absoluteOffset) => endsTokens;
+    }
+
     /// <summary>
     /// An object source that knows one object. Substituted rather than hand-written, so that tests can
     /// also assert how the parser uses it, not only what it gets back.

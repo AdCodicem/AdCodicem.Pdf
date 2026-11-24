@@ -824,18 +824,19 @@ public class FileRuleTests
     }
 
     [Theory]
-    [InlineData(22, "/Type /Cata")]
-    [InlineData(24, "/Type /Catalo")]
-    public void A_catalog_a_limit_cut_inside_its_type_is_not_judged(int maxObjectLength, string read)
+    [InlineData(22)]
+    [InlineData(24)]
+    public void A_catalog_a_limit_cut_inside_its_type_is_not_judged(int maxObjectLength)
     {
-        // #175: the rule took the prefix of /Catalog for another type, and the rebuild that followed found no catalog.
+        // #175: the rule took the prefix of /Catalog for another type, and the rebuild that followed found no catalog. The
+        // parser now drops the name the cut parted, /Cata or /Catalo, and the catalog reads with no /Type (#279).
         var file = PdfTemplate.Build(PdfTemplate.Sound);
         using var document = PdfDocument.Open(file, CutAt(maxObjectLength));
 
         var report = new PdfValidator().Validate(document);
 
         report.Findings.Should().BeEmpty("what the catalog lacks may lie past the cut");
-        document.Catalog.Required().ToString().Should().Contain(read);
+        document.Catalog.Required().GetRaw(PdfName.Type).Should().BeNull();
         document.Reader.Structure.RootCutByGuard.Should().BeTrue();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }

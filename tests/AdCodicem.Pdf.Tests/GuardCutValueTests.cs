@@ -23,6 +23,12 @@ public class GuardCutValueTests
 
     private static readonly PdfReaderOptions ObjectGuard = new() { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
 
+    /// <summary>
+    /// The spaces after an object's two-digit integer that make <see cref="ObjectGuard"/> end its window two bytes into the
+    /// <c>endobj</c> after it, its header <c>N 0 obj</c> one digit long: the integer is whole, and starts no reference.
+    /// </summary>
+    private const int IntoEndObjAfterTwoDigits = 1024 - 8 - 2 - 1 - 2;
+
     [Theory]
     [InlineData("before the value", "0 0 m")]
     [InlineData("after the value", "0 0 m")]
@@ -666,6 +672,77 @@ public class GuardCutValueTests
         fault.Declared.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(1107)]
+    [InlineData(1108)]
+    [InlineData(1109)]
+    [InlineData(1110)]
+    [InlineData(1111)]
+    [InlineData(1112)]
+    [InlineData(1113)]
+    [InlineData(1114)]
+    [InlineData(0)]
+    public void A_length_whose_reference_a_guard_cuts_after_its_number_or_its_generation_gives_no_place_to_look_at(int bound)
+    {
+        // Object 4's /Length names object 5, which holds 1,100 spaces then 6 0 R; object 6 holds 5. MaxObjectLength cuts
+        // object 5 before the reference, or after its 6, "6 ", "6 0" or "6 0 ": the 6 the cut left was taken for a place to
+        // look for the endstream at, which the end of line before endstream confirmed, the data keeping one byte too many.
+        // What may start a reference the cut parted is dropped now (#262): no place to look at, and the search finds the
+        // data, as read whole, and as where the cut leaves 6 0 R whole.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\nhello\nendstream"),
+            [5] = file.Object(5, new string(' ', 1100) + "6 0 R"),
+            [6] = file.Object(6, "5"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, bound == 0 ? null : new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("hello"u8.ToArray());
+        document.Reader.TryGetStreamLengthFault(4, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(bound == 0 ? [] : [PdfDiagnosticCodes.LimitObject]);
+    }
+
+    [Theory]
+    [InlineData(1024)]
+    [InlineData(1025)]
+    [InlineData(0)]
+    public void A_length_a_guard_cut_in_or_after_its_digits_leaves_data_an_endstream_in_a_string_ends_to_the_guard(int bound)
+    {
+        // Object 4's /Length names object 20, which holds 1,014 spaces then 25; its data, a string that spells endstream
+        // and 6 spaces, is 25 bytes. MaxObjectLength cuts object 20 after its 2, which the endstream the string spells
+        // confirmed: the data read as "(x", the object's endobj judged missing, and the validator said so of a valid file.
+        // The cut drops the 2, parted, and the 25 it leaves whole and followed by the edge alike, which may be a reference's
+        // number (#262, #279): no place to look at, and the endstream the data spells ends data that is the guard's, its
+        // endobj unjudged. Read whole, the data is the 25 bytes, and nothing is reported.
+        const string Data = "(x\nendstream) Tj ET      ";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 20 0 R >>\nstream\n" + Data + "\nendstream"),
+            [20] = file.Object(20, new string(' ', 1014) + Data.Length.ToString(CultureInfo.InvariantCulture) + new string(' ', 100)),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, bound == 0 ? null : new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().Be(bound != 0);
+        stream.GetRawBytes().ToArray().Should().Equal(Encoding.ASCII.GetBytes(bound == 0 ? Data : "(x"));
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(bound == 0 ? [] : [PdfDiagnosticCodes.LimitObject]);
+    }
+
     [Fact]
     public void A_deferred_length_whose_reference_leads_to_an_object_a_guard_cut_is_not_judged_once_the_chain_is_read()
     {
@@ -695,8 +772,10 @@ public class GuardCutValueTests
         // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream, and
         // MaxObjectLength cuts object 4 after its 35: the section was said to lack the rows past the endstream, and object 8
         // read as the first revision wrote it. The 35 the cut left is where to look for the endstream, which confirms it
-        // (#224). The rows that spell the endstream, of reserved types, are then read, and reported (#221).
-        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: "{length}" + new string(' ', 3000));
+        // (#224). The rows that spell the endstream, of reserved types, are then read, and reported (#221). The cut falls
+        // inside the endobj after the 35, which therefore starts no reference: one in the white space before it would drop
+        // the 35, which may be a reference's number (#262).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: "{length}" + new string(' ', IntoEndObjAfterTwoDigits));
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
@@ -715,7 +794,8 @@ public class GuardCutValueTests
         // row's last byte, and a carriage return and a line feed come before its endstream. Its /Length names object 4,
         // which the stream's own row places, and which holds the data's length before 3,000 spaces. Read whole, the length
         // leaves the carriage return out, and the data decodes as its direct twin's (#288). Under MaxObjectLength, which
-        // cuts object 4 after its value, the integer the cut left is a place to look at, no length the file gave: the
+        // cuts object 4 in the spaces after its value, the cut drops the value, which may be a reference's number (#262),
+        // and the length is the guard's, none the file gave: the
         // carriage return stays the data's — the checksum's last byte, which then disagrees, or the last row's, the checksum
         // then missing. The data holds every row the section declares: where it ends is no guard's, though text that is no
         // object follows the stream's, and nothing proves its endstream its own.
@@ -740,8 +820,9 @@ public class GuardCutValueTests
         // Stream 7's last row, the page's, gives generation 13, its last byte a carriage return; the data lacks that byte,
         // and a carriage return and a line feed come before its endstream. Its /Length names object 5, which the newer
         // table places, and which holds the data's length before 3,000 spaces. Read whole, the length leaves the carriage
-        // return out, and the section lacks the page's row. Under MaxObjectLength, which cuts object 5 after its value, the
-        // integer the cut left is no length the file gave: the carriage return stays the data's, the row's last byte (#288).
+        // return out, and the section lacks the page's row. Under MaxObjectLength, which cuts object 5 in the spaces after
+        // its value, the cut drops the value, which may be a reference's number (#262), and the length is the guard's, none
+        // the file gave: the carriage return stays the data's, the row's last byte (#288).
         var file = ChainFiles.UpdatePlacingAPaddedLength(chained: false, lengthFirst: true, spelling: false, generation: 13, dropped: 1, endOfLine: "\r\n");
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -766,7 +847,8 @@ public class GuardCutValueTests
         // to look for the endstream, as for an object the section's own row places: confirmed, the data is taken again to it
         // and every row read; otherwise the rows past the endstream they spell are the guard's (#224).
         // The rows that spell the endstream, of reserved types, are reported where the data taken again holds them (#221).
-        var file = ChainFiles.UpdatePlacingAPaddedLength(chained, lengthOff: lengthOff, lengthFirst: true);
+        // The cut falls inside the endobj after the value, which therefore starts no reference (#262).
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained, padding: IntoEndObjAfterTwoDigits, lengthOff: lengthOff, lengthFirst: true);
         using var document = PdfDocument.Open(file, ObjectGuard);
         string[] spelled = lengthOff == 0 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
 
@@ -778,12 +860,13 @@ public class GuardCutValueTests
     }
 
     [Fact]
-    public void Rows_data_taken_again_to_an_integer_a_guard_parted_still_lacks_are_the_guard_s()
+    public void Rows_past_the_endstream_they_spell_where_a_guard_parted_the_length_are_the_guard_s()
     {
-        // MaxObjectLength parts stream 7's /Length, 210, after its 21, which the rows' second spelled endstream confirms: the
-        // data taken again to it holds 3 rows of the 30 the section declares, and the 27 it lacks were the file's, the
-        // section incomplete and the index rebuilt. The integer is only a place to look at, the length that decides the
-        // guard's: what it leaves unread is the guard's (#224).
+        // MaxObjectLength parts stream 7's /Length, 210, after its 21, which the rows' second spelled endstream would confirm:
+        // the data taken again to it held 3 rows of the 30 the section declares, and the 27 it lacked were the file's, the
+        // section incomplete and the index rebuilt — and, the 21 only a place to look at, the guard's (#224). The 21 the cut
+        // parted is dropped now, no place to look at (#279): the data ends at the first spelled endstream, and the rows past
+        // it are the guard's, the section cut.
         var file = ChainFiles.UpdatePlacingAPartedLength();
 
         using (var whole = PdfDocument.Open(file))
@@ -796,8 +879,7 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -2439,9 +2521,10 @@ public class GuardCutValueTests
     public void A_filter_run_out_where_a_guard_s_cut_of_the_length_leaves_the_data_says_nothing_of_the_file(int free)
     {
         // As above, the rows compressed in a stored block. With 29 free rows the data is 284 bytes, which MaxObjectLength
-        // parts after its 28, where the rows' second spelled endstream confirms it: the data is taken again to it; with 20,
-        // 221, parted after its 22, which nothing confirms: the data stays at the first spelled endstream. Either way it ends
-        // where the guard hides the length, and the Flate run out there was reported as the file's fault (#224).
+        // parts after its 28, where the rows' second spelled endstream would confirm it; with 20, 221, parted after its 22,
+        // which nothing confirms. The integer the cut parted is dropped, no place to look at (#279): the data stays at the
+        // first spelled endstream. It ends where the guard hides the length, and the Flate run out there was reported as
+        // the file's fault (#224).
         var file = ChainFiles.UpdatePlacingAPartedLength(free, compressed: true);
 
         using (var whole = PdfDocument.Open(file))
@@ -2453,17 +2536,16 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        // Taken again, the data holds the rows that spell the first endstream, of reserved types, which are reported (#221).
-        string[] spelled = free == 29 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. spelled, PdfDiagnosticCodes.LimitObject]);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
     }
 
     [Fact]
-    public void Rows_data_taken_again_to_an_integer_a_guard_parted_in_the_own_row_s_object_still_lacks_are_the_guard_s()
+    public void Rows_past_the_endstream_they_spell_where_a_guard_parted_the_length_the_own_row_places_are_the_guard_s()
     {
         // As above, but the stream's own row places object 5, whose 420 MaxObjectLength parts after its 42, which the rows'
-        // second spelled endstream confirms: the 54 rows the data taken again lacks are the guard's, not the file's (#224).
+        // second spelled endstream would confirm: the 54 rows the data taken again lacked were the guard's (#224). The 42 the
+        // cut parted is dropped now (#279): the data ends at the first spelled endstream, the rows past it the guard's.
         var file = ChainFiles.OwnRowPlacingAPaddedLength(throughReference: false);
 
         using (var whole = PdfDocument.Open(file))
@@ -2476,8 +2558,7 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[0].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();

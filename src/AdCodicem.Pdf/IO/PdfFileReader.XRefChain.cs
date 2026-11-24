@@ -590,17 +590,18 @@ internal sealed partial class PdfFileReader
     /// that a value the rows or a link are read with leads to — may hide the link that names the stream, as an older
     /// table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past the guard is the guard's, unknown rather
     /// than missing (#264). So may a trailer's window that cuts the reading at an offset a <c>/Prev</c> or <c>startxref</c>
-    /// names, whatever it cuts: a dictionary, whatever its <c>/Type</c>, which the parser keeps as far as it read it, the
-    /// object read as one of another type, as #279 leaves it, its <c>/Prev</c> not followed, wherever it lies, past the cut
-    /// or before it; or the object's header — its number, its generation or its <c>obj</c> keyword running on past the
-    /// window, or white space or a comment between its tokens —, or a token where no header starts, which leaves no object
-    /// read, the section looked for as one not there, as #289 leaves it. Any <c>/W</c> makes a stream of any <c>/Type</c>
-    /// the section there (#263), and the cut may have hidden one — <c>/XRef</c> parted, inside the name or inside a
-    /// <c>#xx</c> escape, a stream of another <c>/Type</c> that gives a <c>/W</c>, a <c>/Type</c> given twice whose later
-    /// <c>/XRef</c> lies past the cut, or the whole dictionary past a header the cut parted. Where an <c>/XRefStm</c> names
+    /// names, whatever it cuts: a dictionary whose <c>/Type</c> is a name written whole before the cut, which the parser
+    /// keeps as far as it read it, the object read as one of another type, its <c>/Prev</c> not followed, wherever it lies,
+    /// past the cut or before it; or the object's header — its number, its generation or its <c>obj</c> keyword running on
+    /// past the window, or white space or a comment between its tokens —, or a token where no header starts, which leaves no
+    /// object read, the section looked for as one not there, as #289 leaves it. Any <c>/W</c> makes a stream of any
+    /// <c>/Type</c> the section there (#263), and the cut may have hidden one — a stream of another <c>/Type</c> that gives
+    /// a <c>/W</c>, a <c>/Type</c> given twice whose later <c>/XRef</c> lies past the cut, or the whole dictionary past a
+    /// header the cut parted. A <c>/Type</c> the cut parted, which the parser drops, leaves the dictionary the guard's
+    /// section (#279). Where an <c>/XRefStm</c> names
     /// the offset, the chain never follows that stream's <c>/Prev</c>, and the cut hides no link the chain follows, but it
-    /// is what would end the chain there, as the guard's cut of that stream does (#264), the reading #279's closing gives
-    /// it: the reports are withheld alike. The reader cannot tell what the cut hid without reading past the guard, and
+    /// is what would end the chain there, as the guard's cut of that stream does (#264): the reports are withheld alike.
+    /// The reader cannot tell what the cut hid without reading past the guard, and
     /// withholds them even where it hid nothing, a dictionary of another type that gives no <c>/W</c>, or a token no header
     /// starts, among them; where the reading takes what is there for the guard's section, the chain's own cut withholds
     /// them already. So may white space and comments past a trailer's window where the chain names a section, which is not
@@ -896,7 +897,8 @@ internal sealed partial class PdfFileReader
             {
                 using var window = _source.GetWindow(offset, windowSize);
                 var edge = window.Length == windowSize && offset + window.Length < _source.Length;
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !edge, maxDepth: MaxNestingDepth, guard: _guard);
+                var parser = new PdfObjectParser(
+                    window.Memory, offset, this, _pending, this, endsData: !edge, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // What a window's edge may have cut is read again in a larger one, as far as the guard allows: past it, a

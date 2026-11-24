@@ -52,6 +52,19 @@ internal ref struct PdfObjectParser
     /// </summary>
     private readonly bool _endsData;
 
+    /// <summary>
+    /// Whether the buffer ends where a guard stops the reading — the largest window it allows, short of the end of the data
+    /// —, rather than at the edge of a window the reader may still grow: a token that edge parts is then no value of the
+    /// file's, and dropped (<see cref="EndsAtGuardEdge"/>).
+    /// </summary>
+    private readonly bool _guardEdge;
+
+    /// <summary>
+    /// Whether the value just parsed was dropped, a token a guard's edge parted, or an integer that may start a reference
+    /// that edge cuts: an array leaves it out, a dictionary the key it was the value of.
+    /// </summary>
+    private bool _parted;
+
     private PdfLexer _lexer;
 
     /// <summary>Whether the parse met the end of its buffer, where it may have cut an object short.</summary>
@@ -186,6 +199,10 @@ internal ref struct PdfObjectParser
     /// </param>
     /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
     /// <param name="guard">The document's guards, which word the report of a container nested past it; null for the defaults.</param>
+    /// <param name="guardEdge">
+    /// Whether the bytes, which do not end the data, end where a guard stops the reading, the largest window it allows: a
+    /// token their edge parts is then dropped, rather than kept as far as it was read (<see cref="EndsAtGuardEdge"/>).
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -196,7 +213,8 @@ internal ref struct PdfObjectParser
         IPdfFileEdge? fileEdge = null,
         bool readsStreams = true,
         int maxDepth = DefaultMaxDepth,
-        PdfLimitGuard? guard = null)
+        PdfLimitGuard? guard = null,
+        bool guardEdge = false)
     {
         _maxDepth = maxDepth;
         _guard = guard;
@@ -208,6 +226,7 @@ internal ref struct PdfObjectParser
         _streamData = streamData;
         _fileEdge = fileEdge ?? streamData;
         _endsData = endsData;
+        _guardEdge = guardEdge && !endsData;
         _readsStreams = readsStreams;
     }
 
@@ -224,11 +243,12 @@ internal ref struct PdfObjectParser
     /// <param name="diagnostics">Receives what parsing met.</param>
     /// <param name="endsData">
     /// Whether <paramref name="data"/> ends where the member must — at the next member's start, or at the end of the decoded
-    /// data —, rather than where a guard cut it: only then is what its end cuts short the data's fault.
+    /// data —, rather than where a guard cut it: only then is what its end cuts short the data's fault. A member's window is
+    /// never grown, so one that does not end there ends at a guard's edge, which drops a token it parts.
     /// </param>
     /// <param name="endsAtNextMember">Whether <paramref name="data"/> ends at the next member's start, which its reports then name.</param>
     /// <param name="dataEdge">
-    /// Says what the decoded data holds past <paramref name="data"/>'s end, where a window's edge leaves a keyword undecided:
+    /// Says what the decoded data holds past <paramref name="data"/>'s end, where a window's edge leaves a token undecided:
     /// the data is in memory, so a member a window ends exactly with reads whole, as under a larger window.
     /// </param>
     /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
@@ -247,7 +267,7 @@ internal ref struct PdfObjectParser
         PdfLimitGuard? guard = null)
     {
         var parser = new PdfObjectParser(
-            data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge, readsStreams: false, maxDepth: maxDepth, guard: guard);
+            data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge, readsStreams: false, maxDepth: maxDepth, guard: guard, guardEdge: true);
         parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics, endsAtNextMember);
         return parser;
     }
@@ -347,6 +367,7 @@ internal ref struct PdfObjectParser
         _headerAt = -1;
         _headerUndecided = false;
         _lookAheadCut = false;
+        _parted = false;
         return ParseValue(_lexer.Read(), 0);
     }
 
@@ -479,10 +500,19 @@ internal ref struct PdfObjectParser
     private PdfObject ParseValue(PdfToken token, int depth)
     {
         // A value that reaches the end of the buffer may go on past it: "12" of "1234", a string without
-        // its closing delimiter, the "<" of a "<<". An endobj the file says ends there does not: an empty object's.
-        if (token.Kind != PdfTokenKind.EndOfInput && token.End >= _memory.Length && !IsEndObj(token))
+        // its closing delimiter, the "<" of a "<<". An endobj the file says ends there does not: an empty object's. Nor,
+        // at a guard's edge, does a closed string, or a token the data goes on with no regular byte after (#282).
+        if (token.Kind != PdfTokenKind.EndOfInput && token.End >= _memory.Length && !IsEndObj(token) && !EndsAtGuardEdge(token))
         {
             _truncated = true;
+
+            // What a guard's edge parted of a name, a number or a keyword — "/Flate" of "/FlateDecode", "1" of "15" or of
+            // "1.5" — is none the file wrote: it is dropped, as a value missing at the edge is (#279).
+            if (_guardEdge && token.Kind is PdfTokenKind.Name or PdfTokenKind.Integer or PdfTokenKind.Real or PdfTokenKind.Keyword)
+            {
+                _parted = true;
+                return PdfNull.Instance;
+            }
         }
 
         switch (token.Kind)
@@ -594,8 +624,7 @@ internal ref struct PdfObjectParser
 
         // Inside a container, a window's edge may have cut a keyword that obj starts with after two integers, "12 0 ob": no
         // reference, and maybe the next object's header, which a larger window shows. The containers end there, as at a
-        // header, and the number is no value of the file's. "12 0" alone may be what the edge left of a reference, and is
-        // kept as far as it was read, as any value the edge cuts.
+        // header, and the number is no value of the file's. "12 0" alone may be what the edge left of a reference: below.
         if (depth > 0 && third.Kind == PdfTokenKind.Keyword && HeaderUndecided(token, second, third))
         {
             _truncated = true;
@@ -611,6 +640,15 @@ internal ref struct PdfObjectParser
         {
             _truncated = true;
             _lookAheadCut = !_endsData;
+
+            // At a guard's edge, the integer may be a reference's number, or its generation, which its own look-ahead meets
+            // the edge after: either is dropped, as no value the file wrote, and a generation after the number with it (#262).
+            if (_guardEdge)
+            {
+                _parted = true;
+                _lexer.Position = second.Kind == PdfTokenKind.Integer ? second.End : saved;
+                return PdfNull.Instance;
+            }
         }
 
         _lexer.Position = saved;
@@ -682,6 +720,13 @@ internal ref struct PdfObjectParser
 
                         _lexer.Position = _headerAt;
                         return array;
+                    }
+
+                    // An element a guard's edge parted is none the file wrote: the array leaves it out.
+                    if (_parted)
+                    {
+                        _parted = false;
+                        break;
                     }
 
                     array.Add(element);
@@ -828,7 +873,9 @@ internal ref struct PdfObjectParser
             }
 
             // A value the parse met a window's edge in may be what the edge made of it — a keyword cut short reads as null —:
-            // it is kept as far as it was read, but removes nothing.
+            // it is kept as far as it was read, but removes nothing. One a guard's edge parted is dropped, null, and gives the
+            // key nothing, as a value missing at the edge does (#279).
+            _parted = false;
             Give(dictionary, ref nullKeys, keyToken, key, value, keyAtEdge, valueCut: PastWindowEdge);
         }
 
@@ -836,34 +883,31 @@ internal ref struct PdfObjectParser
         var next = _lexer.Read();
 
         // A member's window that a guard ended may have left a stream keyword after the dictionary past it, or cut one — a
-        // keyword it reaches that begins "stream", or is "stream" itself, which may be a longer keyword —: the member is cut
-        // there, as an object written in the file whose window ends after its value is. What else follows is whole
-        // wherever it lies, or cannot be a stream keyword however it goes on.
+        // keyword it reaches that begins "stream", or is "stream" with a regular byte after it in the decoded data —: the
+        // member is cut there, as an object written in the file whose window ends after its value is. What else follows is
+        // whole wherever it lies, or cannot be a stream keyword however it goes on; "stream" the data goes on past with no
+        // regular byte is the keyword, as under a larger window (#282).
         if (_member is not null && !_endsData &&
             (next.Kind is PdfTokenKind.EndOfInput ||
-             (next.Kind is PdfTokenKind.Keyword && next.End >= _memory.Length && "stream"u8.StartsWith(next.Text))))
+             (next.Kind is PdfTokenKind.Keyword && next.End >= _memory.Length && "stream"u8.StartsWith(next.Text) &&
+              !IsWholeKeyword(next, "stream"u8))))
         {
             _truncated = true;
             _lexer.Position = afterDictionary;
             return dictionary;
         }
 
-        if (next.IsKeyword("stream"u8))
+        // Only a whole keyword introduces a stream, as only a whole endobj or R is taken: one a window's edge reaches is the
+        // stream's where the file says it ends there, and is otherwise "streamX", or "streamline" cut short, which leaves the
+        // dictionary alone, the token after it the caller's to read — what follows an object's value, or what the container
+        // around the dictionary reads as what the edge left, unreported (#49) —, at a guard's edge as at any other (#294).
+        if (IsWholeKeyword(next, "stream"u8))
         {
             // A parse that reads no stream stops here, the containers it had open with it: a member's stream is no value
             // (#161), and a trailer's is its dictionary alone, as it was read, its data and what its /Length names unread
-            // (#171). How deep the stop is tells a stream after the value from one inside it, which cut it short. Only a
-            // whole keyword stops it, as only a whole endobj or R is taken: one a window's edge reaches is the stream's where
-            // the file says it ends there, and may otherwise be "streamline" cut short, which the container around the
-            // dictionary reads as what the edge left, unreported (#49). A member's window that reaches one was cut above.
+            // (#171). How deep the stop is tells a stream after the value from one inside it, which cut it short.
             if (!_readsStreams)
             {
-                if (!IsWholeKeyword(next, "stream"u8))
-                {
-                    _lexer.Position = afterDictionary;
-                    return dictionary;
-                }
-
                 _streamStop = next.Start;
                 _streamStopDepth = depth;
                 return dictionary;
@@ -905,8 +949,9 @@ internal ref struct PdfObjectParser
         // The end-of-line after "stream" is not data. A buffer that ends on the keyword, or on the carriage
         // return of a CR LF, cannot say where the data starts: the file says, as it says what follows the data, since the
         // data counts toward no window — not even one a guard ended there (#174) —; a parser the reader does not back
-        // needs a larger buffer, as does a keyword a regular character goes on, which is no stream keyword. One that ends
-        // the data says: the stream's data, which starts there, holds nothing.
+        // needs a larger buffer, as does a keyword a regular character goes on, which is no stream keyword and was left out
+        // before the stream was read, unless the source's bytes changed between the two reads (#294). One that ends the data
+        // says: the stream's data, which starts there, holds nothing.
         if (!_endsData && dataStart >= span.Length && (dataStart == keywordEnd || span[dataStart - 1] != (byte)'\n'))
         {
             var start = _streamData?.DataStart(_baseOffset + keywordEnd) ?? -1;
@@ -1343,8 +1388,9 @@ internal ref struct PdfObjectParser
                 presence = value is PdfNull ? ObjectPresence.Unproduced : ObjectPresence.Defined;
             }
 
-            // An integer the cut left, whole or parted, is only a place to look for endstream at, and no declared length; the
-            // object the guard cut is the one a chain of references from the /Length leads to (#224).
+            // An integer the cut left whole, which starts no reference, is only a place to look for endstream at, and no
+            // declared length — the cut drops one it parted, or one a reference may start (#262, #279) —; the object the
+            // guard cut is the one a chain of references from the /Length leads to (#224).
             if (presence == ObjectPresence.Cut)
             {
                 return new DeclaredLength(
@@ -1806,6 +1852,20 @@ internal ref struct PdfObjectParser
     private readonly bool PastWindowEdge => !_endsData && _truncated;
 
     /// <summary>
+    /// Determines whether <paramref name="token"/>, which reaches the end of the buffer, ends there where that end is a
+    /// guard's edge: a closed string, whole wherever it ends, or a name, a real or a keyword that the file — or the decoded
+    /// data, for an object stream member — goes on past with no regular byte (#282). Any other token that edge reaches is
+    /// parted, and a name, a number or a keyword so parted is dropped (#279). An integer is not asked: whole, it is followed
+    /// by the edge, which leaves undecided whether it starts a reference, and is dropped all the same (#262).
+    /// </summary>
+    private readonly bool EndsAtGuardEdge(PdfToken token) => _guardEdge && token.Kind switch
+    {
+        PdfTokenKind.LiteralString or PdfTokenKind.HexString => token.End - token.Start - token.Text.Length == 2,
+        PdfTokenKind.Name or PdfTokenKind.Real or PdfTokenKind.Keyword => _fileEdge is { } edge && edge.TokenEndsAt(_baseOffset + token.End),
+        _ => false,
+    };
+
+    /// <summary>
     /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is
     /// a window's edge may be the start of a longer keyword, which the file says when it backs the parser, so that an object
     /// a window ends exactly with reads whole, as under a larger window, wherever its endobj comes — after its value, where a
@@ -1815,11 +1875,11 @@ internal ref struct PdfObjectParser
 
     /// <summary>
     /// Determines whether <paramref name="token"/> is the keyword <paramref name="keyword"/>, and whole: one that reaches the
-    /// end of a buffer that is a window's edge may be the start of a longer keyword — <c>endobjX</c>, <c>RG</c> —, which the
-    /// file says when it backs the parser. A parser no file backs asks for a larger buffer where the token belongs to what
-    /// it parses; a <c>stream</c> keyword after the dictionary a parse that reads no stream began with is left, as any token
-    /// after the value is, and the dictionary given whole, no larger buffer asked for: the one such parse given a window, an
-    /// object stream member's, is cut before it reads that keyword.
+    /// end of a buffer that is a window's edge may be the start of a longer keyword — <c>endobjX</c>, <c>RG</c>,
+    /// <c>streamX</c> —, which the file says when it backs the parser. A parser no file backs asks for a larger buffer where
+    /// the token belongs to what it parses; a <c>stream</c> keyword that is not whole leaves the dictionary before it alone,
+    /// as any token after a value is left, for what follows the value to decide (#294): an object stream member's window
+    /// that reaches one is cut, unless the decoded data says it is whole.
     /// </summary>
     private readonly bool IsWholeKeyword(PdfToken token, ReadOnlySpan<byte> keyword) =>
         token.IsKeyword(keyword) &&

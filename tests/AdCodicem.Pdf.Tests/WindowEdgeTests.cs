@@ -336,6 +336,101 @@ public class WindowEdgeTests
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void A_keyword_longer_than_stream_where_MaxObjectLength_ends_the_window_leaves_the_object_its_dictionary(int shift)
+    {
+        // "streamX" is no stream keyword. MaxObjectLength ends object 4's window a byte short of its "stream", right after
+        // it or a byte past it: the object reads as its dictionary, cut by the guard, alike at each. Right after it, the
+        // keyword was taken whole, and the object read as a stream whose data, "X\nhel", the guard cut, which decoding then
+        // said the file's: the file is asked whether a regular byte follows, as it is of an endobj or an R (#294).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "<< /Length 5 /Filter /FlateDecode >>\nstreamX\nhello\nendstream"),
+            [6] = file.Object(6, "(six)"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var keywordEnd = PdfTemplate.OffsetOf(bytes, "streamX") + "stream".Length;
+
+        using var document = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = (int)(keywordEnd - rows[4]) + shift } });
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>();
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void A_keyword_longer_than_stream_where_MaxTrailerLength_ends_the_window_leaves_the_cross_reference_stream_its_dictionary(int shift)
+    {
+        // The cross-reference stream's keyword is "streamX", no stream keyword: read whole, its dictionary is followed by no
+        // stream data, the section malformed, and the catalog found by the rebuild. MaxTrailerLength ends the window a byte
+        // short of its "stream", right after it or a byte past it: the section reads as read whole. Right after it, the
+        // keyword was taken whole, the section read, and the validator judged the catalog missing (#294).
+        var built = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildWithXRefStream(rootNumber: 1);
+        var dictionary = (int)PdfTemplate.OffsetOf(built, "/Type /XRef");
+        var keywordEnd = Encoding.Latin1.GetString(built).IndexOf("stream", dictionary, StringComparison.Ordinal) + "stream".Length;
+        var header = Encoding.Latin1.GetString(built).LastIndexOf(" 0 obj", dictionary, StringComparison.Ordinal) - 1;
+        byte[] bytes = [.. built[..keywordEnd], (byte)'X', .. built[keywordEnd..]];
+
+        using var whole = PdfDocument.Open(bytes);
+        using var document = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = keywordEnd - header + shift } });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.State.Should().Be(IO.XRef.XRefSectionState.Malformed);
+        section.Fault.Should().Be("its dictionary is not followed by stream data").And.Be(whole.Reader.Structure.Sections.Single().Fault);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1024 * 1024)]
+    public void A_keyword_longer_than_stream_after_a_trailer_where_MaxTrailerLength_ends_the_window_leaves_the_trailer_whole(int shift)
+    {
+        // A classic table's trailer, longer than the table's window, is followed by "streamX", no stream keyword. The trailer
+        // is read through a window of its own, which MaxTrailerLength ends a byte short of that "stream", right after it, a
+        // byte past it, or far past: the trailer reads whole alike, and nothing is reported. Right after it, the keyword was
+        // taken whole, the trailer read as a stream, no dictionary, the guard reported, and the validator judged the trailer
+        // malformed (#294).
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var table = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R /Pad ({new string('x', PdfFileReader.XRefWindow)}) >>\nstreamX\nstartxref\n{table}\n%%EOF\n"));
+        var bytes = file.Bytes;
+        var keywordEnd = PdfTemplate.OffsetOf(bytes, "streamX") + "stream".Length;
+        var trailerEnd = PdfTemplate.OffsetOf(bytes, "trailer\n") + "trailer".Length;
+        var bound = shift > 1 ? shift : (int)(keywordEnd - trailerEnd) + shift;
+
+        using var document = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = bound } });
+
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileTrailerMalformed).Should().BeFalse();
+    }
+
     [Fact]
     public void An_anomaly_inside_an_object_longer_than_the_window_is_reported_once()
     {

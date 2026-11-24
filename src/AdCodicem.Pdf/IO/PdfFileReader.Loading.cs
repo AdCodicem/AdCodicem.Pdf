@@ -316,9 +316,11 @@ internal sealed partial class PdfFileReader
                     lead = 0;
                 }
 
-                // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
+                // A window that ends where the file does cut nothing, however long it is: what it holds is all there is. The
+                // largest the guard allows drops a token its edge parts (#262, #279).
                 var cut = bytes.Length == windowSize && offset + bytes.Length < _source.Length;
-                var parser = new PdfObjectParser(bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard);
+                var parser = new PdfObjectParser(
+                    bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -760,7 +762,8 @@ internal sealed partial class PdfFileReader
                 using var window = _source.GetWindow(offset, windowSize);
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
                 // The file says where a token the window's edge reaches ends, as it does to a load; no stream's data is read.
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this, maxDepth: MaxNestingDepth, guard: _guard);
+                var parser = new PdfObjectParser(
+                    window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // A header read whole that names another object, or another generation, is not this object, however far
@@ -889,6 +892,11 @@ internal sealed partial class PdfFileReader
     /// data no search can be anchored at past it —: the reader cut it there, and its lost tail is the guard's, not the
     /// file's. A stream whose data starts within the window is found by its <c>endstream</c>, which no window bounds.
     /// </summary>
+    /// <remarks>
+    /// A defensive branch: a <c>stream</c> keyword the edge reaches is one only where the file says no regular byte follows
+    /// it (#294), and the data then starts past its end of line, which the file gives. Only a source whose bytes change
+    /// between those two reads leaves the data's start unknown at the edge.
+    /// </remarks>
     private static void MarkCutByGuard(PdfObject parsed, long windowEnd)
     {
         if (parsed is PdfStream { Data: FileStreamData data } && data.Position + data.Length >= windowEnd)
@@ -1326,6 +1334,10 @@ internal sealed partial class PdfFileReader
         var bound = _guard.Bound(PdfLimit.Object);
         var mark = _pending.GetMark();
 
+        // The decoded data says what lies past a member's window, as it does to the load, so that both take a stream keyword
+        // the window ends on alike (#282).
+        var edge = new DecodedDataEdge(data);
+
         try
         {
             for (var index = 0; index < header.Count; index++)
@@ -1344,7 +1356,7 @@ internal sealed partial class PdfFileReader
                 }
 
                 var parser = PdfObjectParser.ForObjectStreamMember(
-                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember, maxDepth: MaxNestingDepth, guard: _guard);
+                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember, edge, MaxNestingDepth, _guard);
                 parser.Position = window.Start;
                 _ = parser.ParseObject();
 
@@ -2132,6 +2144,21 @@ internal sealed partial class PdfFileReader
         }
     }
 
+    /// <summary>Says what an object stream's decoded data holds past the edge of a member's window.</summary>
+    /// <param name="data">The decoded data.</param>
+    private sealed class DecodedDataEdge(ReadOnlyMemory<byte> data) : IPdfFileEdge
+    {
+        /// <inheritdoc/>
+        bool IPdfFileEdge.TokenEndsAt(long absoluteOffset) => EndsAt(data.Span, absoluteOffset);
+
+        /// <summary>
+        /// Determines whether a token that reaches a member window's edge at byte <paramref name="offset"/> of the decoded
+        /// <paramref name="data"/> ends there: no regular character follows. A window MaxObjectLength bounds ends inside the
+        /// data; past the end of data a guard cut there is nothing to ask, and the token stays undecided.
+        /// </summary>
+        public static bool EndsAt(ReadOnlySpan<byte> data, long offset) => offset < data.Length && !PdfCharacters.IsRegular(data[(int)offset]);
+    }
+
     /// <summary>The objects packed inside one object stream, and where each of them starts.</summary>
     private sealed class ObjectStreamContents : IPdfFileEdge
     {
@@ -2184,13 +2211,8 @@ internal sealed partial class PdfFileReader
         /// <summary>Gets the stream's decoded data, which the contents keep for as long as they are kept.</summary>
         public ReadOnlyMemory<byte> Data => _data;
 
-        /// <summary>
-        /// Determines whether a token that reaches a member window's edge at byte <paramref name="absoluteOffset"/> of the
-        /// decoded data ends there: no regular character follows. A window MaxObjectLength bounds ends inside the data; past
-        /// the end of data a guard cut there is nothing to ask, and the token stays undecided.
-        /// </summary>
-        bool IPdfFileEdge.TokenEndsAt(long absoluteOffset) =>
-            absoluteOffset < _data.Length && !PdfCharacters.IsRegular(_data.Span[(int)absoluteOffset]);
+        /// <summary>Asks the decoded data, as <see cref="DecodedDataEdge.EndsAt"/> does.</summary>
+        bool IPdfFileEdge.TokenEndsAt(long absoluteOffset) => DecodedDataEdge.EndsAt(_data.Span, absoluteOffset);
 
         /// <summary>
         /// Gets what keeping the contents costs, in bytes: the decoded data, the header's two tables and the lookup of its

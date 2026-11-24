@@ -4668,25 +4668,24 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData(100)]
-    [InlineData(101)]
-    [InlineData(104)]
-    [InlineData(106)]
-    [InlineData(107)]
-    public void A_member_dictionary_whose_stream_keyword_MaxObjectLength_leaves_out_is_cut_there_and_reported(int bound)
+    [InlineData(100, "")]
+    [InlineData(101, "")]
+    [InlineData(104, "")]
+    [InlineData(106, "")]
+    [InlineData(107, "X")]
+    public void A_member_dictionary_whose_stream_keyword_MaxObjectLength_leaves_out_is_cut_there_and_reported(int bound, string tail)
     {
         // Member 3 is a dictionary of 100 bytes and the stream after it, which an object stream cannot hold. The bound ends
-        // the member's window right after the dictionary, inside "stream", or on its last byte, where it may be a longer
-        // keyword: what follows the dictionary is unknown, and the member is cut at the guard, not read as a dictionary in
-        // silence — on the last byte, though the byte past it lies in the decoded data, which #282 is to ask, as an object
-        // written in the file whose window ends there asks the file. A byte past "stream", the member is a stream, and
-        // reads as null.
-        const string Member = "<< /A (" + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" + ") >>\nstream\nabc\nendstream";
-        Member.IndexOf(">>", StringComparison.Ordinal).Should().Be(98);
+        // the member's window right after the dictionary, or inside "stream": what follows the dictionary is unknown, and the
+        // member is cut at the guard, not read as a dictionary in silence. On the keyword's last byte, a regular byte past it
+        // in the decoded data, "streamX", leaves what the keyword is unknown too, as an object written in the file whose
+        // window ends there is (#282).
+        var member = "<< /A (" + new string('x', 89) + ") >>\nstream" + tail + "\nabc\nendstream";
+        member.IndexOf(">>", StringComparison.Ordinal).Should().Be(98);
         var file = new TestPdfBuilder()
             .WithObject(1, Catalog)
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(3, Member)
+            .WithObject(3, member)
             .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } };
 
@@ -4695,10 +4694,30 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>();
         document.Reader.IsCutAtLimit(3).Should().BeTrue();
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+    }
 
-        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 108 } });
-        whole.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
-        whole.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamMemberStream);
+    [Theory]
+    [InlineData(107, false)]
+    [InlineData(107, true)]
+    [InlineData(108, false)]
+    public void A_member_dictionary_whose_stream_keyword_ends_where_MaxObjectLength_ends_its_window_is_a_stream(int bound, bool throwOnLimit)
+    {
+        // The bound ends member 3's window on the last byte of "stream", which the end of line past it in the decoded data
+        // says is whole: the member is a stream, which an object stream cannot hold, and reads as null, as under a bound a
+        // byte larger; no guard is reached, nor thrown (#282).
+        const string Member = "<< /A (" + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" + ") >>\nstream\nabc\nendstream";
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, Member)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound }, ThrowOnLimit = throwOnLimit };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.IsCutAtLimit(3).Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamMemberStream);
     }
 
     [Theory]
@@ -4795,6 +4814,63 @@ public class ReaderLimitsTests
         document.Diagnostics.Should().AllSatisfy(diagnostic => diagnostic.Message.Should().StartWith("An array was closed by a dictionary end. It was met in object 4,"));
     }
 
+    [Theory]
+    [InlineData("a literal string", false)]
+    [InlineData("a literal string", true)]
+    [InlineData("a hexadecimal string", false)]
+    [InlineData("a hexadecimal string", true)]
+    [InlineData("a name", false)]
+    [InlineData("a name", true)]
+    [InlineData("a real", false)]
+    [InlineData("a real", true)]
+    [InlineData("a keyword", false)]
+    [InlineData("a keyword", true)]
+    public void A_member_whose_token_ends_where_MaxObjectLength_ends_its_window_is_read_whole(string shape, bool throwOnLimit)
+    {
+        // Member 4's window ends where MaxObjectLength does, right after its value, white space past it: a closed string is
+        // whole wherever it ends, and a name, a real or a keyword the decoded byte past it says ends there. The member reads
+        // as the window the member would have without the guard reads it, not cut, nothing reported, under ThrowOnLimit as
+        // without (#282).
+        var value = shape switch
+        {
+            "a literal string" => "(" + new string('a', 300) + ")",
+            "a hexadecimal string" => "<" + string.Concat(Enumerable.Repeat("aa", 100)) + ">",
+            "a name" => "/N" + new string('a', 100),
+            "a real" => "1.5",
+            _ => "true",
+        };
+        var file = MemberReachingItsBound(value);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(
+            file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 200 + value.Length }, ThrowOnLimit = throwOnLimit });
+
+        var read = document.GetObject(new PdfObjectId(4));
+        read.Should().NotBeSameAs(PdfNull.Instance).And.BeOfType(whole.GetObject(new PdfObjectId(4)).GetType());
+        read.ToString().Should().Be(whole.GetObject(new PdfObjectId(4)).ToString());
+        document.Reader.IsCutAtLimit(4).Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/NameX", 5)]
+    [InlineData("15", 1)]
+    [InlineData("15", 2)]
+    [InlineData("1.5", 2)]
+    [InlineData("15 0 R", 2)]
+    [InlineData("15 0 R", 4)]
+    public void A_member_whose_token_MaxObjectLength_parts_or_whose_reference_it_may_cut_reads_as_null_cut(string value, int kept)
+    {
+        // Member 4's window ends where MaxObjectLength does, inside its value: a name, an integer or a real the decoded data
+        // goes on past with a regular byte is parted, and no value the file wrote; so is an integer, whole or not, that may
+        // be the number or the generation of a reference the window's edge cuts. The member reads as null, cut (#262, #279).
+        using var document = PdfDocument.Open(
+            MemberReachingItsBound(value), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 200 + kept } });
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
     [Fact]
     public void A_member_whose_reference_ends_where_MaxObjectLength_ends_its_window_is_the_reference()
     {
@@ -4854,8 +4930,8 @@ public class ReaderLimitsTests
     public void A_member_whose_R_ends_where_a_guard_cuts_the_data_is_cut(bool throwOnLimit)
     {
         // Member 10, "6 0 R", ends on byte 10, where MaxDecodedStreamLength cuts the data: what follows the R, which would
-        // say whether it ends a reference, is the guard's, and nothing past the data is asked. The member reads as the
-        // number before it, cut, or the guard is thrown.
+        // say whether it ends a reference, is the guard's, and nothing past the data is asked. The number and the generation
+        // may start a reference the cut parted, and are dropped: the member reads as null, cut, or the guard is thrown (#262).
         const string Data = "10 0 6 0 R (more data) ";
         var hex = Convert.ToHexString(Encoding.Latin1.GetBytes(Data)) + ">";
         var written = new HandWrittenFile(version: "1.5");
@@ -4878,7 +4954,7 @@ public class ReaderLimitsTests
             return;
         }
 
-        document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(6);
+        document.GetObject(new PdfObjectId(10)).Should().BeSameAs(PdfNull.Instance);
         document.Reader.IsCutAtLimit(10).Should().BeTrue();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
@@ -7615,10 +7691,95 @@ public class ReaderLimitsTests
         var length = file.Length - OffsetOf(file, "4 0 obj");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length - 1 } });
 
-        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(3);
+        // The cut falls before the "]": "2 3" may start "2 3 R", which it hides, and both are dropped (#262).
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().ContainSingle().Which.Should().BeOfType<PdfInteger>().Which.Value.Should().Be(1);
 
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
         new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Theory]
+    [InlineData("<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>", "[3 0 R 4")]
+    [InlineData("<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>", "[3 0 R 4 0")]
+    [InlineData("<< /Type /Pages /Count 1 /Kids [3 0 R] /Foo 4 0 R >>", "/Foo 4")]
+    [InlineData("<< /Type /Pages /Count 1 /Kids [3 0 R] /Foo 4 0 R >>", "/Foo 4 0")]
+    public void A_reference_MaxObjectLength_cuts_after_its_number_or_its_generation_is_dropped(string node, string cutAfter)
+    {
+        // The bound ends object 2's window after the number of the reference to page 4, or after its generation: what the
+        // window holds may be what the cut left of that reference, which reads as no two integers the file did not write.
+        // The array leaves both out, the dictionary the key whose value they were, and the guard is reported (#262). Spaces
+        // before the node set its cut past the end of the catalog, which the bound leaves whole.
+        var padded = new string(' ', 40) + node;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, padded),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"),
+            [4] = file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var bound = "2 0 obj\n".Length + padded.IndexOf(cutAfter, StringComparison.Ordinal) + cutAfter.Length;
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+        var read = document.GetObject(new PdfObjectId(2)).AsDictionary().Required();
+
+        read.GetRaw(PdfName.Kids).Should().BeOfType<PdfArray>().Which.Should().ContainSingle()
+            .Which.Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(3));
+        read.ContainsKey(PdfName.Get("Foo")).Should().BeFalse();
+        document.Reader.IsCutAtLimit(2).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData("/FlateDecode", 6, 0)]
+    [InlineData("15", 1, 0)]
+    [InlineData("1.5", 1, 0)]
+    [InlineData("1.5", 2, 0)]
+    [InlineData("true", 3, 0)]
+    [InlineData("[1 /FlateDecode]", 6, 1)]
+    [InlineData("[1 (x) 15]", 8, 2)]
+    [InlineData("[1 1.5 true]", 5, 1)]
+    [InlineData("[1 true]", 5, 1)]
+    [InlineData("<< /Filter /FlateDecode >>", 16, 0)]
+    [InlineData("<< /Length 15 >>", 12, 0)]
+    [InlineData("<< /Decode 1.5 >>", 13, 0)]
+    [InlineData("<< /A true >>", 9, 0)]
+    public void A_name_a_number_or_a_keyword_MaxObjectLength_parts_is_dropped(string value, int kept, int count)
+    {
+        // Spaces before object 20's value make the bound end its window kept bytes into it, inside a name, an integer, a
+        // real or a keyword: "/Flate" of "/FlateDecode", "1" of "15" or "1.5", "1." of "1.5", "tru" of "true". What the
+        // window holds of the token is no value the file wrote: it reads as null alone, an array leaves it out, keeping the
+        // count elements before it, a dictionary the key whose value it was, and the guard is reported (#279).
+        var file = new HandWrittenFile();
+        var head = "20 0 obj\n".Length;
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+            [20] = file.Object(20, new string(' ', 1024 - head - kept) + value + new string(' ', 100)),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+        var read = document.GetObject(new PdfObjectId(20));
+
+        switch (value[0])
+        {
+            case '[':
+                read.AsArray().Required().Count.Should().Be(count);
+                read.AsArray().Required()[0].Should().BeOfType<PdfInteger>().Which.Value.Should().Be(1);
+                break;
+            case '<':
+                read.AsDictionary().Required().Count.Should().Be(count);
+                break;
+            default:
+                read.Should().BeSameAs(PdfNull.Instance);
+                break;
+        }
+
+        document.Reader.IsCutAtLimit(20).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
     [Fact]
