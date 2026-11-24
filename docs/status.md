@@ -57,7 +57,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
   to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]) and its second ([#420] to
-  [#425]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  [#426]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
@@ -700,15 +700,15 @@ One pull request per batch, each design question put to the maintainer after mea
        `Remote corpus` run 131 green on its branch (journal of 2026-11-22), which filed [#401] to [#403] under M02; then
        the messages and the probe, [#326] and [#349], in [#407], open, `Remote corpus` run 133 green on its branch,
        which filed [#405] under M02, and closes [#406], its own regression, which the maintainer chose to fix there.
-   27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to [#397],
-       which the maintainer placed here on 2026-11-22 — nineteen issues, in four pull requests by area, as the
+   27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to
+       [#397], which the maintainer placed here on 2026-11-22 — nineteen issues, in four pull requests by area, as the
        maintainer chose on 2026-11-23: the nesting guards and what a read keeps by its depth, [#163], [#395], [#396],
        [#397] and [#313], in [#409], merged on 2026-11-24, `Remote corpus` run 135 green on its branch, which filed
        [#410] to [#416] under M02 (journal of 2026-11-24); then the parser at its guards, [#262], [#279], [#282] and
-       [#294], with [#415], which the maintainer chose to close there, in [#419], open, which filed [#420] to
-       [#425] under M02 (journal of 2026-11-24) and settled [#328]'s `/XRefStm` half; the chain at its guards,
-       [#289], [#295], [#328], [#329], [#292] and [#324]; stream ends and the rebuild, [#287], [#293], [#290] and
-       [#351].
+       [#294], with [#415], which the maintainer chose to close there, in [#419], open, `Remote corpus` run 137 green on
+       its branch, which filed [#420] to [#426] under M02 (journal of 2026-11-24) and settled [#328]'s `/XRefStm` half;
+       the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324]; stream ends and the rebuild, [#287],
+       [#293], [#290] and [#351].
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -810,12 +810,13 @@ One pull request per batch, each design question put to the maintainer after mea
    deferred cross-reference stream's data without its carriage return; [#403], an object stream whose filters decode
    nothing reported as a header fault. Its second filed [#405] under M02, placed in no batch yet: a rebuild that takes
    an object stream's members in through a value of its dictionary that a stream it expands later replaces.
-   Batch 27's second pull request filed six under M02, placed in no batch yet: [#420], a string or a delimiter a
+   Batch 27's second pull request filed seven under M02, placed in no batch yet: [#420], a string or a delimiter a
    guard's edge leaves undecided, kept as far as it was read; [#421], a whole token at a guard's edge that loses its
    syntax report, and a prefix of `stream` that still cuts a member; [#422], a signed generation cut after its sign;
    [#423], a `/Root` a trailer's guard hides reported as recovered; [#424], a header value a cut object holds whole
    but of the wrong kind taken for the guard's; [#425], whether a whole `/Length`, `/Filter` or `/DecodeParms` a cut
-   object holds is the file's, for the maintainer.
+   object holds is the file's, for the maintainer; [#426], a stack-cut test whose 600 nested dictionaries ran short of
+   its 1.5 MB thread once in CI.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1161,3 +1162,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#423]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/423
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
 [#425]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/425
+[#426]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/426
