@@ -243,6 +243,24 @@ bound cut, from as many loads in flight, so that an object reads the same whatev
 is kept for the read in progress alone. Keeping nothing a cut reached was measured and set aside: a chain of 64 object
 streams each taking its filter from the next was decoded again past every level, without end in practice.
 
+Amended on 2026-11-24, by the maintainer, while [#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289) and
+[#295](https://github.com/AdCodicem/AdCodicem.Pdf/issues/295) were fixed: `MaxTrailerLength` bounds, apart from the
+section, the white space and comments an offset that names a cross-reference section falls short by, and the bound's
+reach over them was never classified. Strictly, no valid file reaches it: ISO 32000-1 has `startxref`, `/Prev` and
+`/XRefStm` name the section's first byte. But the reader reads white space before a section as a Warning (ADR 45),
+nothing bounding how much, and `limit.trailer` already names the property that reads past it: the reach stays the
+guard's. Where that white space runs on past the bound, or where the bound cuts the header of the object at the offset —
+its number or its generation running on past it, white space or a comment between its tokens, all valid syntax —, the
+section is a section the guard cut: where it was named, not looked for near there, the chain ending at it; for the one
+`startxref` names, the index is rebuilt, as for any guard that leaves the chain no section. The search near the offset
+read up to 512 bytes past it, past a bound set below that, and could take a section other than the one past the run — an
+older table, which then served an object the update's stream frees —, the file charged with Errors. A first token no
+header starts with — a `-`, a letter — is no section's whatever the cut hid, and stays the file's. A classic table's
+windows open at its `xref` keyword, as a stream's at its header, so that `MaxXRefSectionLength` bounds its rows alone
+and the white space is read once. The white space before an object's header, where its row names it, still counts toward
+`MaxObjectLength`, and a load reads near the row past the guard: left as debt, since bounding it apart is a change to
+the reader's most read path.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -267,7 +285,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | An object's length, streams' data aside | 16 MB | A direct array or dictionary of that size: a page-tree node with a million kids |
 | A classic cross-reference section | 64 MB | About 3.3 million entries; the informative annex C of ISO 32000-1 gives Acrobat's own limit as 8,388,607 objects |
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |
-| A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands |
+| A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands. The bound applies apart to the white space and comments an offset that names a section falls short by, which the reader reads as a Warning (amended on 2026-11-24, [#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) |
 | The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 40 bytes numbered in order, up to about 80 when a rebuild grew it and about 96 for numbers spread far apart, so the default holds 335 MB of index or more (amended on 2026-10-28, [#155](https://github.com/AdCodicem/AdCodicem.Pdf/issues/155)) |
 | The filters a stream's data passes through | 64 | ISO 32000 sets no limit on how many filters a `/Filter` array names; real streams name one to three, `/Crypt` among them, and qpdf reads three thousand |
 | A rebuild's reads past streams' declared lengths, to confirm them | 4 times the file | A valid file's own streams take about twice the file; but the data of a stream whose length the scan cannot confirm, which it reads as objects, may hold an attached file's bytes that spell streams, whose lengths may all end in one run of white space that each read past them crosses (amended on 2026-11-17, [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)) |
@@ -327,7 +345,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
   cross-reference stream a value's cut ends the chain at, and a `/Prev` in a trailer `MaxTrailerLength` cut, are not
   judged yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
   [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)); and a section a guard cut is where it was named, not
-  looked for near there. One found near where it is named, whose values a guard keeps
+  looked for near there — white space past `MaxTrailerLength` before it, or a header that bound cuts, among such cuts
+  (amended on 2026-11-24). One found near where it is named, whose values a guard keeps
   from being read, or that declared itself a section — the `xref` keyword, `/Type /XRef` — before a guard cut it, is the
   guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
   the chain read; one the chain cannot do without — a guard that leaves it no section — runs as before.
