@@ -624,8 +624,8 @@ internal sealed partial class PdfFileReader
     /// them, for the chain to judge without following them (<see cref="_previousPastGuard"/>, #264): a value that names no
     /// offset is reported as a whole read reports it, but for a reference that leads to a row the guard left unread, or meets
     /// an object a guard cut on the way, which names what is unknown (<see cref="LeadsPastIndex"/>), and an offset is left for
-    /// the chain to judge. Neither is read in a trailer a guard cut — what it named may lie past the cut —, nor in a table an
-    /// <c>/XRefStm</c> names, whose links a whole read does not follow either.
+    /// the chain to judge. In a trailer a guard cut, each is the value written whole before the cut, which is the trailer's
+    /// (#328). Neither is read in a table an <c>/XRefStm</c> names, whose links a whole read does not follow either.
     /// </summary>
     /// <remarks>
     /// A reference that meets an object a guard cut is the guard's here before it is a link the object guard hid: the
@@ -634,7 +634,7 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private void JudgeLinksPastGuard(PdfDictionary trailer, XRefSectionRecord section)
     {
-        if (section.TrailerCutByLimit || section.NamedBy == "/XRefStm")
+        if (section.NamedBy == "/XRefStm")
         {
             return;
         }

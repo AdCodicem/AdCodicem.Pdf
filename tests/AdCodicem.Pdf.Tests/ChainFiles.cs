@@ -29,9 +29,11 @@ internal static class ChainFiles
     /// reference to object 5, which holds the value. The second is a classic table that indexes object 5 again — where it
     /// is when <paramref name="placed"/>, at offset 99999, outside the file, otherwise — and names stream 7 through
     /// <c>/Prev</c>. Object 5's value is followed by <paramref name="padding"/> spaces. With <paramref name="reals"/>, the
-    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part.
+    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part. With
+    /// <paramref name="prev"/>, the stream gives it as its <c>/Prev</c>, <c>{self}</c> standing for the stream's offset.
     /// </summary>
-    public static byte[] UnderAnUpdate(string key, bool placed, string version = "1.5", int padding = 0, bool reals = false)
+    public static byte[] UnderAnUpdate(
+        string key, bool placed, string version = "1.5", int padding = 0, bool reals = false, string? prev = null)
     {
         var (entries, five, rows) = key switch
         {
@@ -60,14 +62,15 @@ internal static class ChainFiles
             five = five.Replace("/Predictor 12 /Columns 7", "/Predictor 12.0 /Columns 7.0", StringComparison.Ordinal);
         }
 
+        entries += prev is null ? string.Empty : " /Prev " + prev;
         return UnderAnUpdate(entries, five + new string(' ', padding), rows != Rows.Raw, rows == Rows.PngFlate, placed, version: version);
     }
 
     /// <summary>
-    /// A file as the other <see cref="UnderAnUpdate(string, bool, string, int, bool)"/> writes it: stream 7's dictionary
-    /// holds <paramref name="entries"/>, <c>{length}</c> standing for its data's length, and object 5 holds
-    /// <paramref name="five"/>. Object 6, when <paramref name="six"/> gives it, is indexed by stream 7 alone; the objects
-    /// of <paramref name="placedToo"/> by the newer table alone.
+    /// A file as the other <see cref="UnderAnUpdate(string, bool, string, int, bool, string)"/> writes it: stream 7's
+    /// dictionary holds <paramref name="entries"/>, <c>{length}</c> standing for its data's length and <c>{self}</c> for its
+    /// offset, and object 5 holds <paramref name="five"/>. Object 6, when <paramref name="six"/> gives it, is indexed by
+    /// stream 7 alone; the objects of <paramref name="placedToo"/> by the newer table alone.
     /// </summary>
     public static byte[] UnderAnUpdate(
         string entries,
@@ -102,7 +105,12 @@ internal static class ChainFiles
                 (1, file.OffsetOf(5), 0), six is null ? (0, 0, 0) : (1, file.OffsetOf(6), 0), (1, stream, 0),
             ],
             predicted ? Rows.PngFlate : compressed ? Rows.Flate : Rows.Raw);
-        file.Stream(7, entries.Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R", data);
+        file.Stream(
+            7,
+            entries
+                .Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{self}", stream.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R",
+            data);
         var xref = file.Position;
         var rows = new StringBuilder(string.Create(
             CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\n"));

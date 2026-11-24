@@ -1234,6 +1234,73 @@ public class CrossReferenceRuleTests
         guarded.Message.Should().NotBe(whole.Message);
     }
 
+    [Theory]
+    [InlineData("/Prev 99999999", "trailer", null, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 99999999", "table rows", null, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev {self}", "trailer", "/Prev", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/Prev {self}", "table index", null, PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/Prev {newer}", "trailer", "/Prev", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/XRefStm 99999999", "table rows", null, PdfValidationRuleIds.XRefSectionNotFound)]
+    public void A_prev_fault_a_trailer_a_guard_cut_shows_whole_before_the_cut_is_found_as_a_whole_read_finds_it(
+        string links, string guard, string? newer, string rule)
+    {
+        // #328: MaxTrailerLength cuts the second revision's trailer after its links, its table's rows read whole, or past rows
+        // a guard stopped; under a third revision, that table is the older one. A /Prev written whole before the cut that
+        // names an offset outside the file, the table itself or the newer table, or, past stopped rows, such an /XRefStm, is
+        // found as in the file read whole, beside the guards' xref.checked-in-part; it found only that finding.
+        var (file, _) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links), newer: newer);
+        using var whole = PdfDocument.Open(file, StoppedSectionFiles.Whole);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        var guarded = new PdfValidator().Validate(document);
+
+        Single(guarded, rule).Should().Be(Single(new PdfValidator().Validate(whole), rule));
+        Single(guarded, rule).Severity.Should().Be(PdfValidationSeverity.Error);
+        guarded.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Prev {older} /XRefStm {older}")]
+    [InlineData("/Prev 0 /XRefStm 0")]
+    public void An_xrefstm_naming_what_the_prev_of_a_table_whose_trailer_a_guard_cut_names_is_wrong_past_that_guard(string links)
+    {
+        // #328, with #156: the table's rows read whole, MaxTrailerLength cuts its trailer after a /Prev and an /XRefStm that name
+        // one offset in the file. The /XRefStm names no stream of the table's revision whatever the guard hid: an error, at
+        // the table, as read whole, which says the /Prev reads nothing there, past the guard that cut the trailer.
+        var (file, section) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links));
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard("trailer"));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefHybridStreamWrong);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Position.Should().Be(section);
+        finding.Message.Should().Contain(", the section its /Prev names too, past the guard that cut the table's trailer, where ISO 32000-1");
+    }
+
+    [Theory]
+    [InlineData("99999999", PdfValidationRuleIds.XRefSectionNotFound, "")]
+    [InlineData("50 0 R", PdfValidationRuleIds.XRefSectionNotFound, "")]
+    [InlineData("{self}", PdfValidationRuleIds.XRefChainLoop, "a section the chain has already reached and could not read")]
+    public void A_prev_fault_of_a_cross_reference_stream_a_value_s_cut_ends_the_chain_at_is_found_as_a_whole_read_finds_it(
+        string prev, string rule, string words)
+    {
+        // #329: stream 7's /W is object 5, which MaxObjectLength cuts, and its /Prev, read whole, names an offset outside the
+        // file, a number its /Size 8 declares no row for, or the stream itself. The validation finds it as in the file read
+        // whole, beside the guard's xref.checked-in-part — a loop in its own words, the chain having reached the stream and
+        // been kept from its rows —; it found only that finding.
+        var file = ChainFiles.UnderAnUpdate("W", placed: true, padding: 3000, prev: prev);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        var guarded = new PdfValidator().Validate(document);
+        var read = Single(Validate(file), rule);
+
+        var finding = Single(guarded, rule);
+        finding.Severity.Should().Be(read.Severity);
+        finding.Location.Should().Be(read.Location);
+        finding.Message.Should().Be(words.Length == 0 ? read.Message : read.Message.Replace("a section the chain has already read", words, StringComparison.Ordinal));
+        guarded.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
     [Fact]
     public void A_loop_through_an_offset_the_chain_only_named_says_no_section_was_read_there()
     {

@@ -482,6 +482,184 @@ public class GuardCutValueTests
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
     }
 
+    [Theory]
+    [InlineData("W", "99999999", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("W", "{self}", PdfDiagnosticCodes.XRefChainCycle)]
+    [InlineData("W", "(x)", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("W", "50 0 R", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("W element", "-5", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("Index", "99999999", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("Size", "{self}", PdfDiagnosticCodes.XRefChainCycle)]
+    [InlineData("Filter", "99999999", PdfDiagnosticCodes.XRefSectionMissing)]
+    public void The_prev_of_a_cross_reference_stream_a_value_s_cut_ends_the_chain_at_is_judged_as_a_whole_read_judges_it(
+        string key, string prev, string code)
+    {
+        // #329: stream 7's /W, an element of it, its /Index, its /Size or its /Filter is object 5, which MaxObjectLength cuts,
+        // and the chain ends at the stream for the guard. Its dictionary was read whole, and its /Prev — an offset outside the
+        // file, the stream itself, a string, a reference to a number its /Size 8 declares no row for, a negative integer —
+        // names no section whatever the guard hid: it is reported as read whole, beside the guard, the index left incomplete
+        // as read whole, so that the catalog only the stream's rows place is found by a rebuild. A loop says the chain reached
+        // the stream and could not read it, which the guard kept it from. The guard still throws where asked.
+        var file = ChainFiles.UnderAnUpdate(key, placed: true, padding: 3000, prev: prev);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var judged = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == code).Which;
+        var guarded = document.Diagnostics.Should().ContainSingle(entry => entry.Code == code).Which;
+        guarded.Should().Be(judged with
+        {
+            Message = judged.Message.Replace("which the chain has already read", "where the chain has already reached a section it could not read", StringComparison.Ordinal),
+        });
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByValue.Should().BeTrue();
+        document.Catalog.Should().NotBeNull();
+        document.WasRepaired.Should().BeTrue();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData("W", "0")]
+    [InlineData("W", "6 0 R")]
+    [InlineData("Index", "50 0 R")]
+    [InlineData("Index element", "50 0 R")]
+    [InlineData("Size", "50 0 R")]
+    [InlineData("W", "5 0 R")]
+    public void The_prev_of_a_cross_reference_stream_a_value_s_cut_ends_the_chain_at_stays_the_guard_s_where_it_may_be_sound(
+        string key, string prev)
+    {
+        // #329: as above, stream 7's /Prev names offset 0, in the file and not reached; a reference to object 6, whose row the
+        // stream declares and the guard left unread; a reference to object 50 where the guard cut the /Index or the /Size, so
+        // that any number may be one of the rows left unread; or object 5, which the guard cut. Each may name a sound section
+        // as far as the reader can tell without reading past the guard: the chain ends there for it, the only report, and
+        // nothing is rebuilt.
+        var file = ChainFiles.UnderAnUpdate(key, placed: true, padding: 3000, prev: prev);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("99999999", true)]
+    [InlineData("0", false)]
+    public void The_prev_of_a_cross_reference_stream_a_cut_length_ends_the_chain_at_is_judged_as_a_whole_read_judges_it(string prev, bool judged)
+    {
+        // #329: stream 7 lost its endstream, and its /Length, object 5, runs past MaxObjectLength, which ends the chain at the
+        // stream for the guard. Its /Prev, read whole, names an offset outside the file, reported as read whole beside the
+        // guard, or offset 0, in the file and not reached, the guard's.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R /Prev " + prev, new string(' ', 3000) + "56", compressed: false, predicted: false, placed: true);
+        var at = Encoding.Latin1.GetString(file).IndexOf("endstream", StringComparison.Ordinal);
+        Encoding.ASCII.GetBytes("endstrXam").CopyTo(file, at);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var missing = whole.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).ToArray();
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).Should().Equal(judged ? missing : []);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByValue.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_prev_of_a_cross_reference_stream_a_value_s_cut_keeps_from_being_read_is_judged_once_and_only_where_the_chain_names_it_through_prev(
+        bool throughPrev)
+    {
+        // #329: cross-reference stream 7's /W is object 5, which the newest table places and MaxObjectLength cuts, and its
+        // /Prev is a string. The newest table names the stream through /XRefStm alone: a hybrid file's stream, whose /Prev a
+        // whole read does not follow, and the guard's cut judges nothing of it. Or the table names it through /Prev, and
+        // through /XRefStm 3 bytes into its header, where the search near that offset comes to the stream first and checks
+        // whether the /Prev keeps its place there: the check judges nothing either, and the /Prev's reading reports the
+        // string once.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "[1 4 2]" + new string(' ', 3000)),
+        };
+        var stream = file.Object(7, "<< /Type /XRef /Size 8 /W 5 0 R /Prev (x) /Length 7 >>\nstream\n\u0001\0\0\0\0\0\0\nendstream");
+        file.Table(
+            8,
+            rows,
+            string.Create(CultureInfo.InvariantCulture, $"/Size 8 /Root 1 0 R {(throughPrev ? $"/Prev {stream} /XRefStm {stream + 3}" : $"/XRefStm {stream}")}"));
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(throughPrev ? 1 : 0);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections.Should().Contain(record => record.NamedBy == "/XRefStm" && record.CutByLimit == !throughPrev);
+    }
+
+    [Theory]
+    [InlineData("10 0 R", true)]
+    [InlineData("8 0 R", true)]
+    [InlineData("7 0 R", false)]
+    [InlineData("6 0 R", false)]
+    public void A_reference_the_prev_of_a_stream_a_value_s_cut_ends_the_chain_at_gives_is_the_guard_s_only_within_the_rows_its_index_declares(
+        string prev, bool judged)
+    {
+        // #329: stream 7's /W is object 5, which MaxObjectLength cuts, and its /Index, written whole, declares rows 0 to 7,
+        // beside a /Size of 20. Its /Prev is a reference to an object no section read places: object 10 or 8, whose row the
+        // /Index does not declare, names no section whatever the guard hid, and is reported as read whole; object 7 or 6,
+        // whose row the stream declares and the guard left unread, may name a sound section, the guard's.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 20 /W 5 0 R /Index [0 8] /Length {length} /Prev " + prev, "[1 4 2]" + new string(' ', 3000), compressed: false, predicted: false, placed: true);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            judged ? [PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt] : [PdfDiagnosticCodes.LimitObject]);
+        document.WasRepaired.Should().Be(judged);
+    }
+
+    [Theory]
+    [InlineData("99999999", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("{self}", PdfDiagnosticCodes.XRefChainCycle)]
+    [InlineData("50 0 R", PdfDiagnosticCodes.XRefSectionMissing)]
+    [InlineData("18 0 R", PdfDiagnosticCodes.XRefSectionMissing)]
+    public void The_prev_of_a_cross_reference_stream_short_of_rows_beside_a_value_s_cut_is_judged_as_a_whole_read_judges_it(
+        string prev, string code)
+    {
+        // #329: stream 7 declares 100 rows through /Size, and its /W gives the middle width as object 5, which MaxObjectLength
+        // cuts: its 56 bytes of data hold at most 18 rows whatever width the cut hid, and the stream is read as the file's to
+        // lack rows, the rows it may hold the guard's, which end the chain. Its /Prev — an offset outside the file, the stream
+        // itself, or a reference to object 50 or 18, past the rows the data may hold — names no section whatever the guard hid:
+        // it is reported as read whole, beside the guard.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 100 /W [1 5 0 R 2] /Length {length} /Prev " + prev, "4" + new string(' ', 3000), compressed: false, predicted: false, placed: true);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var judged = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == code).Which;
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == code).Which.Should().Be(judged);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].RowsLeftToGuard.Should().BeTrue();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>();
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("10 0 R")]
+    [InlineData("17 0 R")]
+    public void The_prev_of_a_cross_reference_stream_short_of_rows_beside_a_value_s_cut_stays_the_guard_s_where_it_may_be_sound(string prev)
+    {
+        // #329: as above, the /Prev names offset 0, in the file and not reached, or object 10 or 17, whose row the data may
+        // hold among the 18 rows read with the cut value: either may name a sound section, the guard's.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 100 /W [1 5 0 R 2] /Length {length} /Prev " + prev, "4" + new string(' ', 3000), compressed: false, predicted: false, placed: true);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Should().NotContain(entry =>
+            entry.Code == PdfDiagnosticCodes.XRefSectionMissing || entry.Code == PdfDiagnosticCodes.XRefChainCycle);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+    }
+
     /// <summary>
     /// A page whose content stream, object 4, holds <c>BT ET</c>, its <c>/Length</c> object 20, which holds 5 after 2,000
     /// spaces where <paramref name="guard"/> is <c>cut</c>; its <c>endstream</c>, and its <c>endobj</c> where
