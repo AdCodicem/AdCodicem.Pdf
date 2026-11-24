@@ -557,17 +557,20 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private List<PdfObjectId>? _chainValuesCut;
 
     /// <summary>
-    /// The object numbers whose rows a guard left unread in the cross-reference stream just read — past the data it cut, or
-    /// from the row the index had no room for —, as pairs of a first number and a count; null where the section just read
-    /// is a table, whose rows past a guard may number any object. Set as each section is read, for its own trailer.
+    /// The object numbers whose rows a guard left unread in the cross-reference stream just read — past the data it cut, from
+    /// the row the index had no room for, or every row it declares, as far as its data may hold them, where a guard cut a
+    /// value they are read with —, as pairs of a first number and a count; null where the section just read is a table, whose
+    /// rows past a guard may number any object, or a stream whose numbering a guard cut. Set as each section is read, for its
+    /// own trailer.
     /// </summary>
     private long[]? _rowsLeftUnread;
 
     /// <summary>
     /// The offset the <c>/Prev</c> of the section just read gives where a guard stopped its rows — cut them, or filled the
-    /// index —, which ends the chain at it: judged as far as the guard lets it be, and never read (#264). -1 where it gives
-    /// none, or where no guard stopped the rows, the chain going on through the <c>/Prev</c> the section's reading gives.
-    /// Set as each section is read.
+    /// index —, or, of a cross-reference stream, cut a value they are read with, which ends the chain at it: judged as far as
+    /// the guard lets it be, and never read (#264, #329). -1 where it gives none, or where no such guard met the section, the
+    /// chain going on through the <c>/Prev</c> the section's reading gives, or judging it where a guard cut the trailer that
+    /// gives it (#328). Set as each section is read.
     /// </summary>
     private long _previousPastGuard = -1;
 

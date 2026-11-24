@@ -42,13 +42,18 @@ internal sealed partial class PdfFileReader
     /// <c>/Prev</c> reads that section whole, its own links with it. A classic table an <c>/XRefStm</c> names is read in the
     /// stream's place all the same, its rows taken and its own links left unread (#263). A section whose rows a guard
     /// stopped — cut them, or filled the index at them —, or a hybrid table whose stream a guard so stopped, ends the chain:
-    /// an older section's rows would stand for those the guard left unread. What it names is judged all the same, as far as
-    /// the guard lets it be, and nothing past the guard is read (#264): a <c>/Prev</c> or an <c>/XRefStm</c> that can name no
-    /// section whatever the guard hid — no offset, an offset outside the file, a section the chain has reached, what the
-    /// table's <c>/Prev</c> reaches too — is reported as a whole read reports it, and leaves the index incomplete as a whole
-    /// read does; one that may name a sound section — an offset in the file the chain has not reached, a reference to a row
-    /// the guard left unread — is the guard's. What became of each section is recorded in <see cref="Structure"/>, for the
-    /// validation rules.
+    /// an older section's rows would stand for those the guard left unread. So does a table whose trailer
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> cut, whose keys past the cut the older trailers would stand for, and a
+    /// cross-reference stream a guard's cut of a value its rows are read with keeps from being read, its dictionary read
+    /// whole. What it names is judged all the same, as far as the guard lets it be, and nothing past the guard is read (#264,
+    /// #328, #329): a <c>/Prev</c> or an <c>/XRefStm</c> that can name no section whatever the guard hid — no offset, an
+    /// offset outside the file, a section the chain has reached, what the table's <c>/Prev</c> reaches too — is reported as
+    /// a whole read reports it, and leaves the index incomplete as a whole read does; one that may name a sound section — an
+    /// offset in the file the chain has not reached, a reference to a row the guard left unread — is the guard's. A key a cut
+    /// trailer gives whole before the cut is the trailer's, though a repeat of it past the cut would win read whole, as
+    /// only an invalid file repeats a key; and the <c>/XRefStm</c> it so gives, its table's rows read whole, is followed: the
+    /// stream's rows are the table's own revision's, and no row of the table was lost for an older one to stand for. What
+    /// became of each section is recorded in <see cref="Structure"/>, for the validation rules.
     /// </remarks>
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
@@ -77,7 +82,8 @@ internal sealed partial class PdfFileReader
         var naming = "startxref";
         var namedFrom = _structure.StartXRefPosition;
 
-        // Whether the offset was named by a section a guard stopped, which the chain ends at: judged, never read (#264).
+        // Whether the offset was named by a section a guard ended the chain at — its rows stopped, its trailer cut, a value its
+        // rows are read with cut —: judged, never read (#264, #328, #329).
         var pastGuard = false;
 
         while (offset >= 0)
@@ -88,10 +94,10 @@ internal sealed partial class PdfFileReader
             var namedAgainStream = streamNamedAgain;
             streamNamedAgain = null;
 
-            // An offset in the file that a section a guard stopped names, where the chain has not been, is where the guard
-            // hides the older sections, which its report says: a section there would be read only past the guard. One the
-            // chain has reached, or one outside the file, names no section there whatever the guard hid, and is judged as a
-            // whole read judges it.
+            // An offset in the file that a section a guard ended the chain at names, where the chain has not been, is where
+            // the guard hides the older sections, which its report says: a section there would be read only past the guard.
+            // One the chain has reached, or one outside the file, names no section there whatever the guard hid, and is judged
+            // as a whole read judges it.
             var reached = ReachedAt(offset, visited, out _);
 
             if (pastGuard && reached < 0 && IsInFile(PositionOf(offset)))
@@ -259,6 +265,21 @@ internal sealed partial class PdfFileReader
                     }
 
                     ReportLostSection(section, naming, offset, namedFrom);
+
+                    // A stream a guard's cut of a value its rows are read with keeps from being read gives its /Prev apart, its
+                    // dictionary read whole, judged as one a section whose rows a guard stopped gives, never read (#264, #329).
+                    // Where it starts is reached, as for a stream the chain goes on past (#208): a /Prev that names it again
+                    // loops.
+                    if (_previousPastGuard >= 0)
+                    {
+                        RecordSectionReached(section, sectionsAt);
+                        offset = _previousPastGuard;
+                        naming = "/Prev";
+                        namedFrom = section.Offset;
+                        pastGuard = true;
+                        continue;
+                    }
+
                     break;
                 }
             }
@@ -325,26 +346,31 @@ internal sealed partial class PdfFileReader
 
             if (section.TrailerCutByLimit)
             {
-                // A trailer a limit cut may have named an older section past the cut, and given keys the older trailers
-                // give otherwise: the chain ends here, and what only the older sections index is the guard's to hide, not
-                // the file's to lack.
+                // A trailer a limit cut may have given keys the older trailers give otherwise: the chain ends here, and what
+                // only the older sections index is the guard's to hide, not the file's to lack.
                 _cutByGuard = true;
-                previous = -1;
             }
 
             // Rows a guard stopped — cut, or past an index it filled — end the chain at this section: an older section's rows
-            // would stand for those the guard left unread, or find no room, being for numbers the index lacks. What the section
-            // names is judged all the same, as far as the guard lets it be, and nothing past the guard is read (#264): an
-            // /XRefStm that names what the chain has reached, or what the /Prev names too, or that lies outside the file, as a
-            // whole read judges it; then the /Prev, at the top of the loop. Where a guard stopped the rows, the section's
-            // reading gives its links apart (_previousPastGuard), and none to follow.
-            pastGuard = _previousPastGuard >= 0 || _streamPastGuard >= 0;
+            // would stand for those the guard left unread, or find no room, being for numbers the index lacks. So does a trailer
+            // a guard cut. What the section names is judged all the same, as far as the guard lets it be, and nothing past the
+            // guard is read (#264): an /XRefStm that names what the chain has reached, or what the /Prev names too, or that lies
+            // outside the file, as a whole read judges it; then the /Prev, at the top of the loop. Where a guard stopped the
+            // rows, the section's reading gives its links apart (_previousPastGuard), and none to follow. A trailer cut over
+            // rows read whole gives its links as read: its /Prev, written whole before the cut, is judged so too, and its
+            // /XRefStm followed (#328).
+            var streamPastGuard = _streamPastGuard >= 0;
+            pastGuard = section.TrailerCutByLimit || _previousPastGuard >= 0 || streamPastGuard;
 
-            if (pastGuard)
+            if (_previousPastGuard >= 0 || streamPastGuard)
             {
                 previous = _previousPastGuard;
                 hybrid = _streamPastGuard;
             }
+
+            // The guard past which the /Prev reads nothing, which an /XRefStm left to it names: the one that stopped the rows,
+            // where they give the /XRefStm apart, or else the one that cut the trailer; none where no guard ends the chain here.
+            var pastWhat = streamPastGuard ? "stopped the table" : section.TrailerCutByLimit ? "cut the table's trailer" : null;
 
             // What the /XRefStm reaches, and where the section the /Prev names starts: the two links reach one section by the
             // same offset, or by two that name the white space before it, or where the search near the offset the /XRefStm
@@ -358,11 +384,11 @@ internal sealed partial class PdfFileReader
             {
                 // The /XRefStm names what the /Prev names: read as the table's stream, that section would have its own links
                 // left unread, and the /Prev would loop back to it. The /Prev reads it, whole, and the table's own stream is
-                // unknown (#156) — or, past a guard that stopped the table, reads nothing in the file, which the guard hides.
-                // Named through the white space before that section, the /XRefStm falls short of it as a /Prev read there
-                // would; where both name one offset, the /Prev's record says so once.
+                // unknown (#156) — or, past a guard that stopped the table or cut its trailer, reads nothing in the file, which
+                // the guard hides. Named through the white space before that section, the /XRefStm falls short of it as a /Prev
+                // read there would; where both name one offset, the /Prev's record says so once.
                 var shortBy = hybrid != previous ? (int)(hybridStart - PositionOf(hybrid)) : 0;
-                namedWithPrevious = LeaveToPrevious(hybrid, section, pastGuard, shortBy);
+                namedWithPrevious = LeaveToPrevious(hybrid, section, pastWhat, shortBy);
             }
             else if (hybridReached >= 0)
             {
@@ -402,12 +428,12 @@ internal sealed partial class PdfFileReader
                     streamNamedAgain = namedStream;
                 }
             }
-            else if (hybrid >= 0 && !(pastGuard && IsInFile(PositionOf(hybrid))))
+            else if (hybrid >= 0 && !(streamPastGuard && IsInFile(PositionOf(hybrid))))
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev. Past a guard that
                 // stopped the table, one outside the file is missing as read whole, nothing there being read; one in the
-                // file is the guard's to hide.
+                // file is the guard's to hide. One a cut trailer gives over rows read whole is read as written.
                 visited.Add(hybrid);
                 var cut = _cutByGuard;
                 var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), section.Offset)
@@ -433,8 +459,9 @@ internal sealed partial class PdfFileReader
                     // The /XRefStm names, a few bytes off, what the /Prev names: left to that /Prev, as where it names the same
                     // offset, the offset named all the same, so that an older table naming it again, as a writer that copies
                     // /XRefStm into the next trailer leaves it, names what the /Prev read. Only a table no guard stopped has
-                    // its /XRefStm looked for near the offset it names.
-                    namedWithPrevious = LeaveToPrevious(hybrid, section, pastGuard: false, shortBy: 0);
+                    // its /XRefStm looked for near the offset it names; one whose trailer a guard cut has its /Prev read
+                    // nothing there, past that guard.
+                    namedWithPrevious = LeaveToPrevious(hybrid, section, pastWhat, shortBy: 0);
                 }
                 else if (left == KeptPlace.Guard)
                 {
@@ -957,8 +984,8 @@ internal sealed partial class PdfFileReader
     /// Records that <paramref name="table"/>'s <c>/XRefStm</c>, which names <paramref name="offset"/>, reaches the section the
     /// table's <c>/Prev</c> names too, and reports it (#156): read as the table's stream, that section would have its own
     /// links left unread, and the <c>/Prev</c> would loop back to it. The <c>/Prev</c> reads it next, whole, and the table's
-    /// own stream is unknown — or, past a guard that stopped the table, reads nothing in the file, which the guard hides
-    /// (#264).
+    /// own stream is unknown — or, past a guard that stopped the table (#264) or cut its trailer (#328), reads nothing in the
+    /// file, which the guard hides.
     /// </summary>
     /// <remarks>
     /// The report comes before the <c>/Prev</c> reads what is there, and says no more than is known: an offset outside the
@@ -968,25 +995,28 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     /// <param name="offset">The offset the <c>/XRefStm</c> gives, as written.</param>
     /// <param name="table">The record of the table whose trailer gives it.</param>
-    /// <param name="pastGuard">Whether a guard stopped the table, its <c>/Prev</c> judged and not read.</param>
+    /// <param name="pastGuard">
+    /// What the guard that ends the chain at the table did, its <c>/Prev</c> judged and not read, in the report's words:
+    /// "stopped the table", its rows, or "cut the table's trailer", over rows read whole; null where none ends it there.
+    /// </param>
     /// <param name="shortBy">
     /// The bytes of white space and comments between where the <c>/XRefStm</c> names and that section's first token, where
     /// it names another offset than the <c>/Prev</c> does (<see cref="XRefSectionRecord.Padding"/>).
     /// </param>
     /// <returns>The record of the naming, whose <see cref="XRefSectionRecord.ReadAs"/> the <c>/Prev</c>'s reading sets.</returns>
-    private XRefSectionRecord LeaveToPrevious(long offset, XRefSectionRecord table, bool pastGuard, int shortBy)
+    private XRefSectionRecord LeaveToPrevious(long offset, XRefSectionRecord table, string? pastGuard, int shortBy)
     {
         var named = NameAgain(offset, table, readAs: null, shortBy);
 
-        // What the /Prev names is not read yet: an offset outside the file holds nothing, one past a guard that stopped the
-        // table is the guard's to hide, and what any other holds is known once the /Prev reads it, which the validation
+        // What the /Prev names is not read yet: an offset outside the file holds nothing, one past a guard that ends the chain
+        // at the table is the guard's to hide, and what any other holds is known once the /Prev reads it, which the validation
         // rules say (XRefSectionRecord.NamesWhatPreviousReads).
         var inFile = IsInFile(named.NamedOffset);
-        named.NamesWhatPreviousReads = inFile && !pastGuard;
+        named.NamesWhatPreviousReads = inFile && pastGuard is null;
         ReportNoStream(
             named,
             !inFile ? "outside the file, which its /Prev names too"
-            : pastGuard ? "the section its /Prev names too, past the guard that stopped the table"
+            : pastGuard is not null ? "the section its /Prev names too, past the guard that " + pastGuard
             : "what its /Prev names too, which the chain looks for through that /Prev");
         return named;
     }

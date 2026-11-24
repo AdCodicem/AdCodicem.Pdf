@@ -286,7 +286,7 @@ internal sealed partial class PdfFileReader
                     ? unplaced
                     : FaultBesideCut(dictionary, null, out _);
                 section.Fault = file ?? lengthFault;
-                return file is null ? CutByValue(section, past) : XRefSectionState.Malformed;
+                return file is null ? CutByValue(section, past, dictionary, absolute, checkOnly) : XRefSectionState.Malformed;
             }
 
             var where = search.NextObject is { } next
@@ -359,10 +359,12 @@ internal sealed partial class PdfFileReader
 
                 if (rows > 0)
                 {
-                    // None of those rows is read: the section kept none, which its report says (#210).
+                    // None of those rows is read: the section kept none, which its report says (#210). Its /Prev is judged as
+                    // one a section whose rows a guard cut gives, never read (#264, #329).
                     _cutByGuard = true;
                     section.CutByLimit = true;
                     section.RowsLeftToGuard = true;
+                    JudgePreviousPastCut(dictionary, section, absolute, rows);
                     return XRefSectionState.Read;
                 }
 
@@ -373,7 +375,7 @@ internal sealed partial class PdfFileReader
                 return XRefSectionState.Read;
             }
 
-            return CutByValue(section, cut);
+            return CutByValue(section, cut, dictionary, absolute, checkOnly);
         }
 
         var widths = dictionary.GetArray(PdfName.W);
@@ -1026,16 +1028,90 @@ internal sealed partial class PdfFileReader
     /// and nothing is rebuilt for it (ADR 34), and the object the guard cut is loaded once the chain is read, which reaches
     /// the guard (#263). Where the chain names the section, whatever <c>/Type</c> the stream gives, as a stream with a
     /// <c>/W</c> is read there as the section whole — a place it may have been moved to takes no stream of another type —:
-    /// the value hides whether its rows are, but for what <see cref="FaultBesideCut"/> finds wrong whatever it holds.
+    /// the value hides whether its rows are, but for what <see cref="FaultBesideCut"/> finds wrong whatever it holds. Its
+    /// <c>/Prev</c>, its dictionary read whole, is judged all the same (<see cref="JudgePreviousPastCut"/>), unless the stream
+    /// is only checked.
     /// </summary>
     /// <param name="section">The section, whose fault names the value.</param>
     /// <param name="cut">The object the guard cut that the value leads to.</param>
-    private XRefSectionState CutByValue(XRefSectionRecord section, PdfObjectId cut)
+    /// <param name="dictionary">The stream's dictionary, read whole.</param>
+    /// <param name="absolute">Where the stream is looked for, in the file, which a report on its <c>/Prev</c> names.</param>
+    /// <param name="checkOnly">Whether the stream is only checked, nothing of it kept.</param>
+    private XRefSectionState CutByValue(
+        XRefSectionRecord section, PdfObjectId cut, PdfDictionary dictionary, long absolute, bool checkOnly)
     {
         section.CutByLimit = true;
         section.CutByValue = true;
         (_chainValuesCut ??= []).Add(cut);
+
+        if (!checkOnly)
+        {
+            JudgePreviousPastCut(dictionary, section, absolute, long.MaxValue);
+        }
+
         return XRefSectionState.Malformed;
+    }
+
+    /// <summary>
+    /// Reads the <c>/Prev</c> of the cross-reference stream whose <paramref name="dictionary"/>, read whole, gives it, where a
+    /// guard's cut of a value its rows are read with ends the chain at the stream, for the chain to judge without following
+    /// it, as one a section whose rows a guard stopped gives (<see cref="_previousPastGuard"/>, #264, #329): a value that
+    /// names no offset is reported as a whole read reports it, but for a reference that leads to a row the guard left unread,
+    /// or meets an object a guard cut on the way, which names what is unknown (<see cref="LeadsPastIndex"/>), and an offset is
+    /// left for the chain to judge. The rows left unread are those the stream's <c>/Index</c> or <c>/Size</c> declares, up to
+    /// as many as its data may hold, where a guard cut none of the values that say them, and may be any otherwise. Not read
+    /// in a stream an <c>/XRefStm</c> names, whose <c>/Prev</c> a whole read does not follow either.
+    /// </summary>
+    /// <param name="dictionary">The stream's dictionary, read whole.</param>
+    /// <param name="section">The record of the stream.</param>
+    /// <param name="absolute">Where the stream is looked for, in the file, which a report names.</param>
+    /// <param name="held">The most rows the stream's data may hold.</param>
+    private void JudgePreviousPastCut(PdfDictionary dictionary, XRefSectionRecord section, long absolute, long held)
+    {
+        if (section.NamedBy == "/XRefStm")
+        {
+            return;
+        }
+
+        _rowsLeftUnread = DeclaredBesideCut(dictionary) is { } declared ? RowsFrom(declared, 0, held) : null;
+        _previousPastGuard = SectionOffset(dictionary, PdfName.Prev, absolute, out _, rowsHidden: true);
+    }
+
+    /// <summary>
+    /// Gives the subsections the cross-reference stream whose <paramref name="dictionary"/> is given numbers its rows in, as
+    /// pairs of a first number and a count — its <c>/Index</c>, or 0 up to its <c>/Size</c> without one —, where a guard cut
+    /// none of the values that give them; null where one did.
+    /// </summary>
+    /// <remarks>
+    /// Asked once <see cref="FaultBesideCut"/> found nothing wrong in how the values read number the rows: each it reads is
+    /// there, and numbers objects.
+    /// </remarks>
+    private long[]? DeclaredBesideCut(PdfDictionary dictionary)
+    {
+        if (Unread(dictionary, PdfName.Index, out var index, out _) is not null)
+        {
+            return null;
+        }
+
+        // An /Index that is null, or names an object that holds null, is one the dictionary does not have (7.3.10).
+        if (index is not PdfArray ranges)
+        {
+            return Unread(dictionary, PdfName.Size, out var size, out _) is null ? [0, size?.AsInteger() ?? 0] : null;
+        }
+
+        var subsections = new long[ranges.Count];
+
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            if (Follow(PdfName.Index, ranges[i], entry: false, out var element, out _) is not null)
+            {
+                return null;
+            }
+
+            subsections[i] = element?.AsInteger() ?? 0;
+        }
+
+        return subsections;
     }
 
     /// <summary>

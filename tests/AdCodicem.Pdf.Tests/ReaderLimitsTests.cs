@@ -6973,21 +6973,207 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("table rows")]
     [InlineData("table index")]
-    public void A_prev_in_a_trailer_a_guard_cut_past_rows_a_guard_stopped_is_left_to_the_guards(string guard)
+    public void A_prev_in_a_trailer_a_guard_cut_past_rows_a_guard_stopped_is_judged_as_a_whole_read_judges_it(string guard)
     {
-        // #264: the trailer past the rows a guard stopped runs past MaxTrailerLength, which cuts it after its /Prev, an offset
-        // outside the file that a whole read reports. A value a cut trailer gives may itself be cut, which the parser does
-        // not say: the /Prev is not judged, and the chain ends for the guards (#328).
+        // #264, #328: the trailer past the rows a guard stopped runs past MaxTrailerLength, lowered to 300 bytes, which cuts it
+        // after its /Prev, an offset outside the file that a whole read reports. The parser keeps no value the cut parts
+        // (#279): the /Prev, whole before the cut, is the trailer's, and names no section whatever the guards hid, which is
+        // reported as read whole, beside both guards.
         var (file, _) = StoppedSectionFiles.Stopped($"/Prev 99999999 /Pad ({new string('x', 400)})");
         var limits = StoppedSectionFiles.Guard(guard).Limits with { MaxTrailerLength = 300 };
 
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
-        whole.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing);
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(StoppedSectionFiles.GuardCode(guard), PdfDiagnosticCodes.LimitTrailer);
-        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerCutByLimit.Should().BeTrue();
+        var missing = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).Which;
+        document.Diagnostics.Should().Equal(document.Diagnostics[0], document.Diagnostics[1], missing);
+        document.Diagnostics.Take(2).Select(entry => entry.Code).Should().Equal(StoppedSectionFiles.GuardCode(guard), PdfDiagnosticCodes.LimitTrailer);
+        document.Reader.Structure.Sections.Should().ContainSingle(record => record.TrailerCutByLimit);
         document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Prev 99999999", "trailer", null)]
+    [InlineData("/Prev 99999999", "trailer", "/Prev")]
+    [InlineData("/Prev 99999999", "table rows", "/Prev")]
+    [InlineData("/Prev 99999999", "table index", null)]
+    [InlineData("/Prev {self}", "trailer", null)]
+    [InlineData("/Prev {self}", "trailer", "/Prev")]
+    [InlineData("/Prev {self}", "table rows", null)]
+    [InlineData("/Prev {self}", "table index", "/Prev")]
+    [InlineData("/Prev {newer}", "trailer", "/Prev")]
+    [InlineData("/Prev {newer}", "table rows", "/Prev")]
+    [InlineData("/Prev /Garbage", "table rows", null)]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", "trailer", null)]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", "table index", null)]
+    [InlineData("/XRefStm 99999999", "table rows", null)]
+    [InlineData("/XRefStm {self}", "table index", null)]
+    public void A_link_a_trailer_guard_cut_gives_whole_before_the_cut_is_judged_as_a_whole_read_judges_it(
+        string links, string guard, string? newer)
+    {
+        // #328: MaxTrailerLength cuts the trailer of the second revision's table after its links, the table's rows read whole,
+        // or past rows MaxXRefSectionLength cuts or MaxIndexEntries fills, where the trailer is found past them; under a third
+        // revision, that table is the older one. A link written whole before the cut is the trailer's, and one that names no
+        // section whatever the guards hid — an offset outside the file, the table itself, the newer table, no offset, and past
+        // rows a guard stopped an /XRefStm that names one of them — is reported as read whole, beside the guards. Nothing past
+        // them is read, and the guards still throw where asked. No trailer read gives /Root: read whole, the index is rebuilt
+        // for it; under the cut, it may lie past the cut, the guard's, and nothing is rebuilt (#175).
+        var (file, _) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links), newer: newer);
+
+        using var whole = PdfDocument.Open(file, StoppedSectionFiles.Whole);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        var judged = whole.Diagnostics.Where(IsChainJudgment).ToArray();
+        judged.Should().NotBeEmpty();
+        document.Diagnostics.Where(entry => !entry.Code.StartsWith("limit.", StringComparison.Ordinal)).Should().Equal(judged);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitTrailer);
+        document.Reader.Structure.Sections.Should().ContainSingle(record => record.TrailerCutByLimit);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        whole.WasRepaired.Should().BeTrue();
+
+        var throwing = () => PdfDocument.Open(file, StoppedSectionFiles.Guard(guard) with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>();
+    }
+
+    [Theory]
+    [InlineData("/Prev {older}", "trailer")]
+    [InlineData("/Prev {older}", "table rows")]
+    [InlineData("/Prev 0", "trailer")]
+    [InlineData("/Prev 0", "table index")]
+    [InlineData("/XRefStm 0", "table rows")]
+    [InlineData("/XRefStm {older}", "table index")]
+    [InlineData("/Prev 30 0 R", "table rows")]
+    public void A_link_a_trailer_guard_cut_gives_whole_that_may_be_sound_stays_the_guard_s(string links, string guard)
+    {
+        // #328: as above, the link names the older table, or offset 0, where the header starts, both in the file and not
+        // reached, or, past rows a guard stopped, is a reference to a row the guard left unread. Each may name a sound
+        // section as far as the reader can tell without reading past the guards: the chain ends there for them, which are the
+        // only reports, the older trailers theirs to hide and nothing rebuilt.
+        var (file, _) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links));
+
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        document.Diagnostics.Should().OnlyContain(entry => entry.Code.StartsWith("limit.", StringComparison.Ordinal));
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitTrailer);
+        document.Reader.Structure.Sections.Should().ContainSingle();
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("/XRefStm 99999999")]
+    [InlineData("/XRefStm 0")]
+    [InlineData("/XRefStm {self}")]
+    public void An_xrefstm_a_trailer_guard_cut_gives_whole_over_rows_read_whole_is_followed_as_read_whole(string links)
+    {
+        // #328: MaxTrailerLength cuts the trailer of a table whose rows were read whole after its /XRefStm, which names an
+        // offset outside the file, offset 0 or the table itself. The stream it names would hold rows of the table's own
+        // revision, and no row of the table was lost for an older one to stand for: it is followed, as the file wrote it,
+        // and what it reaches reported as read whole.
+        var (file, _) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links));
+
+        using var whole = PdfDocument.Open(file, StoppedSectionFiles.Whole);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard("trailer"));
+
+        var judged = whole.Diagnostics.Where(IsChainJudgment).ToArray();
+        judged.Should().NotBeEmpty();
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitTrailer);
+        document.Diagnostics.Skip(1).Should().Equal(judged);
+        document.Reader.Structure.Sections.Should().Contain(record => record.NamedBy == "/XRefStm");
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="entry"/> is what the chain makes of a link it follows or judges: a section found
+    /// moved or missing, a loop, or an <c>/XRefStm</c> that names no stream of its table's revision.
+    /// </summary>
+    private static bool IsChainJudgment(PdfDiagnostic entry) => entry.Code is PdfDiagnosticCodes.XRefOffsetAdjusted
+        or PdfDiagnosticCodes.XRefSectionMissing or PdfDiagnosticCodes.XRefChainCycle or PdfDiagnosticCodes.XRefHybridStreamLost;
+
+    [Fact]
+    public void A_hybrid_stream_a_trailer_guard_cut_names_over_rows_read_whole_is_read()
+    {
+        // #328: the hybrid table, read whole, names cross-reference stream 44 through /XRefStm and the older table through
+        // /Prev, and MaxTrailerLength cuts its trailer after both. The stream is read, its rows serving the page it updates;
+        // the older table, in the file, is the guard's to hide.
+        var (file, _) = StoppedSectionFiles.HybridWhoseStreamIsStopped(StoppedSectionFiles.CutAfter("{older}"));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetArray(PdfName.MediaBox).Required()[2].AsInteger()
+            .Should().Be(2, "the page is the one the stream places");
+        document.Reader.Structure.Sections.Select(record => record.NamedBy).Should().Equal("startxref", "/XRefStm");
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("/Prev {older} /XRefStm {older}")]
+    [InlineData("/Prev 0 /XRefStm 0")]
+    public void An_xrefstm_naming_what_the_prev_of_a_table_whose_trailer_a_guard_cut_names_is_reported_past_that_guard(string links)
+    {
+        // #328, with #156: MaxTrailerLength cuts the trailer of a table whose rows were read whole after its /Prev and its
+        // /XRefStm, which name one offset in the file: the older table, or offset 0. The /XRefStm names no stream of the
+        // table's revision whatever the guard hid, as read whole, where the /Prev looks for what is there; past the guard
+        // that cut the trailer, the /Prev reads nothing, which the report says, the words of a guard that stopped the rows
+        // left to that guard.
+        var (file, section) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links));
+
+        using var whole = PdfDocument.Open(file, StoppedSectionFiles.Whole);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard("trailer"));
+
+        var read = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Which;
+        read.Message.Should().Contain("what its /Prev names too, which the chain looks for through that /Prev:");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefHybridStreamLost);
+        document.Diagnostics[1].Should().Be(read with
+        {
+            Message = read.Message.Replace(
+                "what its /Prev names too, which the chain looks for through that /Prev",
+                "the section its /Prev names too, past the guard that cut the table's trailer",
+                StringComparison.Ordinal),
+        });
+        var naming = document.Reader.Structure.Sections.Should().ContainSingle(record => record.NamedBy == "/XRefStm").Which;
+        naming.State.Should().Be(XRefSectionState.NamedAgain);
+        naming.NamedFrom.Should().Be(section);
+        naming.ReadAs.Should().BeNull("past the guard, the /Prev reads nothing");
+        naming.NamesWhatPreviousReads.Should().BeFalse();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void An_xrefstm_naming_a_few_bytes_off_what_the_prev_names_in_a_trailer_a_guard_cut_is_reported_past_that_guard(int shift)
+    {
+        // #328, with #156: the newest table names the older one through /Prev, and through /XRefStm at its keyword, or 2 bytes
+        // into it, where nothing reads as a section and the search near that offset comes to the older table first, where the
+        // /Prev keeps its place; MaxTrailerLength cuts the newest trailer after both. Either way the /XRefStm names what the
+        // /Prev names, and past the guard that cut the trailer the /Prev reads nothing there, which the report says rather
+        // than that the chain looks for it. The index is left incomplete, as read whole, and the catalog only the older table
+        // indexes is found by a rebuild.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var older = file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var newest = file.Table(
+            1, [], StoppedSectionFiles.CutAfter(string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /Prev {older} /XRefStm {older + shift}")));
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[1].Position.Should().Be(older + shift);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /XRefStm of the cross-reference table at offset {newest} names offset {older + shift}, the section its /Prev names too, past the guard that cut the table's trailer: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."));
+        document.Reader.Structure.Sections.Should().ContainSingle(record => record.NamedBy == "/XRefStm")
+            .Which.NamesWhatPreviousReads.Should().BeFalse();
+        document.Catalog.Should().NotBeNull();
     }
 
     [Theory]

@@ -8,25 +8,41 @@ namespace AdCodicem.Pdf.Tests;
 /// <summary>
 /// Files whose chain a guard ends at a section it stops — <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cuts a table's
 /// rows, <see cref="PdfReaderLimits.MaxDecodedStreamLength"/> a stream's, <see cref="PdfReaderLimits.MaxIndexEntries"/>
-/// fills at either —, which names through <c>/Prev</c> or <c>/XRefStm</c> what is no section whatever the guard hid, or what
-/// may be one (#264). Each guard is named as the theories name it (<see cref="Guard"/>). Offsets are counted from the
-/// header, which starts the file, but for <see cref="AtTheFirstByte"/>'s, which has none.
+/// fills at either —, or whose trailer <see cref="PdfReaderLimits.MaxTrailerLength"/> cuts (<see cref="CutAfter"/>), which
+/// names through <c>/Prev</c> or <c>/XRefStm</c> what is no section whatever the guard hid, or what may be one (#264, #328).
+/// Each guard is named as the theories name it (<see cref="Guard"/>). Offsets are counted from the header, which starts the
+/// file, but for <see cref="AtTheFirstByte"/>'s, which has none.
 /// </summary>
 internal static class StoppedSectionFiles
 {
     /// <summary>
     /// The guards that stop a section's rows, by the name the theories give them: <c>table rows</c> and <c>stream rows</c>
-    /// cut a table's rows or a stream's, <c>table index</c> and <c>stream index</c> fill the index at them.
+    /// cut a table's rows or a stream's, <c>table index</c> and <c>stream index</c> fill the index at them; and
+    /// <c>trailer</c>, which stops no rows, the default limits under which the trailer guard cuts what <see cref="CutAfter"/>
+    /// pads.
     /// </summary>
     public static PdfReaderOptions Guard(string guard) => new()
     {
         Limits = guard switch
         {
+            "trailer" => PdfReaderLimits.Default,
             "table rows" => PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
             "stream rows" => PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 },
             _ => PdfReaderLimits.Default with { MaxIndexEntries = 4 },
         },
     };
+
+    /// <summary>
+    /// The options under which a trailer <see cref="CutAfter"/> pads is read whole, each other limit the default.
+    /// </summary>
+    public static PdfReaderOptions Whole => new() { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } };
+
+    /// <summary>
+    /// Follows <paramref name="links"/> with a <c>/Pad</c> of 70 KB, which runs the trailer they are written in past the
+    /// window a table is read through and past <see cref="PdfReaderLimits.MaxTrailerLength"/>'s default of 64 KB: the
+    /// default limits cut the trailer after the links, whole before the cut (#328), and <see cref="Whole"/> reads it whole.
+    /// </summary>
+    public static string CutAfter(string links) => links + " /Pad (" + new string('x', 70 * 1024) + ")";
 
     /// <summary>The code of the report <see cref="Guard"/>'s guard gives once it stops a section.</summary>
     public static string GuardCode(string guard) => guard switch
