@@ -6107,6 +6107,7 @@ public class CrossReferenceChainTests
     [InlineData("a font whose dictionary a guard cuts", 1024 * 1024, false)]
     [InlineData("a font whose dictionary a lowered guard cuts", 1024, true)]
     [InlineData("a dictionary whose type is no name that a lowered guard cuts before its /W", 1024, true)]
+    [InlineData("a dictionary whose type a lowered guard parts", 1024, true)]
     [InlineData("a font whose type a lowered guard reads before its cut", 1024, false)]
     [InlineData("a stream of no type", 0, false)]
     [InlineData("a dictionary of no type", 0, false)]
@@ -6121,23 +6122,26 @@ public class CrossReferenceChainTests
         // to object 4 before the stream. Object 4 is a font whose dictionary holds 70,000 bytes before its /Type, which
         // MaxTrailerLength cuts before the /Type unless it is raised, or 2,000 bytes, which MaxTrailerLength lowered to 1,024
         // cuts; a dictionary whose /Type gives a string, then 2,000 bytes before a /W, which that guard cuts before the /W; a
-        // font whose /Type is read before that guard cuts it; a stream of 70,000 bytes whose dictionary gives no /Type; a
-        // dictionary read whole that gives none either, within MaxTrailerLength lowered to 1,024 too; a dictionary a string
-        // the file never closes runs to the end of the file, which MaxTrailerLength lowered to the bytes from object 4 to
-        // that end (-1) reaches; or an object that gives a /W and no /Type and does not read as a section — a border's
-        // dictionary, a stream whose /W gives a negative width —, which the search stopped at, as at a section the /Prev
-        // would read, leaving the stream unread and an older revision of object 7 served. The /Prev keeps its place where a
-        // guard cut what is there before it said what it is — before its /Type, or before the /W of a dictionary whose /Type
-        // is no name, which declares nothing —, the guard's, and the /XRefStm's search stops there, leaving it to the /Prev,
-        // the naming the guard's too: no report, the index not left incomplete, where the naming was reported, as if the
-        // file were at fault, and what only the stream indexes found by rebuilding the index. Anywhere else — the end of the
-        // file, and a dictionary a guard cut past a /Type that names another type, among it —, the /Prev looks for its own
-        // section nearby, and the search goes on to the stream (#156, #264).
+        // dictionary whose /Type /XRef that guard parts after /XR; a font whose /Type is read before that guard cuts
+        // it; a stream of 70,000 bytes whose dictionary gives no /Type; a dictionary read whole that gives none either,
+        // within MaxTrailerLength lowered to 1,024 too; a dictionary a string the file never closes runs to the end of
+        // the file, which MaxTrailerLength lowered to the bytes from object 4 to that end (-1) reaches; or an object
+        // that gives a /W and no /Type and does not read as a section — a border's dictionary, a stream whose /W gives
+        // a negative width —, which the search stopped at, as at a section the /Prev would read, leaving the stream
+        // unread and an older revision of object 7 served. The /Prev keeps its place where a guard cut what is there
+        // before it said what it is — before its /Type, inside the name it gives, which the parser drops (#279), or
+        // before the /W of a dictionary whose /Type is no name, which declares nothing —, the guard's, and the
+        // /XRefStm's search stops there, leaving it to the /Prev, the naming the guard's too: no report, the index not
+        // left incomplete, where the naming was reported, as if the file were at fault, and what only the stream
+        // indexes found by rebuilding the index. Anywhere else — the end of the file, and a dictionary a guard cut past
+        // a /Type that names another type, among it —, the /Prev looks for its own section nearby, and the search goes
+        // on to the stream (#156, #264).
         var body = four switch
         {
             "a font whose dictionary a guard cuts" => "<< /Pad (" + new string('-', 70_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
             "a font whose dictionary a lowered guard cuts" => "<< /Pad (" + new string('-', 2_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
             "a dictionary whose type is no name that a lowered guard cuts before its /W" => "<< /Type (Font) /Pad (" + new string('-', 2_000) + ") /W [1 4 2] >>",
+            "a dictionary whose type a lowered guard parts" => "<< /Pad (" + new string('-', 996) + ") /Type /XRef >>",
             "a font whose type a lowered guard reads before its cut" => "<< /Type /Font /Pad (" + new string('-', 2_000) + ") /Subtype /Type1 /BaseFont /Helvetica >>",
             "a stream of no type" => "<< /Length 70000 >>\nstream\n" + new string('-', 70_000) + "\nendstream",
             "a dictionary of no type" => "<< /Pad (none) >>",
