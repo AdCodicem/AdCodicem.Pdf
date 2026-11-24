@@ -7,6 +7,41 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-24 — Batch 27, first pull request: the nesting guards, and what a read keeps by its depth ([#409])
+
+- **The question.** Measured on `main` at `ad21642`, twice: a container nested past 128 levels, or a load nested past 64,
+  read as null under a constant, reported `syntax.depth-exceeded`, no guard; what a read the nesting cut gave was kept and
+  served at any depth, so that an object read otherwise after another (#163: of 64 streams each taking its `/Filter` from
+  the next, 5 read null after 3, `"five"` fresh); under `ThrowOnLimit`, 25, 50 and 100 candidates through a 4 MB stream
+  over a bomb read 222, 437 and 866 MB ([#397]); a header value a guard cut was the file's fault ([#395]); the probe's
+  header reads depended on what was read before through streams on a loop ([#313]).
+- **Settled with the maintainer.** On 2026-11-23: the batch's nineteen issues in four pull requests by area; the guards
+  `MaxNestingDepth` (128) and `MaxNestedLoads` (64), defaults unchanged, `syntax.depth-exceeded` withdrawn; then, once
+  keeping cut reads by depth proved either memory-hungry or exponential under a small cache, a bound per read. On
+  2026-11-24: the store's mutants held by its own tests, ten intricate survivors filed rather than tested, a departure
+  from ADR 53's letter.
+- **What changed.** The two guards. What a read keeps — an object, an object stream's contents, a kept exception —
+  carries its depth and serves only reads as deep, or, cut, from the same base; cut results are kept by base in
+  `BoundedStore`, objects one each once the read ends; within one read, an object loaded again from where the cache let it
+  go reads as null. A guard's exception is kept in exception filters: no stack overflow under `ThrowOnLimit` (main's at
+  50 nested decodings on 1.5 MB too). [#395]'s and [#313]'s header reads; the walk parses again what the reader does.
+- **Review** (ADR 54): two rounds. Round 1, four lenses: three blockers — exponential re-reads within a read, a stack
+  overflow under `ThrowOnLimit`, a trailer's nesting cut ending the chain — and a slow leak; round 2, three lenses: no
+  blocker or major, nits fixed or filed. CI on .NET 11 then showed the walk 4 % past its timing bound: four million table
+  writes a validation, deferred into a run of integers.
+- **Mutation** (ADR 53 amended): 420 mutants. Parser and validator 135: 92 killed by the suite, 27 by new tests, 16
+  equivalent. Reader 277: 171 by the suite (6 by time-out), 48 by new tests, 17 more by the store's tests, 31
+  equivalent, 10 filed ([#414], [#415]). The walk's notes 8: 7 killed, 1 equivalent. The second opinion confirmed 41 of
+  the 48 equivalents and held the 7 others by tests.
+- **The issues.** Closes [#163], [#313], [#395], [#396], [#397]. Filed under M02: [#410] to [#416].
+- **Checks.** The batch check at `ee4927c`, 10,256 unit tests; the 69 timing and memory tests alone; the corpus
+  differential identical; `Remote corpus` run 135 green. Benchmarks against `main`, alone: time within noise, 7 % more
+  allocated reading every page, each cached object carrying its depth. Patch coverage 99.75 % by Codecov's rule: one
+  rethrow in a filter that catches nothing.
+- **For callers.** New: `PdfReaderLimits.MaxNestingDepth`, `MaxNestedLoads`, codes `limit.nesting-depth` and
+  `limit.nested-loads`; withdrawn: `PdfDiagnosticCodes.SyntaxDepthExceeded`. An object reads the same whatever was read
+  before; past the nesting, a stream is decoded about once for each depth a read reaches it from.
+
 ## 2026-11-22 — Batch 26, second pull request: counts in plain digits, and why a rebuild loses an object ([#407])
 
 - **The question.** Measured on `main` at `2e07dca`, twice: a message grouped the digits of some counts and not of
@@ -1345,3 +1380,11 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#405]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/405
 [#406]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/406
 [#407]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/407
+[#409]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/409
+[#410]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/410
+[#411]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/411
+[#412]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/412
+[#413]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/413
+[#414]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/414
+[#415]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/415
+[#416]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/416
