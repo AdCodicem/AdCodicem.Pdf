@@ -1291,11 +1291,14 @@ public class ParserTests
     [InlineData("[1 (x) 1.", "[1 (x)]")]
     [InlineData("<< /A 1 /Filter /Fl", "<</A 1>>")]
     [InlineData("<< /A 1 /Decode 1.", "<</A 1>>")]
+    [InlineData("[[1 /Ab", "[[1]]")]
+    [InlineData("[<< /A 1 /B /Lo", "[<</A 1>>]")]
     public void Drops_a_name_a_number_or_a_keyword_a_guard_s_edge_parts(string text, string read)
     {
         // The bytes end where a guard stops the reading, and the data goes on with a regular byte: what they hold of the last
         // token is none the file wrote. It reads as null alone, an array leaves it out, a dictionary the key whose value it
-        // was; and the parse says it met the edge, for the guard to be reported (#279).
+        // was — the drop is theirs alone, and the container around them keeps them —; and the parse says it met the edge,
+        // for the guard to be reported (#279).
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, fileEdge: new FixedEdge(endsTokens: false), guardEdge: true);
 
         var value = parser.ParseObject();
@@ -1356,6 +1359,19 @@ public class ParserTests
         parser.IsTruncated.Should().BeTrue();
     }
 
+    [Fact]
+    public void Reads_whole_values_after_a_value_the_same_parser_dropped_at_a_guard_s_edge()
+    {
+        // Each parse starts afresh: a name an earlier parse dropped at the guard's edge leaves out nothing the next one reads.
+        var parser = new PdfObjectParser("[1 2] /Fl"u8.ToArray(), endsData: false, guardEdge: true);
+        parser.Position = "[1 2] ".Length;
+
+        parser.ParseObject().Should().BeSameAs(PdfNull.Instance);
+        parser.Position = 0;
+
+        Describe(parser.ParseObject()).Should().Be("[1 2]");
+    }
+
     [Theory]
     [InlineData("[1 (x", "[1 (x)]")]
     [InlineData("[1 [", "[1 []]")]
@@ -1379,6 +1395,23 @@ public class ParserTests
         var parser = new PdfObjectParser("[3 0 R 4 0"u8.ToArray(), endsData: false, fileEdge: new FixedEdge(endsTokens: true));
 
         Describe(parser.ParseObject()).Should().Be("[3 0 R 4 0]");
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("(abc)", "(abc)")]
+    [InlineData("<414243>", "(ABC)")]
+    [InlineData("/FlateDecode", "/FlateDecode")]
+    [InlineData("1.5", "1.5")]
+    [InlineData("true", "true")]
+    public void Asks_for_a_larger_window_wherever_the_edge_of_one_that_may_grow_reaches_a_value(string text, string read)
+    {
+        // Only a guard's edge, past which no window reads, takes a token it reaches for whole: the edge of a window the reader
+        // may grow asks for a larger one even where it reaches a closed string, or a token the file ends there, which the
+        // larger window reads the same.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, fileEdge: new FixedEdge(endsTokens: true));
+
+        Describe(parser.ParseObject()).Should().Be(read);
         parser.IsTruncated.Should().BeTrue();
     }
 
