@@ -7,6 +7,41 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-24 — Batch 27, second pull request: the parser at its guards ([#419])
+
+- **The question.** Measured on `main` at `5780810`. At the largest window `MaxObjectLength` or `MaxTrailerLength`
+  allows, the parser kept what the window's edge parted as if the file had written it: a reference cut after its number
+  read as integers (#262: `/Kids [3 0 R 4 0 R]` cut at 49 bytes read `[3 0 R, 4, 0]`); a name, a real or an integer cut
+  mid-way read shorter (#279: `/Fl`, `1` of `1.5`); an object stream member whose closed string or name ended at the
+  bound was taken for cut, `limit.object` reported and thrown under `ThrowOnLimit` (#282); `streamX` cut after `stream`
+  read as a stream keyword, its data `X…` decoded and failing (#294).
+- **Settled with the maintainer**, on 2026-11-24: at a guard's cut, keep no token the edge parts, nor the one or two
+  integers a reference it cuts may start; an integer at the edge stays cut, even followed by white space, since it may
+  start `n 0 R` (#282 amended); a string the edge leaves open is a separate debt ([#420]); [#415] closed here, its rule
+  written where `/N` and `/First` are judged.
+- **What changed.** The parser is told when its window is a guard's (`guardEdge`): there, a name, a real or a keyword
+  that reaches the edge is asked of the file, or of the decoded data for a member, as `endobj` and `R` already were, and
+  dropped where a regular byte follows; an integer whose look-ahead for `G R` meets the edge is dropped with its
+  generation. An array leaves a dropped value out, a dictionary the key it was for, a value alone reads as null.
+  `stream` is a stream keyword only whole, at any window's edge. The validator's member reads ask the same edge. A
+  `/Type`, `/XRefStm` or `/Root` the cut parts is no longer read as another value: the guard's report stands for it.
+- **Review** (ADR 54): one round, four lenses — real damage over 168 corpus documents in 9,692 guard variants, parser,
+  reader, texts and tests. No blocker, no major. One minor, the delimiters an edge leaves undecided, filed with the open
+  strings ([#420]); eleven nits: eight texts and tests fixed in the final pass, three filed ([#421], [#423]). The final
+  pass also held [#415]'s rule by a test per key and shape, and the validator's member edge.
+- **Mutation** (ADR 53 amended): 68 mutants over the drop, the resets, the stream gates, `EndsAtGuardEdge`, the edge and
+  the call sites. 57 killed by the suite, 8 by new tests — nested containers, a parser parsing twice, a growable
+  window's edge, the chain's check-only read, a stray delimiter ending a member or a trailer at its guard ([#420]
+  widened) —, 3 equivalent, confirmed by a second agent; the final pass's 4 on [#415]'s conditions killed by its theory.
+- **The issues.** Closes [#262], [#279], [#282], [#294], [#415]; settles [#328]'s `/XRefStm` half. Filed under M02:
+  [#420] to [#426].
+- **Checks.** The batch check at `69c11ec`, 10,410 unit tests; the 69 timing and memory tests alone; the corpus
+  differential identical; `Remote corpus` run 137 green on its second attempt — its first ran short of stack in a test
+  of nesting, filed ([#426]): this branch takes 3.5 % more stack per nested dictionary at tier 0. Benchmarks against
+  `main`, alone, twice in opposite orders: the parser within a few percent, allocation identical. Patch coverage 100 %.
+- **For callers.** No public API change. Under a guard's cut, fewer values are read than before, none of them one the
+  file did not write; a member whose string, name, real or keyword ends at `MaxObjectLength` is read whole and not cut.
+
 ## 2026-11-24 — Batch 27, first pull request: the nesting guards, and what a read keeps by its depth ([#409])
 
 - **The question.** Measured on `main` at `ad21642`, twice: a container nested past 128 levels, or a load nested past 64,
@@ -1287,6 +1322,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#290]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/290
 [#291]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/291
 [#292]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/292
+[#294]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/294
 [#295]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/295
 [#296]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/296
 [#297]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/297
@@ -1388,3 +1424,9 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#414]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/414
 [#415]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/415
 [#416]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/416
+[#419]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/419
+[#420]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/420
+[#421]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/421
+[#423]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/423
+[#425]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/425
+[#426]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/426
