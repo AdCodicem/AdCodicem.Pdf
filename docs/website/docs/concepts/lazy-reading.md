@@ -163,10 +163,15 @@ cross-reference stream whose dictionary gives `/Type /XRef` and was read whole, 
 filters decode nothing of holds none ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)) —: it hands on the
 `/Prev` that dictionary gives, so that the older sections are read and judged rather than lost with it
 ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208)), its report saying so where that `/Prev` names an offset
-or leads to what a limit hides — one that is no offset is reported missing after it, and the chain ends there —; but
-where `startxref` names it, the map is rebuilt at opening, as for any first section that cannot be read. Either way, an
+or leads to what a limit hides — one that is no offset is reported missing after it, and the chain ends there —; and so
+does a classic table a `/Prev` names whose fault lies among its rows — a row that is no row, a subsection header that
+gives no count, a stray token —, read on past the fault to its trailer, which is merged, the search starting in the
+table's own window ([#324](https://github.com/AdCodicem/AdCodicem.Pdf/issues/324)), unless a limit cut that trailer,
+whose `/Prev` is then judged and not followed; but where `startxref` names such a section, the map is rebuilt at
+opening, as for any first section that cannot be read. Either way, an
 object such a section numbered and lost — the rest of each subsection a table's fault ended, a refused row's, every
-number a stream declares, through its `/Index` or below its `/Size` — is not taken from an older section's row, which
+number a stream declares, through its `/Index` or below its `/Size`, every number below the `/Size` of the trailer a
+faulted table hands its `/Prev` on from — is not taken from an older section's row, which
 would serve what an update replaced: it is looked for by rebuilding the map, which keeps the last definition the file
 writes. So is an object that a hybrid file's stream of `/Type /XRef`, its dictionary read whole and its rows not,
 declares; and one that a classic table an `/XRefStm` names lost, when it cannot be read or the end of the file cuts it,
