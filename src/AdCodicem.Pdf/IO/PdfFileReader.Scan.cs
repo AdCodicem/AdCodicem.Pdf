@@ -119,7 +119,7 @@ internal sealed partial class PdfFileReader
 
             foreach (var header in memo.HeadersWithin(0, long.MaxValue))
             {
-                IndexScannedHeader(header.Position, header.Number, header.Generation, redefinitions, ref replayed);
+                IndexScannedHeader(header.Position, header.Number, header.Generation, redefinitions, ref replayed, header.HoldsNoValue);
             }
 
             return replayed;
@@ -138,7 +138,11 @@ internal sealed partial class PdfFileReader
     /// <param name="generation">The generation it gives.</param>
     /// <param name="redefinitions">Receives the numbers defined again.</param>
     /// <param name="reached">Receives the exception a document opened to throw asked for.</param>
-    /// <param name="piece">The bytes the scan holds, which may hold the header and what follows it; empty for a memo's replay.</param>
+    /// <param name="holdsNoValue">
+    /// Whether the object holds no value, as a memo's replay knows it; null for the scan, which tells it from
+    /// <paramref name="piece"/> where it needs to (<see cref="HoldsNoValue"/>).
+    /// </param>
+    /// <param name="piece">The bytes the scan holds, which may hold the header and what follows it.</param>
     /// <param name="pieceStart">Where <paramref name="piece"/> starts in the file.</param>
     /// <param name="pieceEndsData">Whether <paramref name="piece"/> runs to the end of the file.</param>
     private void IndexScannedHeader(
@@ -147,6 +151,7 @@ internal sealed partial class PdfFileReader
         int generation,
         Redefinitions redefinitions,
         ref ExceptionDispatchInfo? reached,
+        bool? holdsNoValue = null,
         ReadOnlySpan<byte> piece = default,
         long pieceStart = 0,
         bool pieceEndsData = false)
@@ -161,7 +166,7 @@ internal sealed partial class PdfFileReader
             // But a definition that holds no value is no newer object: an update cut right after a header, or a header
             // nothing a load reads as a value follows, would have the rebuild serve null over the readable definition before
             // it (#351). A value read in part still wins: it is what the newest revision wrote.
-            var empty = HoldsNoValue(at, piece, pieceStart, pieceEndsData);
+            var empty = holdsNoValue ?? HoldsNoValue(at, piece, pieceStart, pieceEndsData);
             redefinitions.Add(number, empty);
 
             if (empty)
@@ -183,48 +188,30 @@ internal sealed partial class PdfFileReader
     /// header (#351).
     /// </summary>
     /// <remarks>
-    /// Asked of a number defined again only, whatever the scan takes of the object after. What it reads lies within
-    /// <see cref="PdfReaderLimits.MaxObjectLength"/> of the header, the bound a load reads the object within: undecided
-    /// there, the object is taken to hold a value, as every definition was. The bytes the scan holds tell first, as far as
-    /// they reach within the bound; past them, the file is read in windows eight times larger each time. The answer is the
-    /// same wherever the scan's piece ends, and the windows read only where the white space and comments after a header,
-    /// which no other header lies in, run past the piece: what they read stays in proportion to the file.
+    /// Told from the first <see cref="NoValueReach"/> bytes from the header, within <see cref="PdfReaderLimits.MaxObjectLength"/>:
+    /// from the bytes the scan holds where they reach that far or to the end of the file, from a read of that many bytes
+    /// otherwise, so that the answer is the same wherever the scan's piece ends. Undecided there — white space or a comment
+    /// that runs on past them —, the object is taken to hold a value, as every definition was. A comment after a header may
+    /// hold the headers a scan of a stream's data as the bytes give it takes: lexing it whole for each would read it again
+    /// for each header it holds.
     /// </remarks>
     private bool HoldsNoValue(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
     {
-        var bound = (long)_guard.Bound(PdfLimit.Object);
+        var reach = (int)Math.Min(NoValueReach, _guard.Bound(PdfLimit.Object));
 
         if (at >= pieceStart && at - pieceStart < piece.Length)
         {
             var held = piece[(int)(at - pieceStart)..];
-            var whole = pieceEndsData && held.Length <= bound;
 
-            if (TellNoValue(held[..(int)Math.Min(held.Length, bound)], whole) is { } told)
+            if (held.Length >= reach || pieceEndsData)
             {
-                return told;
+                return TellNoValue(held[..Math.Min(held.Length, reach)], pieceEndsData && held.Length <= reach) ?? false;
             }
         }
 
-        var size = (long)PdfObjectParser.EndObjLookahead;
-
-        while (true)
-        {
-            var asked = (int)Math.Min(Math.Min(size, bound), _source.Length - at);
-            using var window = _source.GetWindow(at, asked);
-            var toEnd = window.Length < asked || at + window.Length >= _source.Length;
-
-            if (TellNoValue(window.Memory.Span, toEnd) is { } empty)
-            {
-                return empty;
-            }
-
-            if (toEnd || window.Length >= bound)
-            {
-                return false;
-            }
-
-            size *= 8;
-        }
+        var asked = (int)Math.Min(reach, _source.Length - at);
+        using var window = _source.GetWindow(at, asked);
+        return TellNoValue(window.Memory.Span, window.Length < asked || at + window.Length >= _source.Length) ?? false;
     }
 
     /// <summary>
@@ -460,9 +447,10 @@ internal sealed partial class PdfFileReader
 
                 if (memo is null)
                 {
-                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached, span, windowStart, endsData);
+                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData);
                 }
-                else if (!memo.TryAddHeader(at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom))
+                else if (!memo.TryAddHeader(
+                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, HoldsNoValue(at, span, windowStart, endsData)))
                 {
                     return reached;
                 }
