@@ -2698,14 +2698,19 @@ public class DocumentReaderTests
 
     [Theory]
     [InlineData("true")]
+    [InlineData("false")]
     [InlineData("null")]
     [InlineData("12")]
+    [InlineData("8 obj")]
+    [InlineData("8 0 R")]
+    [InlineData("1.5")]
     [InlineData("/Name")]
+    [InlineData("<41>")]
     [InlineData("[1]")]
     public void A_definition_met_again_whose_value_is_a_keyword_a_number_a_name_or_an_array_is_kept(string value)
     {
-        // A keyword a value is — true, false, null —, an integer that starts no header, a name or an array is a value the
-        // newest revision wrote, and wins over the definition before it (#351).
+        // A keyword a value is — true, false, null —, an integer that starts no header, a reference, a real, a name, a
+        // string or an array is a value the newest revision wrote, and wins over the definition before it (#351).
         var file = Encoding.Latin1.GetBytes(
             "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
             "7 3 obj << /Real true >> endobj\n7 5 obj " + value + " endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
@@ -2715,6 +2720,64 @@ public class DocumentReaderTests
         entry.Generation.Should().Be(5);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
             .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Theory]
+    [InlineData("7 5 obj")]
+    [InlineData("7 5 obj\n8 0 obj")]
+    [InlineData("7 5 obj endobj")]
+    [InlineData("7 5 obj" + "                                                   " + "endobj")]
+    public void A_definition_met_again_that_the_end_of_the_file_follows_holds_no_value(string cut)
+    {
+        // The file ends right after object 7's later header, after another header, or after an endobj — the last 64 bytes
+        // from that header, as many as the scan reads to tell: the end of the file starts no value, and the readable
+        // definition before it is kept (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n" + cut);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(3);
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(50, 5)]
+    [InlineData(49, 3)]
+    public void A_header_after_a_definition_met_again_is_judged_within_the_first_64_bytes(int spaces, int kept)
+    {
+        // Object 7's later header is followed by white space and another header, whose obj keyword ends 64 bytes from the
+        // header's start, or 63: the scan reads 64 bytes, where the keyword may run on past the last, and takes the object
+        // for one that holds a value, the later definition kept; a byte sooner, it tells the header there, and the readable
+        // definition before it is kept (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n7 5 obj" + new string(' ', spaces) + "8 0 obj\n(eight)\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(kept);
+    }
+
+    [Fact]
+    public void A_member_written_after_a_definition_with_no_value_replaces_it_as_any_later_definition_does()
+    {
+        // Object 3's header, which holds no value, comes first, then object stream 10, which holds object 3: the member is
+        // the later definition, and replaces the header as a later one always does. The report counts a second definition,
+        // and names none as holding no value, the one replaced being the earlier (#351).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("3 0 obj\nendobj\n");
+        file.ObjectStream(10, [(3, "(three)")]);
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("three");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 3." + KeptRule);
     }
 
     [Theory]

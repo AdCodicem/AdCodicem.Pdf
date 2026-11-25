@@ -1451,6 +1451,30 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData(50, 5)]
+    [InlineData(49, 3)]
+    public void A_header_after_a_definition_met_again_the_piece_s_end_parts_is_judged_within_the_first_64_bytes_of_the_file(int spaces, int kept)
+    {
+        // Object 7's later header starts 20 bytes before the scan's first piece ends, and is followed by white space and
+        // another header, whose obj keyword ends 64 bytes from the header's start, or 63: the scan reads those 64 bytes from
+        // the file, where the keyword may run on past the last, and takes the object for one that holds a value, the later
+        // definition kept; a byte sooner, it tells the header there, and the readable definition before it is kept (#351).
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+        file.Object(7, "<< /Real true >>", generation: 3);
+        PadWithComments(file, Piece - 20);
+        var last = file.Position;
+        file.Raw("7 5 obj" + new string(' ', spaces) + "8 0 obj\n(eight)\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        last.Should().Be(Piece - 20);
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(kept);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_definition_with_no_value_the_end_of_the_scan_s_piece_parts_from_what_follows_it_is_told_from_the_file(bool memoFirst)

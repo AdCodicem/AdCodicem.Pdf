@@ -2354,6 +2354,41 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void A_row_not_taken_that_places_its_object_outside_the_file_counts_toward_no_bound()
+    {
+        // An update's rows place objects 1 to 4 past the end of the file, and a newer update rewrites them: the first
+        // update's rows place nothing, and are not counted toward MaxIndexEntries, which the index's six numbers and the
+        // first table's four rows not taken stay within (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "(three)"),
+            [4] = file.Object(4, "(four)"),
+            [5] = file.Object(5, "(five)"),
+        };
+        var first = file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var stale = file.Position;
+        file.Raw(Invariant($"xref\n0 5\n0000000000 65535 f \n0099999999 00000 n \n0099999998 00000 n \n0099999997 00000 n \n0099999996 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {first} >>\nstartxref\n{stale}\n%%EOF\n"));
+        var newer = new long[5];
+
+        for (var number = 1; number <= 4; number++)
+        {
+            newer[number] = file.Object(number, number switch { 1 => "<< /Type /Catalog /Pages 2 0 R >>", 2 => "<< /Type /Pages /Kids [] /Count 0 >>", _ => "(new)" });
+        }
+
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 5\n0000000000 65535 f \n{newer[1]:D10} 00000 n \n{newer[2]:D10} 00000 n \n{newer[3]:D10} 00000 n \n{newer[4]:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {stale} >>\nstartxref\n{table}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 6 }, ThrowOnLimit = true };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("new");
+    }
+
+    [Fact]
     public void The_index_s_own_bound_is_reported_beside_the_bound_on_rows_not_taken_in_one_section()
     {
         // Two updates rewrite objects 1 to 3, and MaxIndexEntries is 4: in the first table, the rows not taken reach the
