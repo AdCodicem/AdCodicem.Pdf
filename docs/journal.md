@@ -59,6 +59,9 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 - **The order.** Batch 38 opens next, before batch 28: [#387] is a denial of service, a rebuild or a validation in
   time the square of the lines, and such debts have always come first. Batches 39 to 45 follow batch 37.
 - **Where it is written.** `docs/status.md`, *Next concrete step*, step 4's list and its placements; no issue changes.
+- **The rule from now on**, the maintainer's of 2026-11-25: a debt filed under M02 is placed in a batch when it is
+  filed — an existing one whose code it shares, within six issues, or a new one —, recorded in step 4's list and named
+  in its body (`CLAUDE.md`, *Tracking*; the `batch` skill's closing step).
 
 ## 2026-11-25 — Batch 27, fourth pull request: a hidden end proven by the rows not taken, and a rebuild's readable definition ([#436])
 
