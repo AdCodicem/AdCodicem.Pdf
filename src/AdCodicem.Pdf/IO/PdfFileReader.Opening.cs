@@ -257,8 +257,24 @@ internal sealed partial class PdfFileReader
     /// Gives where the <c>endstream</c> keyword starts that the white space and comments at <paramref name="position"/>
     /// lead to, or <paramref name="position"/> itself when none follows them.
     /// </summary>
+    /// <remarks>
+    /// The chain took the data up to the keyword, the end-of-line before it left out (<see cref="StreamEndSearch.Length"/>):
+    /// a keyword that follows that end-of-line, or follows <paramref name="position"/> at once, is read where it lies, so
+    /// that where it starts does not hang on what the document's searches for <c>endstream</c> may still read. Spent, they
+    /// would give no answer, and a length that counts the end-of-line would be taken for one past the keyword (#293).
+    /// </remarks>
     private long EndStreamAfter(long position)
     {
+        Span<byte> bytes = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 2];
+        var held = position < 0 || position >= _source.Length ? 0 : _source.Read(position, bytes[..(int)Math.Min(bytes.Length, _source.Length - position)]);
+        var head = bytes[..held];
+        var endOfLine = head.StartsWith("\r\n"u8) ? 2 : head.Length > 0 && head[0] is (byte)'\r' or (byte)'\n' ? 1 : 0;
+
+        if (head[endOfLine..].StartsWith(StreamEnds.EndStreamKeyword))
+        {
+            return position + endOfLine;
+        }
+
         var at = NextSignificant(position);
         Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length];
         var read = at < 0 || at >= _source.Length ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
