@@ -774,8 +774,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// The objects the chain's own load stopped at as the document opened, a guard having cut the header where the entry
-    /// places them (<see cref="TryParseWhereEntryPlaces"/>): cut until a load reads them again, which decides as any load
-    /// does (#292). Null while there is none.
+    /// places them (<see cref="TryParseWhereEntryPlaces"/>): cut until a load through the load rule reads them again, which
+    /// decides as any load does, or a rebuild drops them (<see cref="IsCutAtLimit"/>, #292). Null while there is none.
     /// </summary>
     private HashSet<int>? _cutAtStop;
 
@@ -1717,8 +1717,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, was cut by one of the reader's limits and
     /// kept as far as the limit let it be read; or, the chain's own load having stopped at a guard that cut its header, left
-    /// unread until a load reads it again; or, during one of the library's walks, read as null for
-    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, until the walk ends.
+    /// unread until a later load of it through the load rule (<see cref="LoadRegularObject"/>) decides again, or a rebuild
+    /// drops the mark — a read where its entry places it that makes no such load (<see cref="ReadWhereChainPlaces"/>,
+    /// <see cref="ReadObjectStreamHeaderCore"/>) leaves the mark as it is (#430); or, during one of the library's walks,
+    /// read as null for <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, until the walk ends.
     /// </summary>
     internal bool IsCutAtLimit(int number) =>
         _cutAtLimit.Contains(number) || _cutAtStop?.Contains(number) == true || _walkCut?.Contains(number) == true;

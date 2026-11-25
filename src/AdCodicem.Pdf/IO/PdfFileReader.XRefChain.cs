@@ -1498,9 +1498,9 @@ internal sealed partial class PdfFileReader
     /// its <c>/Prev</c> (<see cref="HandOnPrevious"/>) says so too, where that <c>/Prev</c> names an offset, or leads to what
     /// a guard hides (#208); a hybrid file's stream leaves the chain to its table's (#210). So does a classic table read on
     /// past a fault among its rows, past which the chain goes on through its trailer's <c>/Prev</c>, every number below that
-    /// trailer's <c>/Size</c> refused (<see cref="RefuseBelowSize"/>, #324). So does a classic table an
-    /// <c>/XRefStm</c> names, whose lost rows were refused (<see cref="RefuseRowsLost"/>): the rest of the subsection its fault
-    /// ended, or every number but those its rows read before the fault give (#156).
+    /// trailer's <c>/Size</c> refused, and the rest of each subsection its faults ended (<see cref="RefuseBelowSize"/>, #324).
+    /// So does a classic table an <c>/XRefStm</c> names, whose lost rows were refused (<see cref="RefuseRowsLost"/>): the
+    /// rest of the subsection its fault ended, or every number but those its rows read before the fault give (#156).
     /// </para>
     /// <para>
     /// The rows read before the fault are said kept but for those the section refused itself and those whose numbers a newer

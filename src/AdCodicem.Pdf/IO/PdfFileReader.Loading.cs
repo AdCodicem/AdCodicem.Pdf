@@ -152,8 +152,8 @@ internal sealed partial class PdfFileReader
             return found;
         }
 
-        // Marked cut until a load reads the object again, and counted as a re-entry, so that the null is not kept: a later
-        // read of the object loads it again, as any read does.
+        // Marked cut until a later load of the object decides again (IsCutAtLimit), and counted as a re-entry, so that the
+        // null is not kept: a later read of the object loads it again, as any read does.
         if (stopped)
         {
             (_cutAtStop ??= new(SeededComparer.Instance)).Add(id.Number);
@@ -199,7 +199,7 @@ internal sealed partial class PdfFileReader
     /// The outermost of the loads the chain makes of its own values once it is read (<see cref="_loadingChainValues"/>)
     /// stops where a guard cuts the header at the offset itself, the guard reported or thrown: the chain ended there for
     /// the guard (ADR 34), and a search near the offset, or the rebuild that follows it, would read past the guard for
-    /// what its report names. Nothing near is searched, and the load marks the object cut until a load reads it again
+    /// what its report names. Nothing near is searched, and the load marks the object cut until a later load decides again
     /// (<see cref="IsCutAtLimit"/>); a later read of it, or a validation, looks for it as any read does (#292). A guard a
     /// load the header's value sets off reaches — a stream's indirect <c>/Length</c>, under a header that names another
     /// object or the object's own — is that load's, and stops nothing here.
