@@ -2707,13 +2707,17 @@ public class DocumentReaderTests
     [InlineData("/Name")]
     [InlineData("<41>")]
     [InlineData("[1]")]
-    public void A_definition_met_again_whose_value_is_a_keyword_a_number_a_name_or_an_array_is_kept(string value)
+    [InlineData("(new)", "")]
+    [InlineData("<< /New true >>", "")]
+    [InlineData("/Name", "")]
+    public void A_definition_met_again_whose_value_is_a_keyword_a_number_a_name_or_an_array_is_kept(string value, string afterObj = " ")
     {
         // A keyword a value is — true, false, null —, an integer that starts no header, a reference, a real, a name, a
-        // string or an array is a value the newest revision wrote, and wins over the definition before it (#351).
+        // string or an array is a value the newest revision wrote, and wins over the definition before it (#351): written
+        // right after obj too, where the value's first byte is the delimiter that ends the keyword.
         var file = Encoding.Latin1.GetBytes(
             "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
-            "7 3 obj << /Real true >> endobj\n7 5 obj " + value + " endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+            "7 3 obj << /Real true >> endobj\n7 5 obj" + afterObj + value + " endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
