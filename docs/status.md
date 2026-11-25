@@ -398,6 +398,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   required (`docs/releasing.md`); whether the merge auto-merge performs counts as Dependabot's, and whether the bypass
   waives the required checks, is not yet observed. Each
   Dependabot entry batches its minor and patch security updates into one pull request since then ([#440]).
+  The backlog Dependabot had opened was taken in one pull request on 2026-11-25: every update but two, the preset
+  `conventional-changelog-conventionalcommits` 10, which breaks the release notes ([#446]), and the first grouped
+  security pull request, #444, left to show whether the bypass merges it.
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
@@ -1214,3 +1217,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
 [#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
 [#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440
+[#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446
