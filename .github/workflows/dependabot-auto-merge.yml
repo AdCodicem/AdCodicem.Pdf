@@ -1,8 +1,14 @@
 name: Dependabot auto-merge
 
-# Runs with a token that can write to the repository, so nothing a pull request changed may run here: it
-# checks out no code at all.
-on: pull_request_target
+# Runs on pull_request: GitHub blocks pull_request_target by default from 2026-12-02. A run Dependabot triggers
+# gets a read-only GITHUB_TOKEN and Dependabot secrets only; the job's permissions below raise the token to what
+# queuing a merge needs. Under pull_request this file is read from the pull request's head, so a branch could
+# rewrite it: the job's guards hold it to Dependabot's own pull requests from a branch of this repository, which
+# only Dependabot pushes to, and a fork's pull request gets a read-only token whatever it declares. The job
+# still checks out no code at all.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
