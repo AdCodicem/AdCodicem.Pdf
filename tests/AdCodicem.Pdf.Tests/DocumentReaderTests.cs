@@ -2612,7 +2612,7 @@ public class DocumentReaderTests
     }
 
     private const string KeptOverNoValue =
-        " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies, but for one that holds no value, which leaves the definition before it kept, as the later definition of object 7 does.";
+        " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies, but for one that holds no value, which leaves the definition before it kept, as one of object 7 does.";
 
     [Theory]
     [InlineData("7 5 obj)")]
@@ -2620,12 +2620,19 @@ public class DocumentReaderTests
     [InlineData("7 5 obj\nendobj")]
     [InlineData("7 5 obj %a comment\n]")]
     [InlineData("7 5 obj >>")]
+    [InlineData("7 5 obj }")]
+    [InlineData("7 5 obj {")]
+    [InlineData("7 5 obj xref")]
+    [InlineData("7 5 obj startxref")]
+    [InlineData("7 5 obj stream")]
+    [InlineData("7 5 obj R")]
     [InlineData("7 5 obj\n8 0 obj (eight) endobj")]
     public void A_definition_met_again_that_holds_no_value_leaves_the_readable_one_before_it(string later)
     {
-        // The file has no table. Object 7's later header is followed by no value — a stray parenthesis, endobj, a closing
-        // delimiter, another header, or the trailer —, which a load reads as null: the rebuild served that null over the
-        // readable definition before it, and said only that it met a second (#351).
+        // The file has no table. Object 7's later header is followed by nothing that starts a value — a stray parenthesis,
+        // a closing delimiter, a brace, a keyword other than true, false and null, or the trailer —, which a load reads as
+        // null, or by another header, whose number a load reads as the value: the rebuild served that over the readable
+        // definition before it, and said only that it met a second (#351).
         var file = Encoding.Latin1.GetBytes(
             "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
             "7 3 obj << /Real true /Missing 98 0 R >> endobj\n" + new string(' ', 48) + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
@@ -2687,6 +2694,51 @@ public class DocumentReaderTests
         entry.Generation.Should().Be(5);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
             .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("12")]
+    [InlineData("/Name")]
+    [InlineData("[1]")]
+    public void A_definition_met_again_whose_value_is_a_keyword_a_number_a_name_or_an_array_is_kept(string value)
+    {
+        // A keyword a value is — true, false, null —, an integer that starts no header, a name or an array is a value the
+        // newest revision wrote, and wins over the definition before it (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n7 5 obj " + value + " endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(5);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Theory]
+    [InlineData("3 0 obj\n")]
+    [InlineData("3 0 obj\nendobj\n")]
+    public void An_update_cut_right_after_the_header_of_an_object_an_object_stream_held_leaves_the_member(string cut)
+    {
+        // Object 3 is a member of object stream 10, which a cross-reference stream indexes; an update writes a long object 9
+        // and is cut right after object 3's new header, so that the index is rebuilt. The scan met that header first, and the
+        // member, whose stream lies before it, did not replace it: object 3 read as null (#351).
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var ten = file.ObjectStream(10, [(3, "(three)")]);
+        file.CrossReferenceStream(11, 12, new() { [1] = (1, one, 0), [2] = (1, two, 0), [3] = (2, 10, 0), [10] = (1, ten, 0) }, "/Root 1 0 R");
+        file.Object(9, "(" + new string('x', PdfFileReader.TailSearchLength) + ")");
+        file.Raw(cut);
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("three");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be(
+                "Rebuilding the index met a second definition of object 3." + KeptRule[..^1] + ", but for one that holds no value, which leaves the definition before it kept, as one of object 3 does.");
     }
 
     [Fact]

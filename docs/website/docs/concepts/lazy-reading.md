@@ -171,7 +171,7 @@ cut that trailer, whose `/Prev` is then judged as a whole read of the table judg
 way, an object such a section numbered and lost — the rest of each subsection a table's fault ended, a refused row's,
 every number a stream declares, through its `/Index` or below its `/Size`, every number below the `/Size` of the trailer
 a faulted table hands its `/Prev` on from — is not taken from an older section's row, which would serve what an update
-replaced: it is looked for by rebuilding the map, which keeps the last definition the file writes
+replaced: it is looked for by rebuilding the map, which keeps the last definition the file writes that holds a value
 ([`xref.section-unreadable`](../reference/api/AdCodicem.Pdf.Diagnostics.PdfDiagnosticCodes.md#AdCodicem_Pdf_Diagnostics_PdfDiagnosticCodes_XRefSectionUnreadable)).
 So is an object that a hybrid file's stream of `/Type /XRef`, its dictionary read whole and its rows not, declares; and
 one that a classic table an `/XRefStm` names lost, when it cannot be read or the end of the file cuts it, the chain
@@ -325,7 +325,9 @@ having perhaps been lost with the keyword: no older section's row stands for a n
 says the trailer is missing ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)).
 
 A rebuilt map keeps, of each number, the definition [`object.redefined`](../reference/diagnostics.md) names — the one
-the file writes last, an object stream's members counting where the stream lies, as an update appends what it changes —,
+the file writes last, an object stream's members counting where the stream lies, as an update appends what it changes,
+but for a definition that holds no value, as an update cut right after a header leaves one, which leaves the one before
+it kept —,
 a direct definition under the generation its header gives and a member of an object stream under generation 0. An object
 stream whose own number a later object stream lists gives no members, whatever order the rebuild met the numbers in, and
 what the rebuild read through a definition a later object stream replaced — a stream's indirect `/Length`, an object

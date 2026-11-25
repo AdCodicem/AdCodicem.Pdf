@@ -14,9 +14,11 @@ namespace AdCodicem.Pdf.IO;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind. Places
-/// of one number, generation and kind that the scan takes one after another at one distance — a header written again
-/// and again, as hostile files repeat one by the million — are held as a run, in two slots however many they are. The
+/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind and
+/// whether its object holds no value. Places of one number, generation, kind and verdict that the scan takes one after
+/// another at one distance — a header written again and again, as hostile files repeat one by the million — are held as
+/// a run, in two slots however many they are; a header the end of the scan's piece leaves its verdict unknown for parts
+/// such a run, a few times a megabyte. The
 /// slots are one array, grown by doubling as the scan adds to it, never past the bound, and trimmed once it ends. A
 /// memo that is whole keeps the trailers too (<see cref="Trailers"/>): 8 bytes for each <c>trailer</c> keyword, which
 /// takes no slot, and 8 for each cross-reference stream's header beside its slot, in lists grown by doubling and
