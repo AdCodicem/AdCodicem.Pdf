@@ -7,6 +7,25 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-25 — Dependabot auto-merge moved off `pull_request_target`
+
+- **The question.** From 2026-12-02, GitHub Actions blocks `pull_request_target` by default in public repositories, and
+  `dependabot-auto-merge.yml` ran on nothing else: it would no longer run at all.
+- **What changed.** The workflow runs on `pull_request` (`opened`, `synchronize`, `reopened`). A run Dependabot
+  triggers gets a read-only `GITHUB_TOKEN`. GitHub's *Automating Dependabot with GitHub Actions* page says a
+  `permissions:` key raises it, and its own auto-merge example does exactly that, so the job keeps `contents: write`
+  and `pull-requests: write`. Every guard stays: the author and the actor are `dependabot[bot]`, the head repository is
+  this one, `fetch-metadata` is pinned by SHA, the patch-and-minor allow-list (#196) holds, the merge is
+  `gh pr merge --auto --squash`, and no code is checked out. The header comment states the new threat model: the
+  workflow file now comes from the pull request's head, and the guards hold the job to Dependabot's own branches of
+  this repository. `docs/threat-model.md` says no workflow runs on `pull_request_target` any more.
+- **Checks.** actionlint 1.7.12, the binary and digest CI's `workflows` job pins: clean. zizmor 1.33.1: the
+  `dangerous-triggers` finding is gone. `bot-conditions` on the `github.actor` check was there before and stays, as
+  the guard is kept on purpose beside the author check, which cannot be spoofed.
+- **Found and left.** None of the twenty or so open Dependabot pull requests merges, even with green checks: the
+  ruleset waits for a code-owner approval, and CodeQL's `neutral` may block too ([#439], the maintainer's to settle).
+  npm security updates under `/docs/website` arrive one at a time ([#440]).
+
 ## 2026-11-25 — Batch 27, fourth pull request: a hidden end proven by the rows not taken, and a rebuild's readable definition ([#436])
 
 - **The question.** Measured on `main` at `98db003`. A stream whose `/Length` a guard hid was proven by the object the
@@ -1525,3 +1544,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#436]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/436
 [#437]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/437
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
+[#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
+[#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440
