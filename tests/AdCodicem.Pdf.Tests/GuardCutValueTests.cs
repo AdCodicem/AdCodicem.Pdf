@@ -3323,12 +3323,13 @@ public class GuardCutValueTests
     [Fact]
     public void A_prev_naming_an_object_whose_header_a_guard_cut_ends_the_chain_as_the_guard_s()
     {
-        // The newer table's /Prev is object 9, which holds the older table's offset; 3,000 blanks part its generation from
-        // its obj, white space a header may hold, and MaxObjectLength cuts the header itself before its keyword: the chain
-        // reads nothing of the object, its value no more than its header. The chain ends there for the guard, as where the
-        // guard cuts the value, and the guard is reached once the chain is read, where loading object 9 reaches it — thrown at
-        // opening when the caller asks for it (#263). The validation says the older sections, and the header of object 9,
-        // were not checked. What that load rebuilds, and a later read, is the theory after this test's (#292).
+        // The newer table's /Prev is object 9, which holds the older table's offset; 3,000 blanks part its generation from its
+        // obj, white space a header may hold, and MaxObjectLength cuts the header itself before its keyword: the chain reads
+        // nothing of the object, its value no more than its header. The chain ends there for the guard, as where the guard cuts
+        // the value, and the guard is reached once the chain is read, where loading object 9 reaches it — thrown at opening
+        // when the caller asks for it (#263). The validation says the older sections, and the header of object 9, were not
+        // checked. That load, the chain's own, stops at the guard and rebuilds nothing; a later read of object 9 follows the
+        // load rule (#292).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -3381,12 +3382,13 @@ public class GuardCutValueTests
     {
         // Object N holds an older table's offset, or a stream's length, past 3,000 blanks MaxObjectLength cuts: between its
         // generation and its obj, cutting its header, or after its obj, cutting its value. Named by a /Prev, or as a
-        // cross-reference stream's /Length, it is loaded once the chain is read, and that load stops at the guard as the
-        // chain did, a cut header as a cut value: it searches nothing near the entry, rebuilds nothing, keeps no null, and
-        // marks the object cut. Named by the /Prev of a section whose rows a guard stopped, it is judged and not loaded, the
-        // rows' guard reported alone. A later read of the object, or a validation, reads a cut header as any read reads one
-        // past the guard, looking for it near the entry and rebuilding the index, and a cut value as cut (#292). Opened to
-        // throw on a guard, Open throws the first guard the chain met.
+        // cross-reference stream's /Length, it is loaded once the chain is read, and that load stops at the guard as the chain
+        // did, a cut header as a cut value: it searches nothing near the entry, rebuilds nothing, keeps no null, and marks the
+        // object cut. Named by the /Prev of a section whose rows a guard stopped, it is judged and not loaded, the rows' guard
+        // reported alone. A later read of the object, or a validation, reads a cut header as any read reads one past the guard,
+        // looking for it near the entry and rebuilding the index, and a cut value as cut (#292): the rebuilt index then reads
+        // the cross-reference stream's /Length, which leads to the object the guard cut, as one that could not be read, the
+        // guard's length charged to the file (#431). Opened to throw on a guard, Open throws the first guard the chain met.
         var (bytes, options, number) = ChainValueCut(path, headerCut);
 
         using (var document = PdfDocument.Open(bytes, options))
@@ -3400,6 +3402,8 @@ public class GuardCutValueTests
 
             document.WasRepaired.Should().Be(headerCut);
             document.Diagnostics.Skip(count).Select(entry => entry.Code).Contains(PdfDiagnosticCodes.XRefRebuilt).Should().Be(headerCut);
+            document.Diagnostics.Skip(count).Select(entry => entry.Code).Contains(PdfDiagnosticCodes.StreamLengthInvalid)
+                .Should().Be(headerCut && path == "deferred length");
         }
 
         using (var validated = PdfDocument.Open(bytes, options))
@@ -3488,7 +3492,8 @@ public class GuardCutValueTests
         // that of object 9; a load it sets off follows the load rule, and a guard that load reaches stops nothing, nor marks
         // object N cut (#292). Opened to throw on a guard, Open throws the guard that load reached.
         // - "length header": MaxObjectLength cuts object 12's header. Its load, a stream's length, reads it as any read reads
-        //   a header past the guard: looked for near its entry, the index rebuilt, and the guard's report stands.
+        //   a header past the guard: looked for near its entry, the index rebuilt, and the guard's report stands. The rebuilt
+        //   index reads object 9's /Length as one that could not be read, the guard's length charged to the file (#431).
         // - "other header": the row of object 9 places object 8, a stream that lies just before it, and the guard cuts object
         //   12's value, object 8's /Length: the guard is reached under a header that names another object. The load of
         //   object 9 looks for it near its row and finds it, 999 where the data the chain took holds 105 bytes, which the

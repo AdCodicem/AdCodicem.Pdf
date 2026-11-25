@@ -1747,6 +1747,7 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("row", 0, "the row for object 5, at offset {five}, is not an offset, a generation and n or f")]
+    [InlineData("row then count", 0, "the row for object 5, at offset {five}, is not an offset, a generation and n or f")]
     [InlineData("header", 0, "the subsection header at offset {five} does not give a first object number and a count of rows")]
     [InlineData("header", 160, "the subsection header at offset {five} does not give a first object number and a count of rows")]
     [InlineData("count", 0, "the subsection header at offset {five} numbers its rows past object 2147483647")]
@@ -1754,20 +1755,21 @@ public class CrossReferenceChainTests
     public void A_table_a_prev_names_whose_fault_lies_among_its_rows_hands_its_trailer_s_prev_on_to_the_older_sections(
         string fault, int sectionLength, string said)
     {
-        // The middle table holds a row that is no row, a subsection header that gives no count or numbers its rows past the
-        // last object number, or a stray token among its rows. The chain stopped there, though the table's trailer lay a few
-        // bytes on: the oldest table went unread and unjudged, its trailer unmerged, and object 9, which only it indexes, cost
-        // a rebuild of the whole file (#324). The table is read on to its trailer, which is merged — its /ID, which the
-        // newest trailer lacks —, and the chain goes on through its /Prev: object 9, above the trailer's /Size 8, needs no
-        // rebuild. No older row stands for a number below it: object 7, whose row lies past the fault, and object 5, unless
-        // its row came before the fault, are found by rebuilding the index, the middle revision's rather than the oldest's. A
-        // MaxXRefSectionLength the trailer lies past, 200 bytes of comment on, and the fault before, is no guard reached: the
-        // search for the trailer reads no row.
+        // The middle table holds a row that is no row — the row after it read as a header that numbers its rows past the last
+        // object number, or not —, a subsection header that gives no count or numbers its rows past the last object number, or
+        // a stray token among its rows, its first fault the one reported. Its trailer lies a few bytes on, and its /Prev names
+        // the oldest table, the only one to index object 9: the table is read on to its trailer, which is merged — its /ID,
+        // which the newest trailer lacks —, and the chain goes on through its /Prev, so that the oldest table is read and
+        // judged, and object 9, above the trailer's /Size 8, needs no rebuild of the whole file (#324). No older row stands for
+        // a number below it: object 7, whose row lies past the fault, and object 5, unless its row came before the fault, are
+        // found by rebuilding the index, the middle revision's rather than the oldest's. A MaxXRefSectionLength the trailer
+        // lies past, 200 bytes of comment on, and the fault before, is no guard reached: the search for the trailer reads no
+        // row.
         var (sound, _, _, _) = FaultedTableFiles.Revisions("sound");
         var (file, oldest, middle, newest) = FaultedTableFiles.Revisions(fault, gap: sectionLength == 0 ? 0 : 200);
         var five = fault switch
         {
-            "row" => PdfTemplate.OffsetOf(file, " 00000 x") - 10,
+            "row" or "row then count" => PdfTemplate.OffsetOf(file, " 00000 x") - 10,
             "header" => PdfTemplate.OffsetOf(file, "5 x\n"),
             "count" => PdfTemplate.OffsetOf(file, "5 2147483647"),
             _ => PdfTemplate.OffsetOf(file, "/Bad 1"),
@@ -1932,7 +1934,7 @@ public class CrossReferenceChainTests
         var expected = loops
             ? new[] { PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefChainCycle }
             : [PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionUnreadable];
-        document.Diagnostics.Select(d => d.Code).Should().StartWith(expected);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(expected);
         document.Diagnostics[1].Message.Should().EndWith(
             "The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.");
         var section = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
@@ -6844,15 +6846,14 @@ public class CrossReferenceChainTests
     public void A_prev_naming_more_white_space_than_a_trailer_s_window_names_the_guard_s_section_wherever_the_section_past_it_lies(
         int run, int maxTrailerLength, bool stream)
     {
-        // The update's table names its original, a classic table or a cross-reference stream, through /Prev at the first of
-        // the spaces before it: 257 or 600 under a MaxTrailerLength of 256, or 70,000 under the default 64 KB, more than the
-        // bound lets the white space before a section run. The run reaches the guard where it starts, as the message says,
-        // and the section past it is the guard's: cut where the /Prev names it and not looked for nearby, the chain ending
-        // there, nothing rebuilt, and the validator saying it checked the chain in part. The search near the offset read up
-        // to 512 bytes past it, past the guard: it found the original past 257 spaces, the section moved, and past 600 none,
-        // the section missing and the index rebuilt, laid on the file. Object 5, which only the original indexes, reads as
-        // null until the bound is raised, which reads the original past the run, the /Prev said to fall short of it (#188,
-        // #289, ADR 34).
+        // The update's table names its original, a classic table or a cross-reference stream, through /Prev at the first of the
+        // spaces before it: 257 or 600 under a MaxTrailerLength of 256, or 70,000 under the default 64 KB, more than the bound
+        // lets the white space before a section run. The run reaches the guard where it starts, as the message says, and the
+        // section past it is the guard's: cut where the /Prev names it and not looked for nearby, the chain ending there,
+        // nothing rebuilt, and the validator saying it checked the chain in part. A search near the offset would read up to 512
+        // bytes past it, past the guard, and lay on the file what the guard hides: the original found moved past 257 spaces,
+        // the section missing past 600 and the index rebuilt. Object 5, which only the original indexes, reads as null until
+        // the bound is raised, which reads the original past the run, the /Prev said to fall short of it (#188, #289, ADR 34).
         var (file, runAt, original, _) = NearbyFiles.UpdateNamingTheSpacesBeforeItsOriginal(run, stream);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         var raised = maxTrailerLength > 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 };
@@ -6931,14 +6932,14 @@ public class CrossReferenceChainTests
     public void An_xrefstm_naming_more_white_space_than_a_trailer_s_window_names_the_guard_s_section_and_ends_the_chain_at_its_table(
         int run, int maxTrailerLength, bool table)
     {
-        // The newest table names through /XRefStm the first of a run of line feeds before its revision's cross-reference
-        // stream — or before a classic table —, and through /Prev the oldest table: 257 or 600 under a MaxTrailerLength of
-        // 256, or 65,537 under the default 64 KB, more than the bound lets the white space before a section run. The section
-        // past the run is the guard's, cut where the /XRefStm names it and not looked for nearby, where a search read past
-        // the guard: the chain ends at the table, as at a stream a guard cut, its /Prev, an offset in the file the chain has
-        // not reached, the guard's too, and nothing is reported of the naming. What only the sections past the guard index
-        // reads as null until the bound is raised, which reads the stream past the run — or the table, in the stream's place,
-        // whose naming is then reported (#156, #264, #289).
+        // The newest table names through /XRefStm the first of a run of line feeds before its revision's cross-reference stream
+        // — or before a classic table —, and through /Prev the oldest table: 257 or 600 under a MaxTrailerLength of 256, or
+        // 65,537 under the default 64 KB, more than the bound lets the white space before a section run. The section past the
+        // run is the guard's, cut where the /XRefStm names it and not looked for nearby, since a search would read past the
+        // guard: the chain ends at the table, as at a stream a guard cut, its /Prev, an offset in the file the chain has not
+        // reached, the guard's too, and nothing is reported of the naming. What only the sections past the guard index reads as
+        // null until the bound is raised, which reads the stream past the run — or the table, in the stream's place, whose
+        // naming is then reported (#156, #264, #289).
         var (file, oldest, runAt, past) = HybridFiles.XRefStmNamingARunBeforeItsSection(run, table);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         var raised = maxTrailerLength > 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 };
@@ -9345,10 +9346,10 @@ public class CrossReferenceChainTests
         // The newest table's /Prev names the first of 300 or 440 spaces before the oldest table, and its /XRefStm stream 11,
         // past which stream 12, of /Type /XRef and no /Prev, may be the table's own. Read whole, the /Prev crosses the spaces
         // and reads the oldest table where it is named: no search runs, and nothing is passed over. Where MaxTrailerLength,
-        // lowered to 256, cuts the white space, the section past it is the guard's, cut where the /Prev names it and not
-        // looked for nearby: no search runs either, where one passed stream 12 over to take the oldest table, and the chain
-        // ends there, the limit's report standing for what lies past it (#156, #289, ADR 34). With no run, the /Prev names
-        // the table itself.
+        // lowered to 256, cuts the white space, the section past it is the guard's, cut where the /Prev names it and not looked
+        // for nearby: no search runs either, which would pass stream 12 over to take the oldest table past the guard, and the
+        // chain ends there, the limit's report standing for what lies past it (#156, #289, ADR 34). With no run, the /Prev
+        // names the table itself.
         var (file, runAt, _, stream, _, newest) = HybridFiles.PrevNamingWhiteSpaceBeforeTheOldestTable(run);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -9376,16 +9377,16 @@ public class CrossReferenceChainTests
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_left_to_the_trailer_guard_where_white_space_past_it_keeps_what_an_older_link_names_unread(
         string runBefore, bool oldestNamesOwn, int run, int maxTrailerLength)
     {
-        // The newest table's /Prev falls inside a comment near stream 12, of /Type /XRef and no /Prev, which may be the
-        // table's own: the search near it passes stream 12 over and takes the table past the comment. That table's /Prev
-        // names the first of a run of spaces before the oldest table, whose /XRefStm names stream 12 — or names the oldest
-        // table, whose /XRefStm names the first of a run of spaces before stream 12. Read whole, the chain crosses the run,
-        // and reads stream 12 through that /XRefStm: nothing is reported of it. Where MaxTrailerLength cuts a run of 1,000,
-        // 700 or 400 spaces, the section past it is the guard's, cut where it is named and not looked for nearby, and the
-        // chain ends there: the link that names stream 12 is the guard's to hide, and nothing is reported of the stream, the
-        // limit's report standing for it (#156, #289, ADR 34) — even where the oldest table names nothing, which the chain
-        // read whole finds, and reports. The search near the offset found nothing past 1,000 or 700 spaces, the section
-        // reported missing, and stream 12 moved past 400. A run the guard does not cut leaves stream 12 read.
+        // The newest table's /Prev falls inside a comment near stream 12, of /Type /XRef and no /Prev, which may be the table's
+        // own: the search near it passes stream 12 over and takes the table past the comment. That table's /Prev names the
+        // first of a run of spaces before the oldest table, whose /XRefStm names stream 12 — or names the oldest table, whose
+        // /XRefStm names the first of a run of spaces before stream 12. Read whole, the chain crosses the run, and reads stream
+        // 12 through that /XRefStm: nothing is reported of it. Where MaxTrailerLength cuts a run of 1,000, 700 or 400 spaces,
+        // the section past it is the guard's, cut where it is named and not looked for nearby, and the chain ends there: the
+        // link that names stream 12 is the guard's to hide, and nothing is reported of the stream, the limit's report standing
+        // for it (#156, #289, ADR 34) — even where the oldest table names nothing, which the chain read whole finds, and
+        // reports. A search near the offset would read past the guard, and lay on the file what the guard hides: the section
+        // missing past 1,000 or 700 spaces, stream 12 moved past 400. A run the guard does not cut leaves stream 12 read.
         var (file, _, own, runAt, older, _, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(runBefore, run, oldestNamesOwn);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -9412,14 +9413,14 @@ public class CrossReferenceChainTests
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_where_white_space_past_the_trailer_guard_ends_the_chain_whatever_section_lies_near_it(
         bool unnamedTable, bool oldestNamesOwn, int run, int maxTrailerLength)
     {
-        // As above, the search near the newest table's /Prev passes stream 12 over and takes the table past the comment,
-        // whose /Prev names the first of 300 or 400 spaces before the oldest table, which names nothing — or, past a table no
-        // link names written right before the run, names stream 12 through /XRefStm. Read whole, the chain crosses the run
-        // and reads the oldest table: stream 12, which no link reaches, is reported, or is read through that /XRefStm. Where
+        // As above, the search near the newest table's /Prev passes stream 12 over and takes the table past the comment, whose
+        // /Prev names the first of 300 or 400 spaces before the oldest table, which names nothing — or, past a table no link
+        // names written right before the run, names stream 12 through /XRefStm. Read whole, the chain crosses the run and reads
+        // the oldest table: stream 12, which no link reaches, is reported, or is read through that /XRefStm. Where
         // MaxTrailerLength, lowered to 256, cuts the run, the section past it is the guard's, cut where it is named and not
-        // looked for nearby, where a search took a table, the oldest past the run or the one before it no link names, which
-        // the reader cannot tell apart without reading past the guard. The chain ends there, object 5 reading as null until
-        // the bound is raised, and the link that may name stream 12 is the guard's to hide: no stream passed over is
+        // looked for nearby, since a search would take a table, the oldest past the run or the one before it no link names,
+        // which the reader cannot tell apart without reading past the guard. The chain ends there, object 5 reading as null
+        // until the bound is raised, and the link that may name stream 12 is the guard's to hide: no stream passed over is
         // reported, the report the file makes read whole withheld with the rest (#156, #289, ADR 34).
         var (file, _, own, runAt, older, _, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
             "the oldest table", run, oldestNamesOwn, unnamedTable);
@@ -9844,29 +9845,40 @@ public class CrossReferenceChainTests
     [InlineData("/XRefStm", "", false, "a comment before obj", JustPastTheHeader)]
     [InlineData("startxref", "nothing", false, "leading zeros", 0)]
     [InlineData("startxref", "nothing", false, "a comment before obj", JustPastTheHeader)]
+    [InlineData("/Prev", "stream 6", true, "leading zeros", AfterTheKeywordsO)]
+    [InlineData("/Prev", "stream 6", true, "leading zeros", AfterTheKeywordsOb)]
+    [InlineData("/XRefStm", "", false, "leading zeros", AfterTheKeywordsO)]
+    [InlineData("/XRefStm", "", false, "leading zeros", AfterTheKeywordsOb)]
+    [InlineData("startxref", "nothing", false, "leading zeros", AfterTheKeywordsO)]
+    [InlineData("startxref", "nothing", false, "leading zeros", AfterTheKeywordsOb)]
     public void An_object_header_a_trailer_guard_cuts_at_an_offset_the_chain_names_is_the_guard_s_section_as_a_dictionary_it_cuts_is(
         string named, string near, bool namesOwn, string header, int maxTrailerLength)
     {
         // What MaxTrailerLength, lowered, cuts where the chain names a section may be no dictionary: the header of the
         // object there, whose number or generation runs on past the guard, written with 300 zeros, or with a run of
-        // signs that starts with a + (#327), or whose tokens a comment of 300 dashes parts, before obj or before the
-        // generation, all of which a load reads (#261). The reading reaches the guard before it knows what the object
-        // is, and what lies past the cut may be the section: the guard's, cut where it is named and not looked for
-        // nearby, the chain ending there, as where a bound three bytes past the header cuts the dictionary on the
-        // padding before its /Type (#289, ADR 34). A search near the offset read past the guard: the section was
-        // reported missing, or found moved where it lay near another, the guard's cut laid on the file. Where a /Prev
-        // names the place — stream 7's, as above, the oldest section, whose own /Prev names stream 11, or nothing —,
-        // what lay past the cut may be a /Prev the chain would follow; where an /XRefStm names it — stream 9's, as
-        // above, the chain never following its /Prev —, the cut is what would end the chain there (#264). Either way
-        // the chain's cut withholds the report of stream 11, passed over near the newest table's /Prev, even where
-        // stream 7 names nothing and the chain read whole reports it. Where startxref names the place, the index is
-        // rebuilt as the document opens, and the validator says it checked the chain in part, where it said startxref
-        // was wrong; the rebuild merges the cross-reference streams' dictionaries as trailers, /Root among their keys
-        // (#154).
+        // signs that starts with a + (#327), whose obj keyword the guard cuts after its o or its ob, or whose tokens a
+        // comment of 300 dashes parts, before obj or before the generation, all of which a load reads (#261). The
+        // reading reaches the guard before it knows what the object is, and what lies past the cut may be the section:
+        // the guard's, cut where it is named and not looked for nearby, the chain ending there, as where a bound three
+        // bytes past the header cuts the dictionary on the padding before its /Type (#289, ADR 34). A search near the
+        // offset would read past the guard, and could take another section for the one cut, laying the guard's cut on
+        // the file. Where a /Prev names the place — stream 7's, as above, the oldest section, whose own /Prev names
+        // stream 11, or nothing —, what lies past the cut may be a /Prev the chain would follow; where an /XRefStm names
+        // it — stream 9's, as above, the chain never following its /Prev —, the cut is what would end the chain there
+        // (#264). Either way the chain's cut withholds the report of stream 11, passed over near the newest table's
+        // /Prev, even where stream 7 names nothing and the chain read whole reports it. Where startxref names the place,
+        // the index is rebuilt as the document opens, as for any guard that leaves the chain no section, and the
+        // validator says it checked the chain in part, the cut being the guard's and not the file's; the rebuild merges
+        // the cross-reference streams' dictionaries as trailers, /Root among their keys (#154).
         var written = HeaderWrittenAs(header, named == "/XRefStm" ? 9 : 7);
-        var limits = maxTrailerLength == 0
-            ? PdfReaderLimits.Default
-            : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength == JustPastTheHeader ? written.Length + 3 : maxTrailerLength };
+        var limits = maxTrailerLength switch
+        {
+            0 => PdfReaderLimits.Default,
+            JustPastTheHeader => PdfReaderLimits.Default with { MaxTrailerLength = written.Length + 3 },
+            AfterTheKeywordsO => PdfReaderLimits.Default with { MaxTrailerLength = written.Length - 2 },
+            AfterTheKeywordsOb => PdfReaderLimits.Default with { MaxTrailerLength = written.Length - 1 },
+            _ => PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength },
+        };
         var cut = maxTrailerLength != 0;
         byte[] read;
 
@@ -9976,18 +9988,17 @@ public class CrossReferenceChainTests
     public void A_value_a_trailer_guard_cuts_before_it_says_what_it_is_at_an_offset_the_chain_names_is_the_guard_s_section_as_a_header_it_cuts_is(
         string named, string afterHeader, int maxTrailerLength)
     {
-        // Cross-reference stream 7, which indexes object 5's new revision, lies less than 512 bytes past the older table,
-        // which indexes its old one: the /Prev of a newer table names it, or startxref, or a hybrid table's /XRefStm. Its
-        // header is read whole, but MaxTrailerLength cuts the reading before its value says what it is: 70,000 spaces or a
-        // comment of 70,000 dashes after obj, which ISO 32000-1 allows, run past the default 64 KB, or leave the first < of
-        // the dictionary the bound's last byte; a bound of 7, 8 or 9 bytes ends at obj, at the end of line after it, or at
-        // that <. What lies past the cut may be the section, as past a header the guard cuts: the guard's, cut where it is
-        // named and not looked for nearby, the chain ending there, and the validator saying it checked the chain in part. The
-        // reading took the value for a null that is no cross-reference stream: the search near the offset took the older
-        // table, and served object 5's old revision, the section said to be shifted and the newest table's /Size wrong — or,
-        // past the /XRefStm, left the stream to the /Prev, the naming said to be wrong. Where startxref names the place, the
-        // index is rebuilt as the document opens, which finds object 5's new revision, and the validator no longer says
-        // startxref is wrong. The bound raised reads the stream whole (#289, ADR 34).
+        // Cross-reference stream 7, which indexes object 5's new revision, lies less than 512 bytes past the older table, which
+        // indexes its old one: the /Prev of a newer table names it, or startxref, or a hybrid table's /XRefStm. Its header is
+        // read whole, but MaxTrailerLength cuts the reading before its value says what it is: 70,000 spaces or a comment of
+        // 70,000 dashes after obj, which ISO 32000-1 allows, run past the default 64 KB, or leave the first < of the dictionary
+        // the bound's last byte; a bound of 7, 8 or 9 bytes ends at obj, at the end of line after it, or at that <. What lies
+        // past the cut may be the section, as past a header the guard cuts: the guard's, cut where it is named and not looked
+        // for nearby, the chain ending there, and the validator saying it checked the chain in part. A search near the offset
+        // would read past the guard and take the older table, serving object 5's old revision — or, past the /XRefStm, would
+        // leave the stream to the /Prev and say the naming wrong —, the guard's cut laid on the file. Where startxref names the
+        // place, the index is rebuilt as the document opens, as for any guard that leaves the chain no section, which finds
+        // object 5's new revision. The bound raised reads the stream whole (#289, ADR 34).
         var (file, _, stream, _) = NearbyFiles.StreamNearAnOlderTable(named, AfterStreamSevensHeader(afterHeader));
         var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
         var raised = maxTrailerLength == 0 ? PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 } : PdfReaderLimits.Default;
@@ -10053,8 +10064,8 @@ public class CrossReferenceChainTests
 
         document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset, section.Fault))
             .Should().Equal(whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset, section.Fault)));
-        // The guard's report stands in for the report of the section startxref names as missing, as for any section a guard
-        // met as it was read.
+        // The guard's report stands in for the report of the section startxref names as missing: the reader withholds that
+        // report wherever a guard was met, though this cut lost no section (#435).
         document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
             whole.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position))
                 .Where(diagnostic => diagnostic.Code != PdfDiagnosticCodes.XRefSectionMissing)
@@ -11159,6 +11170,18 @@ public class CrossReferenceChainTests
     /// the window holds the header, its end of line and the <c>&lt;&lt;</c> that opens the dictionary after it.
     /// </summary>
     private const int JustPastTheHeader = -1;
+
+    /// <summary>
+    /// Stands, in a row, for a <c>MaxTrailerLength</c> that ends after the <c>o</c> of the <c>obj</c> keyword of the header
+    /// <see cref="HeaderWrittenAs"/> writes.
+    /// </summary>
+    private const int AfterTheKeywordsO = -2;
+
+    /// <summary>
+    /// Stands, in a row, for a <c>MaxTrailerLength</c> that ends after the <c>ob</c> of the <c>obj</c> keyword of the header
+    /// <see cref="HeaderWrittenAs"/> writes.
+    /// </summary>
+    private const int AfterTheKeywordsOb = -3;
 
     /// <summary>The sound document, saved once more: an update adding object 4, its <c>/Prev</c> naming the first table.</summary>
     private const string SoundUpdated = PdfTemplate.Sound + """
