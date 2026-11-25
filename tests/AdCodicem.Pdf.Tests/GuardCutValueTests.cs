@@ -2228,13 +2228,14 @@ public class GuardCutValueTests
 
     [Theory]
     [InlineData(8, true)]
+    [InlineData(11, true)]
     [InlineData(12, false)]
     public void The_places_of_rows_the_chain_does_not_take_are_kept_up_to_the_index_bound(int maxIndexEntries, bool cut)
     {
         // As above, but three updates each redefine objects 1, 2, 3 and 6: the chain reads twelve rows it does not take, the
-        // first table's four last. MaxIndexEntries bounds how many places they give are kept, apart from the index, which
-        // takes six numbers: past eight, the first table's are not kept, the guard reported once, and nothing proves the
-        // endstream of stream 4, which its row of object 6 alone did (#287).
+        // first table's four last, its row of object 6 the twelfth. MaxIndexEntries bounds how many are kept, apart from the
+        // index, which takes six numbers: past the bound, those left are not kept, the guard reported once, and nothing
+        // proves the endstream of stream 4, which the first table's row of object 6 alone did (#287).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -2271,13 +2272,125 @@ public class GuardCutValueTests
 
         if (cut)
         {
-            reports.Should().ContainSingle().Which.Should().StartWith(
-                "The cross-reference sections hold more than 8 rows the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not.");
+            reports.Should().ContainSingle().Which.Should().StartWith(Invariant(
+                $"The cross-reference sections hold more than {maxIndexEntries} rows the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not."));
         }
         else
         {
             reports.Should().BeEmpty();
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_table_read_again_in_a_larger_window_counts_none_of_its_rows_as_rows_not_taken(bool straddle)
+    {
+        // The first table indexes 3,275 objects, its trailer keyword parted by the edge of the 64 KB window it is first read
+        // in, or not; an update rewrites objects 1 and 2. Read again in a larger window, each of the table's rows was noted
+        // as a row not taken, the index having taken it from the same row: with MaxIndexEntries at the 3,276 numbers the
+        // index holds, the bound on rows not taken was reported, and thrown under ThrowOnLimit, on a valid file (#287).
+        const int Size = 3276;
+        var file = new HandWrittenFile();
+        var offsets = new long[Size];
+        offsets[1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        offsets[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < Size; number++)
+        {
+            offsets[number] = file.Object(number, "null");
+        }
+
+        var first = file.Position;
+        var table = new StringBuilder(Invariant($"xref\n0 {Size}\n0000000000 65535 f \n"));
+
+        for (var number = 1; number < Size; number++)
+        {
+            table.Append(Invariant($"{offsets[number]:D10} 00000 n \n"));
+        }
+
+        // The trailer keyword starts 65,532 bytes past the table's own: its first four bytes end the first window.
+        var padding = 65532 - table.Length + (straddle ? 0 : 20);
+
+        if (padding > 0)
+        {
+            table.Append(new string(' ', padding - 1)).Append('\n');
+        }
+
+        table.Append(Invariant($"trailer\n<< /Size {Size} /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
+        file.Raw(table.ToString());
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev 2 >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var update = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \ntrailer\n<< /Size {Size} /Root 1 0 R /Prev {first} >>\nstartxref\n{update}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = Size }, ThrowOnLimit = true };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(Size);
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Rev")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_index_s_own_bound_is_reported_beside_the_bound_on_rows_not_taken_in_one_section()
+    {
+        // Two updates rewrite objects 1 to 3, and MaxIndexEntries is 4: in the first table, the rows not taken reach the
+        // bound, and so does the index, at object 5. Both were reported where the table lies, and the index's report, the
+        // second, was dropped as the first's repeat: nothing said object 5 was not indexed (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "(three)"),
+            [4] = file.Object(4, "(four)"),
+            [5] = file.Object(5, "(five)"),
+        };
+        var previous = file.Table(6, rows, "/Size 6 /Root 1 0 R");
+
+        for (var update = 0; update < 2; update++)
+        {
+            var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+            var three = file.Object(3, Invariant($"(three {update})"));
+            var table = file.Position;
+            file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n"));
+            previous = table;
+        }
+
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Select(entry => entry.Message[..30])
+            .Should().BeEquivalentTo("The cross-reference sections h", "The index reached 4 entries; t");
+    }
+
+    [Fact]
+    public void A_row_not_taken_that_names_no_header_proves_no_endstream()
+    {
+        // Stream 4's data spells endstream and endobj, and goes on; an older row of object 6, which an update supersedes,
+        // names the byte past that endobj, where no header starts. The row proved the endstream the data spells the
+        // stream's own, and its data was taken short and as the file's (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>"),
+            [5] = file.Object(5, new string(' ', 2000) + "49"),
+        };
+        rows[4] = file.Position;
+        file.Raw("4 0 obj\n<< /Length 5 0 R >>\nstream\nBT ET\nendstream\nendobj\n");
+        rows[6] = file.Position;
+        file.Raw("q 1 0 0 1 0 0 cm Q 0 0 m S\nendstream\nendobj\n");
+        var first = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var six = file.Object(6, "(new six)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {first} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().Data.CutByGuard.Should().BeTrue();
     }
 
     [Fact]

@@ -244,8 +244,9 @@ the document's searches for `endstream` have read as much of the file as they ma
 guard's, taken without a search, but weighed as any length so taken: ended short of it or read empty, as the table above
 gives it, it is reported, the message naming the object the guard cut or left out; so is what a search made for another
 object whose data starts at the same place found, for every object but the one it was made for. An `endstream` is taken for the stream's own, its end the file's, only where what follows its object's end — its
-`endobj`, or the `endstream` where none follows — is the next object the index places, a cross-reference stream the
-chain read, the end of the file, or the `xref` or `startxref` keyword. White space or comments before the keyword, an
+`endobj`, or the `endstream` where none follows — is the next object the index places, an object a row the chain read
+and did not take places, a header starting there ([#287](https://github.com/AdCodicem/AdCodicem.Pdf/issues/287)), a
+cross-reference stream the chain read, the end of the file, or the `xref` or `startxref` keyword. White space or comments before the keyword, an
 end-of-line above all, which only the hidden length says are the data's or not, leave where the data ends to the guard
 as it decodes, as [Damaged stream data](#damaged-stream-data) says.
 

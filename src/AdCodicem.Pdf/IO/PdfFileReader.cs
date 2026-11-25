@@ -1106,25 +1106,31 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// refused, written directly and in the file. An old definition of an object an update rewrote is still where the older
     /// section's row places it, and is the next object after a stream as much as one the index serves: the proof that an
     /// <c>endstream</c> is the stream's own counts them as the chain's own proof counts every row its section holds (#287).
-    /// Null until the first; kept for the document's life, as the chain's index is.
+    /// Null until the first is kept; kept for the document's life, as the chain's index is.
     /// </summary>
     /// <remarks>
-    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> bounds how many are kept, apart from the index, whose room they take
-    /// none of: 8 bytes each, sorted as they are asked for (<see cref="SortedOffsets"/>). Past the bound, they are not kept,
-    /// the guard reported once (<see cref="NoteRowNotTaken"/>).
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> bounds how many rows are noted, apart from the index, whose room they
+    /// take none of (<see cref="NoteRowNotTaken"/>). Noted rows wait in <see cref="_rowsNotTakenHeld"/> until a proof first
+    /// asks (<see cref="RowNotTakenAtOrBefore"/>), so that a table read again in a larger window, or a place a search near
+    /// an offset tries and drops, gives back the rows it noted (<see cref="GiveBackRowsNotTaken"/>); then they are sorted
+    /// in, 8 bytes each once sorted (<see cref="SortedOffsets"/>).
     /// </remarks>
     private SortedOffsets? _rowsNotTaken;
 
-    /// <summary>How many places <see cref="_rowsNotTaken"/> holds, with those a reading of a place still holds apart.</summary>
+    /// <summary>The places of rows not taken noted since a proof last asked, in the order they were noted; null until one is.</summary>
+    private List<long>? _rowsNotTakenHeld;
+
+    /// <summary>How many rows not taken were noted, those held and those sorted in.</summary>
     private long _rowsNotTakenCount;
 
     /// <summary>
-    /// The places the reading of a place a search near an offset tries noted, held apart until the place is kept or dropped
-    /// (<see cref="RollBackIndex"/>); null outside such a reading.
+    /// How many places <see cref="_rowsNotTakenHeld"/> held when the reading of a place a search near an offset tries began,
+    /// which a place dropped gives back to (<see cref="RollBackIndex"/>); -1 outside such a reading, which keeps the rows
+    /// held until it ends.
     /// </summary>
-    private List<long>? _rowsNotTakenTentative;
+    private int _rowsNotTakenMark = -1;
 
-    /// <summary>Whether a row the chain did not take found <see cref="_rowsNotTaken"/> full, which reported the guard.</summary>
+    /// <summary>Whether a row the chain did not take found the rows noted at the bound, which reported the guard.</summary>
     private bool _rowsNotTakenFull;
 
     /// <summary>
