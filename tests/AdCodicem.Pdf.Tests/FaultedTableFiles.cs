@@ -109,6 +109,70 @@ internal static class FaultedTableFiles
         return (file.Bytes, oldest, previous, last);
     }
 
+    /// <summary>
+    /// A document saved three times whose middle table, at <c>Middle</c>, holds a subsection <c>4 3</c> whose row for object
+    /// 4 is sound, then <paramref name="rest"/>. The first revision writes object 4 <c>(old four)</c> and object 5
+    /// <c>(old five)</c>, and a classic table at <c>Oldest</c>, <c>/Size 7</c>, that indexes them. The second writes object
+    /// 4 <c>(four)</c> and object 5 <c>(five)</c>, and the middle table. The last writes the catalog, its page tree and page,
+    /// before the first revision, or past <paramref name="between"/> where <paramref name="objectsBetween"/> says so, and a
+    /// classic table at <c>Newest</c>, <c>/Size 7</c>, that indexes them and names the middle table through <c>/Prev</c>,
+    /// past <paramref name="between"/>, which follows the middle table at once.
+    /// </summary>
+    /// <param name="rest">
+    /// The rest of the middle table: "head", a row for object 5 that ends in <c>x</c>, then the head of the free list as the
+    /// last row, written just before the trailer keyword as Acrobat PDFMaker writes it, and a trailer that gives
+    /// <c>/Size 7</c>, <c>/Prev</c> the oldest table and an <c>/ID</c>; "lost", a sound row for object 5 and the head of the
+    /// free list, then <c>/Bad 1</c>, and no trailer; "dictionary", a row for object 5 that ends in <c>x</c>, then a line
+    /// <c>0000000000 00002</c>, which reads as a subsection header, a dictionary <c>&lt;&lt; /A 1 &gt;&gt;</c>, which its
+    /// first row starts with, and <c>/Bad 1</c>, and no trailer.
+    /// </param>
+    /// <param name="between">What lies between the middle table and the newest table, before the last revision's objects.</param>
+    /// <param name="objectsBetween">Whether the last revision's objects lie between the two tables, past <paramref name="between"/>.</param>
+    public static (byte[] File, long Oldest, long Middle, long Newest) Pdfmaker(string rest, string between = "", bool objectsBetween = false)
+    {
+        var file = new HandWrittenFile();
+        var newest = new Dictionary<int, long>();
+
+        if (!objectsBetween)
+        {
+            WriteLastObjects(file, newest);
+        }
+
+        var oldFour = file.Object(4, "(old four)");
+        var oldFive = file.Object(5, "(old five)");
+        var oldest = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 1\n0000000000 65535 f \n4 2\n{Row(oldFour)}{Row(oldFive)}trailer\n<< /Size 7 >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var five = file.Object(5, "(five)");
+        var middle = file.Position;
+        file.Raw("xref\n4 3\n" + Row(four) + rest switch
+        {
+            "head" => Invariant($"{five:D10} 00000 x \n0000000000 65535 f \ntrailer\n<< /Size 7 /Prev {oldest} /ID [<0102> <0304>] >>\n"),
+            "lost" => Row(five) + "0000000000 65535 f \n/Bad 1\n",
+            "dictionary" => Invariant($"{five:D10} 00000 x \n0000000000 00002\n<< /A 1 >>\n/Bad 1\n"),
+            _ => throw new ArgumentOutOfRangeException(nameof(rest), rest, null),
+        });
+        file.Raw(between);
+
+        if (objectsBetween)
+        {
+            WriteLastObjects(file, newest);
+        }
+
+        var last = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 4\n0000000000 65535 f \n{Row(newest[1])}{Row(newest[2])}{Row(newest[3])}trailer\n<< /Size 7 /Root 1 0 R /Prev {middle} >>\nstartxref\n{last}\n%%EOF\n"));
+        return (file.Bytes, oldest, middle, last);
+    }
+
+    private static void WriteLastObjects(HandWrittenFile file, Dictionary<int, long> written)
+    {
+        written[1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        written[2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        written[3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+    }
+
     private static string Row(long offset) => Invariant($"{offset:D10} 00000 n \n");
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

@@ -27,9 +27,11 @@ internal sealed partial class PdfFileReader
     /// on through that <c>/Prev</c>, and no older section's row stands for a number the stream declares, which is looked
     /// for by rebuilding the index too (#208) — but where <c>startxref</c> names it, the whole file is rebuilt, as for any
     /// first section that cannot be read. So does a classic table a <c>/Prev</c> names whose fault lies among its rows,
-    /// read on past it to its trailer, which is merged: the chain goes on through that trailer's <c>/Prev</c>, under the
-    /// checks any <c>/Prev</c> is read under, and no older section's row stands for a number below its <c>/Size</c> (#324);
-    /// one whose trailer a guard cut has its <c>/Prev</c> judged, as below.
+    /// read on from its first fault to its trailer, which is merged: the chain goes on through that trailer's <c>/Prev</c>,
+    /// under the checks any <c>/Prev</c> is read under, and no older section's row stands for a number below its
+    /// <c>/Size</c>, nor in the rest of a subsection its faults ended (#324); one whose trailer a guard cut has its
+    /// <c>/Prev</c> judged as a whole read of the table judges it, an offset in the file the chain has not reached the
+    /// guard's, as below.
     /// A section read only in part — a row that is no row ends a subsection, a stream
     /// holds fewer rows than it declares, the end of the file cuts a table before its trailer once it read a row, a row is
     /// refused — is kept, the section <c>startxref</c> names among them: its rows are read and its trailer followed where it
@@ -273,13 +275,19 @@ internal sealed partial class PdfFileReader
 
                     // A stream a guard's cut of a value its rows are read with keeps from being read gives its /Prev apart,
                     // its dictionary read whole, judged as one a section whose rows a guard stopped gives, never read (#264,
-                    // #329); so does a classic table read on past a fault among its rows to a trailer a guard cut (#324).
-                    // Where it starts is reached, as for a stream the chain goes on past (#208): a /Prev that names it
-                    // again loops.
-                    if (_previousPastGuard >= 0)
+                    // #329). A classic table read on past a fault among its rows to a trailer a guard cut gives the /Prev
+                    // written whole before the cut apart too (#324), but its fault stopped its rows, not a guard: that /Prev
+                    // is judged as a whole read of the table judges it, once the table is reported, as that read reports it
+                    // first, and its /XRefStm, which a whole read does not follow, is not judged. Where it starts is
+                    // reached, as for a stream the chain goes on past (#208): a /Prev that names it again loops.
+                    var judged = section is { TrailerCutByLimit: true, Trailer: { } cutTrailer }
+                        ? SectionOffset(cutTrailer, PdfName.Prev, section.Offset, out _)
+                        : _previousPastGuard;
+
+                    if (judged >= 0)
                     {
                         RecordSectionReached(section, sectionsAt);
-                        offset = _previousPastGuard;
+                        offset = judged;
                         naming = "/Prev";
                         namedFrom = section.Offset;
                         pastGuard = true;
@@ -1180,9 +1188,10 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// <para>
     /// The numbers the stream declares are refused to the older sections' rows first (<see cref="RefuseDeclared"/>), and
-    /// those below the table's trailer's <c>/Size</c> (<see cref="RefuseBelowSize"/>): its rows, lost, may give a newer
-    /// revision of any of them, which an older row would stand for in silence, and the object is looked for by rebuilding
-    /// the index instead, which finds the last definition the file writes. Its <c>/Prev</c> is
+    /// those below the table's trailer's <c>/Size</c> with the rest of each subsection its faults ended, every number where
+    /// that <c>/Size</c> gives no count or its rows contradict it (<see cref="RefuseBelowSize"/>): its rows, lost, may give
+    /// a newer revision of any of them, which an older row would stand for in silence, and the object is looked for by
+    /// rebuilding the index instead, which finds the last definition the file writes. Its <c>/Prev</c> is
     /// read as a whole read reads it (<see cref="ReadSectionOffset"/>), and the section is then reported once, as one that is
     /// there and cannot be read, the index left incomplete: where the chain goes on through that <c>/Prev</c> — it names an
     /// offset, or leads to what a guard hides —, the report says so; where it is no offset, the report after it says so
@@ -1208,7 +1217,7 @@ internal sealed partial class PdfFileReader
     {
         if (section.Kind == XRefSectionKind.Table)
         {
-            RefuseBelowSize(dictionary);
+            RefuseBelowSize(dictionary, section);
         }
         else
         {
@@ -1294,28 +1303,40 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Refuses to the rows of every section the chain reads from here on, older revisions, every object number below the
-    /// <c>/Size</c> the trailer of a classic table gives, which the chain goes on past through that trailer's <c>/Prev</c>,
-    /// its rows past a fault unread (#324): any of them may have had a row there, as every row of a valid table numbers an
-    /// object below its <c>/Size</c>, a newer revision of the object than an older row gives. Every number, where the
-    /// <c>/Size</c> gives no count of objects — none, one written as a reference, which ISO 32000-1 makes direct (Table
-    /// 15), or one that is no integer of 0 or more.
+    /// <c>/Size</c> the trailer of classic table <paramref name="section"/> gives, which the chain goes on past through that
+    /// trailer's <c>/Prev</c>, its rows past a fault unread (#324): any of them may have had a row there, as every row of a
+    /// valid table numbers an object below its <c>/Size</c>, a newer revision of the object than an older row gives. So is
+    /// the rest of each subsection its faults ended, as for a table read only in part (<see cref="RefuseRowsLost"/>), which
+    /// its header declared whatever the <c>/Size</c>. Every number, where the <c>/Size</c> gives no count of objects —
+    /// none, one written as a reference, which ISO 32000-1 makes direct (Table 15), one that is no integer of 0 or more, or
+    /// one a row the table read contradicts, numbering an object at or above it —, or where the lost rows were more ranges
+    /// than <see cref="MaxRefusedRanges"/>.
     /// </summary>
     /// <remarks>
-    /// The subsection headers past the fault are not parsed for the numbers they give: they lie in damaged bytes, past the
-    /// rows a whole read would have checked.
+    /// The subsection headers the search for the trailer crosses are not parsed for the numbers they give: they lie in
+    /// damaged bytes, past the rows a whole read would have checked. Those the reading of the rows met before it stopped —
+    /// past a row that is no row, the rows after it misread — are taken as they read, as for a table read only in part:
+    /// the rows they lost are refused too, which costs at most a rebuild for an object an older row places.
     /// </remarks>
-    private void RefuseBelowSize(PdfDictionary trailer)
+    private void RefuseBelowSize(PdfDictionary trailer, XRefSectionRecord section)
     {
         var size = trailer.GetRaw(PdfName.Size);
 
-        if (size is PdfReference || size.AsInteger() is not { } count || count < 0)
+        if (size is PdfReference || size.AsInteger() is not { } count || count < 0 || section.HighestNumber >= count || _rowsLostPast)
         {
             RefuseEveryNumber();
+            return;
         }
-        else if (count > 0)
+
+        if (count > 0)
         {
             Span<(long First, long End)> below = [(0, count)];
             RefuseRanges(below);
+        }
+
+        if (_rowsLost is { } lost)
+        {
+            RefuseRanges(CollectionsMarshal.AsSpan(lost));
         }
     }
 

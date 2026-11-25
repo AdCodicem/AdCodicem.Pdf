@@ -409,8 +409,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     private static readonly SearchValues<byte> TableBytes = SearchValues.Create("0123456789+-nf\0\t\n\f\r "u8);
 
-    /// <summary>The bytes that may start a comment, the trailer keyword or a dictionary, among what no table holds.</summary>
-    private static readonly SearchValues<byte> TrailerSearchBytes = SearchValues.Create("%t<"u8);
+    /// <summary>
+    /// The bytes that may start a comment, the trailer keyword, a dictionary, or a <c>startxref</c> or <c>xref</c> keyword,
+    /// which ends a table's revision, among what no table holds.
+    /// </summary>
+    private static readonly SearchValues<byte> TrailerSearchBytes = SearchValues.Create("%t<sx"u8);
 
     private PdfFileSource _source;
     private readonly PdfDiagnostics _diagnostics;
