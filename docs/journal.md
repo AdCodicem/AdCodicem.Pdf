@@ -31,7 +31,7 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   real damage over about 32,300 variants a side: no blocker; two majors, confirmed by refuters and fixed — an update
   cut after the header of a number an object stream held served null, and a classic table read again in a larger
   window noted its rows twice, a false `limit.index-entries` under a lowered bound —; three minors fixed; about twelve
-  nits. Round 2, two lenses over the fixes: no blocker, no major — two minors and four nits; its behavior fixes, made
+  nits. Round 2, two lenses over the fixes: no blocker, no major — two minors and six nits; its behavior fixes, made
   before the loop stopped, taken back and filed, its tests kept.
 - **Mutation** (ADR 53 amended): 69 mutants. 40 killed by the suite, 21 by new tests; 5 equivalent, confirmed by a
   second agent, which refuted two more claims, then killed; 3 filed in [#437] (the give-backs, the sorting while a
