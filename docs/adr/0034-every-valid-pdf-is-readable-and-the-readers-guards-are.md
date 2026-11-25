@@ -283,7 +283,11 @@ of its own values once it is read — the object a `/Prev` or a stream's values 
 cross-reference stream's `/Length` — stop where the guard cuts the object's header, as where it cuts its value: the guard
 reported, or thrown, nothing looked for near the entry, the index not rebuilt, so that the chain's end costs no rebuild
 and no `xref.rebuilt` on a valid file. A later read of that object, or a validation, follows the load rule, which may
-look near the entry and rebuild.
+look near the entry and rebuild. And while [#324](https://github.com/AdCodicem/AdCodicem.Pdf/issues/324) was fixed, a
+classic table a `/Prev` names whose fault lies among its rows came to be read on past that fault to its trailer: a
+`MaxTrailerLength` cut of that trailer leaves the table's fault, met before the cut, the file's — the table reported as
+one that cannot be read, `xref.section-malformed` beside `xref.checked-in-part` —, and its `/Prev`, written whole before
+the cut, is judged as above, never followed.
 
 ## Context
 
