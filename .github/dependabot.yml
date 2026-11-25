@@ -2,6 +2,9 @@ version: 2
 
 # Every entry proposes a version only once it has been public for seven days (cooldown), so that a broken or
 # compromised release has time to be pulled first; security updates ignore the cooldown and open at once.
+# Version-update groups do not apply to security updates, so each entry has a second group, applies-to
+# security-updates, that batches its minor and patch security updates into one pull request (#440); a major
+# security update still arrives alone, for a person.
 # github-actions takes default-days only. No framework major is ignored: the core ships no dependency, and a
 # satellite that ships one decides how it follows that framework's majors (ADR 48).
 updates:
@@ -17,6 +20,9 @@ updates:
       # Minor and patch bumps arrive as one pull request, so the queue stays readable and a major bump
       # stands out as the one that needs a human.
       minor-and-patch:
+        update-types: ["minor", "patch"]
+      security-minor-and-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "build"
@@ -34,6 +40,9 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+      security-minor-and-patch:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "build"
       include: scope
@@ -48,6 +57,9 @@ updates:
     open-pull-requests-limit: 3
     groups:
       minor-and-patch:
+        update-types: ["minor", "patch"]
+      security-minor-and-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "build"
@@ -66,6 +78,9 @@ updates:
       default-days: 7
     groups:
       minor-and-patch:
+        update-types: ["minor", "patch"]
+      security-minor-and-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "build"
