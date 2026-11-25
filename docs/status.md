@@ -69,9 +69,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 10,627 unit on [#427]'s branch at `8e75b8e`, without the remote documents, 10,603 passed and 24 skipped;
-  the 69 timing and memory tests and the 359 of `HostileInputTests` alone; `Remote corpus` run 138 green on its code.
-  Before it, 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
+- **Tests**: 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
+  the 69 timing and memory tests, the 359 of `HostileInputTests` and the 252 of `FilterTests` alone; `Remote corpus`
+  run 141 green on its code but for a refactor after it. Before it, 10,627 unit on [#427]'s branch at `8e75b8e`,
+  without the remote documents, 10,603 passed and 24 skipped; the 69 timing and memory tests and the 359 of
+  `HostileInputTests` alone; `Remote corpus` run 138 green on its code. Before it, 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
   and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 133 green over all 242 on its code. Before
   it, 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote documents fetched, 12,956 passed
   and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 131 green
@@ -718,7 +720,7 @@ One pull request per batch, each design question put to the maintainer after mea
        `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
        merged on 2026-11-25, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02
        (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
-       and [#351], in [#436], open, `Remote corpus` run 140 under way on its branch, which filed [#437] and [#438]
+       and [#351], in [#436], open, `Remote corpus` run 141 green on its branch, which filed [#437] and [#438]
        under M02 (journal of 2026-11-25).
    28. [#185].
    29. [#173].
@@ -838,8 +840,8 @@ One pull request per batch, each design question put to the maintainer after mea
    `xref.section-missing`. Its fourth filed two under M02, placed in no batch yet: [#437], four edges of the tally of
    rows the chain does not take — a proof made while a place a search tries is read, the bound's report hiding the
    index's own, a section read twice through [#156], the held list's storage — and three mutants of it no test kills;
-   [#438], a rebuild taking an integer pair no load reads as a header for another header, and a member's verdict read
-   again for each listing.
+   [#438], a rebuild taking an integer pair no load reads as a header for another header, a member's verdict read
+   again for each listing, and the scan for the memo telling the verdict of every header it takes.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
