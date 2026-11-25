@@ -718,7 +718,8 @@ One pull request per batch, each design question put to the maintainer after mea
        `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
        merged on 2026-11-25, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02
        (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
-       and [#351], in [#436], open, REMOTE_RUN, which filed [#437] and [#438] under M02 (journal of 2026-11-25).
+       and [#351], in [#436], open, `Remote corpus` run 140 under way on its branch, which filed [#437] and [#438]
+       under M02 (journal of 2026-11-25).
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
