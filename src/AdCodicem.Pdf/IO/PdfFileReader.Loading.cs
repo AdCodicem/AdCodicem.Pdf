@@ -129,7 +129,7 @@ internal sealed partial class PdfFileReader
                     CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
 
-        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation, out _))
+        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation, out _, out var stopped))
         {
             if (nearby < 0)
             {
@@ -146,6 +146,13 @@ internal sealed partial class PdfFileReader
             PreserveChainIndex();
             _xref.Set(id.Number, XRefEntry.Found(nearby - _headerOffset, generation));
             return found;
+        }
+
+        // Counted as a re-entry, so that the null is not kept: a later read of the object loads it again, as any read does.
+        if (stopped)
+        {
+            _reentries++;
+            return null;
         }
 
         if (_repaired)
@@ -182,6 +189,13 @@ internal sealed partial class PdfFileReader
     /// cut after a digit —, which the bytes do not tell from the first. Where the search finds no other header of the
     /// object, the row is read as written, as a reader that lexes from it reads it, and the validator says the reader cannot
     /// vouch for it (<see cref="Validation.PdfValidationRuleIds.XRefEntryUnconfirmed"/>).
+    /// <para>
+    /// The outermost of the loads the chain makes of its own values once it is read (<see cref="_loadingChainValues"/>)
+    /// stops where a guard cuts the object's header at the offset, the guard reported or thrown: the chain ended there for
+    /// the guard (ADR 34), and a search near the offset, or the rebuild that follows it, would read past the guard for
+    /// what its report names. Nothing near is searched, and the object is marked cut (<see cref="IsCutAtLimit"/>); a later
+    /// read of it, or a validation, looks for it as any read does (#292).
+    /// </para>
     /// </remarks>
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry that places it.</param>
@@ -193,17 +207,31 @@ internal sealed partial class PdfFileReader
     /// Where the header of the object read starts, past the white space and comments before it: the place a load takes the
     /// entry to give, which a row a few bytes early does not.
     /// </param>
+    /// <param name="stopped">Whether the load stopped at a header a guard cut at the offset, as the chain's own load does.</param>
     private bool TryParseWhereEntryPlaces(
-        int number, XRefEntry entry, long recordedAt, out PdfObject value, out long nearby, out int generation, out long headerAt)
+        int number, XRefEntry entry, long recordedAt, out PdfObject value, out long nearby, out int generation, out long headerAt, out bool stopped)
     {
         var offset = PositionOf(entry);
         nearby = -1;
+        var guards = _guardsReached;
 
         if (TryParseNumberedAt(
             offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
         {
             generation = 0;
+            stopped = false;
             return true;
+        }
+
+        // A guard reached here is one that cut the header: a header read whole returns above, with what the guard left of its
+        // value, or names another object, which reaches no guard.
+        stopped = _loadingChainValues && _loading.Count == 1 && _guardsReached != guards;
+
+        if (stopped)
+        {
+            _cutAtLimit.Add(number);
+            generation = 0;
+            return false;
         }
 
         if (TryFindObjectHeader(number, entry, reportsBound: true, out var header, out generation, out _))
@@ -1180,7 +1208,7 @@ internal sealed partial class PdfFileReader
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry of the chain's index that places it.</param>
     internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry) =>
-        TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out _) ? value : null;
+        TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out _, out _) ? value : null;
 
     /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
@@ -1241,7 +1269,7 @@ internal sealed partial class PdfFileReader
         streamMembers = [];
 
         var guards = _guardsReached;
-        var found = TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out headerAt);
+        var found = TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out headerAt, out _);
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
         // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.

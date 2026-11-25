@@ -586,6 +586,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     private Dictionary<long, DeferredLength>? _deferredLengths;
 
+    /// <summary>
+    /// Whether the loads in progress are those the chain makes of its own values once it is read — each object a guard cut
+    /// that a value led to (<see cref="ReachChainValuesCut"/>), a cross-reference stream's deferred <c>/Length</c>
+    /// (<see cref="CheckDeferredLengths"/>) —, whose outermost load stops at a header a guard cuts where the entry places
+    /// it (<see cref="TryParseWhereEntryPlaces"/>, #292).
+    /// </summary>
+    private bool _loadingChainValues;
+
     /// <summary>How many times a guard was reached, reported or not: a read that reached one was cut by it.</summary>
     private int _guardsReached;
 
