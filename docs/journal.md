@@ -41,8 +41,8 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 - **Checks.** The batch check at `8e75b8e`, 10,627 unit tests; the 69 timing and memory tests and the 359 of
   `HostileInputTests` alone; the corpus differential against `main` identical; `Remote corpus` run 138 green on its
   first attempt; benchmarks against `main`, alone, twice in opposite orders: allocation identical but for a field of
-  the reader, time within the noise — opening 300,000 one-row subsections 6 to 7 % slower in both orders, as the probe,
-  whose code is untouched, 4 to 8 %. Patch coverage 98.64 %, three partial lines no input takes.
+  the reader, time within the noise — a few cases faster or slower by up to 7 % in both orders, as the probe, whose
+  code is untouched, is 4 to 8 % slower. Patch coverage 98.64 %, three partial lines no input takes.
 - **For callers.** No public API change. Under a trailer guard, a section the guard hid is reported as the guard's
   (`xref.checked-in-part`) instead of an Error of the file, and a `/Prev` written whole before the cut is judged; a
   faulted table mid-chain no longer costs a rebuild of what older sections index.
