@@ -1814,14 +1814,18 @@ public class CrossReferenceChainTests
     [InlineData("", false)]
     [InlineData("/Size 8 0 R", false)]
     [InlineData("/Size -1", false)]
-    [InlineData("/Size 0", true)]
+    [InlineData("/Size 0", false)]
+    [InlineData("/Size 3", false)]
+    [InlineData("/Size 4", false)]
+    [InlineData("/Size 5", true)]
     public void A_table_read_on_past_its_fault_whose_trailer_gives_no_count_refuses_every_number_to_the_older_rows(string size, bool counts)
     {
         // The faulted table's trailer gives no /Size, a negative one, or a reference, where ISO 32000-1 makes it direct, to
         // object 8, which the newest table places and which holds 8: which numbers its rows past the fault held is not left to
-        // what an object holds, and no older row stands for any number, object 9 among them, found by rebuilding the index. A
-        // /Size of 0 counts no object, and refuses none: the oldest table's rows stand, object 7's older revision with them
-        // (#324).
+        // what an object holds, and no older row stands for any number, object 9 among them, found by rebuilding the index.
+        // Nor does a /Size the table's own rows contradict: its row for object 4, read before the fault, numbers an object at
+        // or above a /Size of 0, 3 or 4, which counts no object then. A /Size of 5 counts the objects below it: the oldest
+        // table's rows above it stand, object 7's older revision with them (#324).
         var (file, _, _, _) = FaultedTableFiles.Revisions("header", size: size, eight: "8");
 
         using var document = PdfDocument.Open(file);
@@ -1963,6 +1967,215 @@ public class CrossReferenceChainTests
         section.Incomplete.Should().BeTrue();
         section.PreviousHandedOn.Should().BeFalse();
         document.Trailer.GetRaw(PdfName.ID).Should().BeOfType<PdfArray>("the trailer past the cut is merged");
+    }
+
+    [Theory]
+    [InlineData("at once")]
+    [InlineData("objects between")]
+    [InlineData("corpus")]
+    public void A_table_whose_rows_misread_past_its_fault_run_over_its_trailer_keyword_is_read_on_from_that_fault_to_its_own_trailer(string shape)
+    {
+        // The middle table's row for object 5 is no row, and the head of the free list, which Acrobat PDFMaker writes as the
+        // last row just before the trailer keyword, reads past it as a subsection header whose first row takes the keyword:
+        // the misreading stops inside the table's own trailer. The reading on starts at the row that is no row and finds that
+        // trailer, whose /Prev it hands on to the oldest table: not the trailer of the newest table, written right after it,
+        // whose /Prev names the faulted table again, nor none, where the last revision's objects lie between the two (#324).
+        // The corpus document, which PDFMaker updated four times, has the row for its object 41 so damaged.
+        var (file, oldest, middle, number, fault, trailer) = MisreadPastFault(shape);
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(middle);
+        report.Message.Should().StartWith(Invariant(
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object {number}, at offset {fault}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev"));
+        var sections = document.Reader.Structure.Sections;
+        var faulted = sections.Should().ContainSingle(section => section.Offset == middle).Which;
+        faulted.State.Should().Be(XRefSectionState.Malformed);
+        faulted.PreviousHandedOn.Should().BeTrue();
+        faulted.TrailerPosition.Should().Be(trailer);
+        var older = sections.Should().ContainSingle(section => section.NamedFrom == middle).Which;
+        older.Offset.Should().Be(oldest);
+        older.State.Should().Be(XRefSectionState.Read);
+        document.Trailer.GetRaw(PdfName.ID).Should().BeOfType<PdfArray>("the faulted table's own trailer is merged");
+        document.Catalog.GetDictionary(PdfName.Pages).Should().NotBeNull();
+        new PdfValidator().Validate(document).Findings.Select(f => f.RuleId).Should().NotContain(PdfValidationRuleIds.XRefChainLoop);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("startxref\n0\n%%EOF\n")]
+    [InlineData("startxref\n0\n%%EOF\ntrailer\n<< /Size 7 /ID [<05> <06>] >>\n")]
+    public void The_search_for_a_faulted_table_s_trailer_ends_with_its_revision_and_takes_no_newer_table_s(string between)
+    {
+        // The middle table's rows end in a stray token, and it has no trailer: the newest table follows it at once, or
+        // past the startxref keyword and the end-of-file marker its revision ends with, and past a trailer keyword with
+        // no table before it in the last file. The search for the faulted table's trailer ends at that xref or
+        // startxref keyword, outside any comment, and finds none, rather than take a trailer of another revision for
+        // its own — the newest table's, whose /Prev names the faulted table again, or the one past the startxref
+        // keyword, whose /ID the document's trailer would take —: the table hands nothing on, and the chain ends there,
+        // the table reported once (#324).
+        var (file, _, middle, newest) = FaultedTableFiles.Pdfmaker("lost", between);
+        var bad = PdfTemplate.OffsetOf(file, "/Bad 1");
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Message.Should().Be(Invariant(
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: it holds a name at offset {bad}, where a subsection or the trailer should start. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index."));
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.Offset, section.State)).Should().Equal((newest, XRefSectionState.Read), (middle, XRefSectionState.Malformed));
+        sections[1].Trailer.Should().BeNull();
+        sections[1].TrailerPosition.Should().Be(bad);
+        sections[1].PreviousHandedOn.Should().BeFalse();
+        Text(document, 4).Should().Be("four");
+        document.Trailer.GetRaw(PdfName.ID).Should().BeNull();
+        new PdfValidator().Validate(document).Findings.Select(f => f.RuleId).Should().NotContain(PdfValidationRuleIds.XRefChainLoop);
+    }
+
+    [Fact]
+    public void The_search_for_a_trailer_past_rows_a_guard_cut_ends_with_the_table_s_revision()
+    {
+        // MaxXRefSectionLength cuts the middle table among its rows, which run, with no trailer, into the newest table written
+        // right after them. The search past the cut for the table's trailer ends at the newest table's xref keyword, and finds
+        // none, rather than take the newest table's trailer, whose /Prev names the cut table again, for the cut table's own:
+        // nothing is judged past the guard, and no loop is reported (#264, #324).
+        var file = new HandWrittenFile();
+        var newest = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var middle = file.Position;
+        file.Raw("xref\n10 12\n" + string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 12)));
+        var last = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 4\n0000000000 65535 f \n{newest[1]:D10} 00000 n \n{newest[2]:D10} 00000 n \n{newest[3]:D10} 00000 n \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {middle} >>\nstartxref\n{last}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 144 } });
+
+        document.Diagnostics.Select(d => (d.Code, d.Position)).Should().Equal((PdfDiagnosticCodes.LimitXRefSectionLength, middle));
+        var section = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        section.Offset.Should().Be(middle);
+        section.CutByLimit.Should().BeTrue();
+        section.Trailer.Should().BeNull();
+        section.TrailerPosition.Should().Be(last);
+        document.Catalog.GetDictionary(PdfName.Pages).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void A_dictionary_the_rows_misread_past_a_fault_run_into_is_not_taken_for_the_table_s_trailer()
+    {
+        // The middle table's row for object 5 is no row; past it, the next line reads as a subsection header whose first row
+        // starts with a dictionary, then a stray token, and the table has no trailer. Read on from the row that is no row, the
+        // search meets its x first, which no table holds: the table is judged by it alone, and the dictionary past it is not
+        // read as the table's trailer, which the document's trailer would take its keys from (#322, #324).
+        var (file, _, middle, _) = FaultedTableFiles.Pdfmaker("dictionary");
+        var x = PdfTemplate.OffsetOf(file, " 00000 x") + 7;
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(middle);
+        var section = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        section.Trailer.Should().BeNull();
+        section.TrailerPosition.Should().Be(x);
+        document.Trailer.GetRaw(PdfName.Get("A")).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_table_read_on_past_its_fault_that_lost_more_ranges_than_are_kept_apart_refuses_every_number()
+    {
+        // The middle table gives 4,097 subsections of one row each, two numbers apart, every row ending in x, then a stray
+        // token, and a trailer whose /Size 3 counts objects 0 to 2: the rows it lost make more ranges than the reader keeps
+        // apart, and which numbers they held cannot be told. No older row stands for any number, object 8,192, whose
+        // subsection the reader could not keep apart, among them: the oldest table's row for it is refused, and the object is
+        // found by rebuilding the index (#210, #324).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var old = file.Object(8192, "(old)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n8192 1\n{old:D10} 00000 n \ntrailer\n<< /Size 8193 >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var updated = file.Object(8192, "(updated)");
+        var middle = file.Position;
+        var rows = new StringBuilder("xref\n");
+
+        for (var number = 0; number <= 8192; number += 2)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{number} 1\n0000000000 00000 x \n");
+        }
+
+        file.Raw(rows.Append(CultureInfo.InvariantCulture, $"/Bad 1\ntrailer\n<< /Size 3 /Prev {oldest} >>\nstartxref\n{middle}\n%%EOF\n").ToString());
+        var last = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 8193 /Root 1 0 R /Prev {middle} >>\nstartxref\n{last}\n%%EOF\n"));
+        updated.Should().BeGreaterThan(old);
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().EndWith(
+            "the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.");
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.Reader.ChainIndex!.TryGet(8192, out _).Should().BeFalse();
+        Text(document, 8192).Should().Be("updated");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Size 5")]
+    [InlineData("/Size 8")]
+    public void A_table_read_on_past_its_fault_refuses_the_rest_of_the_subsection_its_fault_ended_whatever_its_trailer_s_size(string size)
+    {
+        // The middle table's subsection 4 3 numbers objects 4 to 6, and its row for object 5 is no row: the rest of that
+        // subsection is lost, which no older row stands for, whether the trailer's /Size counts those numbers or, at 5, is too
+        // small for them. Object 7, whose subsection lies past the fault, is refused below a /Size of 8; above a /Size of 5,
+        // outside what the rows read before the fault declare, it keeps the oldest table's row, as a /Size too small leaves
+        // it (#324).
+        var (file, _, _, _) = FaultedTableFiles.Revisions("row", size: size);
+
+        using var document = PdfDocument.Open(file);
+
+        var counted = size == "/Size 8";
+        document.Reader.ChainIndex!.TryGet(5, out _).Should().BeFalse("the row for object 5 lies in the subsection the fault ended");
+        document.Reader.ChainIndex.TryGet(7, out _).Should().Be(!counted);
+        Text(document, 7).Should().Be(counted ? "seven" : "old seven");
+        document.WasRepaired.Should().Be(counted);
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("50 0 R", "")]
+    [InlineData(null, " /XRefStm /Nowhere")]
+    public void A_trailer_a_guard_cut_past_a_table_s_fault_has_its_prev_judged_as_a_whole_read_judges_it_and_its_xrefstm_left_alone(
+        string? prev, string keys)
+    {
+        // The faulted table's trailer runs past MaxTrailerLength, its /Prev a reference to an object no section places, or its
+        // /XRefStm a name, both written whole before the cut. The fault, not a guard, stopped its rows: its /Prev is judged as a
+        // whole read of the table judges it, reported missing as no offset after the table, and its /XRefStm, which a whole
+        // read does not follow, is not judged either. What the cut read says past the table's report, and what the validator
+        // finds, are what the whole read says and finds, but for the guard (#324, #328).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("stray", prev, trailer: keys + " /Pad (" + new string('p', 70 * 1024) + ")");
+
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } });
+        using var cut = PdfDocument.Open(file);
+
+        cut.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionUnreadable]);
+        cut.Diagnostics.Skip(2).Select(d => (d.Code, d.Message, d.Position)).Should().Equal(
+            whole.Diagnostics.Skip(1).Select(d => (d.Code, d.Message, d.Position)));
+        whole.Diagnostics.Select(d => d.Code).Should().Equal(prev is null
+            ? [PdfDiagnosticCodes.XRefSectionUnreadable]
+            : [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionMissing]);
+        cut.Diagnostics.Should().NotContain(d => d.Message.Contains("/XRefStm", StringComparison.Ordinal));
+        var cutFindings = new PdfValidator().Validate(cut).Findings
+            .Where(f => f.RuleId != PdfValidationRuleIds.XRefCheckedInPart).Select(f => (f.RuleId, f.Message, f.Location.Position));
+        cutFindings.Should().Equal(new PdfValidator().Validate(whole).Findings.Select(f => (f.RuleId, f.Message, f.Location.Position)));
+        cut.Reader.Structure.Sections.Should().Contain(section => section.Offset == middle && section.TrailerCutByLimit);
     }
 
     [Theory]
@@ -11186,6 +11399,29 @@ public class CrossReferenceChainTests
 
     private static Config Properties =>
         Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
+
+    /// <summary>
+    /// Gives a file whose middle table holds a row that is no row, the rows misread past it running over the table's trailer
+    /// keyword: one <see cref="FaultedTableFiles.Pdfmaker"/> writes, the newest table right after the faulted one or past the
+    /// last revision's objects; or the corpus document Acrobat PDFMaker updated four times, the row for its object 41 ending
+    /// in <c>x</c> rather than <c>n</c>. With the offset of the table the faulted table's own trailer names through
+    /// <c>/Prev</c>, that of the faulted table, the number and offset of its row that is no row, and the offset of its own
+    /// trailer, past that row and the head of the free list.
+    /// </summary>
+    private static (byte[] File, long Oldest, long Middle, int Number, long Fault, long Trailer) MisreadPastFault(string shape)
+    {
+        if (shape == "corpus")
+        {
+            var document = Corpus.Read("vendor/opf-format-corpus/pdfmaker705-word-va-mirecc-abstract-ptsd.pdf");
+            var row = PdfTemplate.OffsetOf(document, "0000022331 00000 n\r\n0000000000 65535 f\r\ntrailer");
+            document[row + 17] = (byte)'x';
+            return (document, 20724, 28449, 41, row, row + 40);
+        }
+
+        var (file, oldest, middle, _) = FaultedTableFiles.Pdfmaker("head", objectsBetween: shape == "objects between");
+        var fault = PdfTemplate.OffsetOf(file, " 00000 x") - 10;
+        return (file, oldest, middle, 5, fault, fault + 40);
+    }
 
     private static string Text(PdfDocument document, int number) =>
         document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>().Subject.ToText();

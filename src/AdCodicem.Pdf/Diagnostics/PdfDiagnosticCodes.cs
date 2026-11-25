@@ -60,11 +60,13 @@ public static class PdfDiagnosticCodes
     /// only it indexes are; and one that gives a <c>/Prev</c> hands that <c>/Prev</c> on, the chain going on to the older
     /// sections, as the message says where that <c>/Prev</c> names an offset or leads to what one of the reader's limits
     /// hides (#208). A classic table a <c>/Prev</c> names whose fault lies among its rows — a row that is no row and what
-    /// follows it, a subsection header that is no header, a stray token — is read on past the fault to its trailer, which
-    /// is merged, and hands that trailer's <c>/Prev</c> on so too, as the message says, no older section's row standing for
-    /// an object numbered below that trailer's <c>/Size</c> — for any, where that <c>/Size</c> gives no count —; a trailer
-    /// one of the reader's limits cut has its <c>/Prev</c> judged, not followed, and the table is reported all the same, its
-    /// fault met before the cut (#324). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the
+    /// follows it, a subsection header that is no header, a stray token — is read on from its first fault to its trailer,
+    /// the search ending with none where the table's revision ends, at a <c>startxref</c> keyword or another table's
+    /// <c>xref</c>; the trailer is merged, and hands its <c>/Prev</c> on so too, as the message says, no older section's
+    /// row standing for an object numbered below that trailer's <c>/Size</c>, or in the rest of a subsection the table's
+    /// faults ended — for any, where that <c>/Size</c> gives no count or a row the table read numbers an object at or above
+    /// it —; a trailer one of the reader's limits cut has its <c>/Prev</c> judged as a whole read of the table judges it, not
+    /// followed, and the table is reported all the same, its fault met before the cut (#324). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the
     /// table that names it, leaves no older section's row standing for the rest of the subsection its fault ended, nor,
     /// where what follows the fault cannot be known — a subsection header that is no header, a stray token, the end of the
     /// file —, for any number its rows do not give (#156). The section <c>startxref</c> names that is there and cannot be
