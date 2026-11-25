@@ -76,7 +76,9 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// The <c>/Length</c> is loaded as any object is: what that load finds or changes comes after the chain's index is
-    /// copied (<see cref="PreserveChainIndex"/>). A length the <c>endstream</c> the chain stopped at confirms — the white
+    /// copied (<see cref="PreserveChainIndex"/>) — but where it reaches a guard on the header of the object its entry
+    /// places, which it stops at, as <see cref="ReachChainValuesCut"/> does: nothing near the entry searched, nothing
+    /// rebuilt, the length the guard's (#292). A length the <c>endstream</c> the chain stopped at confirms — the white
     /// space before it counted, or not all of it — is the stream's own, as the parser takes it for any stream, and says
     /// nothing; so is one the data was taken again to, the section's own row placing it (<see cref="RetakeDeferred"/>).
     /// One that leaves out the carriage return the data the chain took ends in makes that byte the end-of-line's: what
@@ -98,18 +100,35 @@ internal sealed partial class PdfFileReader
         foreach (var (dataStart, deferred) in _deferredLengths)
         {
             var reentries = _reentries;
-            var value = GetObject(deferred.Length);
             var (number, generation) = (deferred.Length.Number, deferred.Length.Generation);
             string? message = null;
+            PdfObject value;
+            PdfObject resolved;
+            bool leftByGuard;
 
-            // The chain is resolved as the parse resolves a /Length, one object further than a reference: the object it
-            // leads to is read before it is asked whether a guard cut it, and what it holds is what is judged.
-            var resolved = value.Resolve();
+            // The /Length is a value the chain read with, loaded as the chain's own: the load stops at a header a guard cuts
+            // where its entry places it, as for the objects the chain's values led to (ReachChainValuesCut, #292).
+            _loadingChainValues = true;
 
-            // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
-            // unknown, not wrong: the guard's report says why, and what the cut left of it, null or an integer it left whole, is
-            // none the file gave (#224).
-            if (LeftByGuard(new PdfReference(deferred.Length, this), PdfReference.MaxChainLength))
+            try
+            {
+                value = GetObject(deferred.Length);
+
+                // The chain is resolved as the parse resolves a /Length, one object further than a reference: the object it
+                // leads to is read before it is asked whether a guard cut it, and what it holds is what is judged.
+                resolved = value.Resolve();
+
+                // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
+                // unknown, not wrong: the guard's report says why, and what the cut left of it, null or an integer it left
+                // whole, is none the file gave (#224).
+                leftByGuard = LeftByGuard(new PdfReference(deferred.Length, this), PdfReference.MaxChainLength);
+            }
+            finally
+            {
+                _loadingChainValues = false;
+            }
+
+            if (leftByGuard)
             {
                 continue;
             }
@@ -205,6 +224,12 @@ internal sealed partial class PdfFileReader
     /// ended at or read through: the guard is reached, and reported, where a load reaches it — and thrown, when the caller
     /// asked for it —, as for a <c>/Length</c> read once the chain is (#263).
     /// </summary>
+    /// <remarks>
+    /// A load that reaches the guard on the object's header, where its entry places it, stops there, as the chain did: it
+    /// looks for nothing near the entry, rebuilds nothing, and keeps no null, the object marked cut. A later read of the
+    /// object, or a validation, reads it as any read does, which may search near the entry and rebuild the index
+    /// (<see cref="TryParseWhereEntryPlaces"/>, #292).
+    /// </remarks>
     private void ReachChainValuesCut()
     {
         if (_chainValuesCut is not { } cut)
@@ -213,10 +238,18 @@ internal sealed partial class PdfFileReader
         }
 
         _chainValuesCut = null;
+        _loadingChainValues = true;
 
-        foreach (var id in cut)
+        try
         {
-            GetObject(id);
+            foreach (var id in cut)
+            {
+                GetObject(id);
+            }
+        }
+        finally
+        {
+            _loadingChainValues = false;
         }
     }
 
