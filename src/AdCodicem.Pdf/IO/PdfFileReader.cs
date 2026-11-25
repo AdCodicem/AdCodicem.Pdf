@@ -95,7 +95,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     private const int HeaderCheckWindow = 64;
 
-    /// <summary>What <see cref="HeaderAt"/> gives where a header still runs past <see cref="PdfReaderLimits.MaxObjectLength"/>.</summary>
+    /// <summary>
+    /// What <see cref="HeaderAt"/> gives where a header still runs past <see cref="PdfReaderLimits.MaxObjectLength"/>; and
+    /// what <see cref="TryParseNumberedAt"/> gives for the number found where the guard cut the header of an object asked
+    /// for by its number.
+    /// </summary>
     private const long HeaderPastGuard = -1;
 
     /// <summary>
@@ -593,7 +597,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Whether the loads in progress are those the chain makes of its own values once it is read — each object a guard cut
     /// that a value led to (<see cref="ReachChainValuesCut"/>), a cross-reference stream's deferred <c>/Length</c>
     /// (<see cref="CheckDeferredLengths"/>) —, whose outermost load stops at a header a guard cuts where the entry places
-    /// it (<see cref="TryParseWhereEntryPlaces"/>, #292).
+    /// it (<see cref="TryParseWhereEntryPlaces"/>, #292). Not while a rebuild one of their loads set off is finished: the
+    /// finish's loads are the rebuild's (<see cref="FinishUnfinishedRebuild"/>).
     /// </summary>
     private bool _loadingChainValues;
 
@@ -766,6 +771,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// so the validation rules judge nothing of their shape.
     /// </summary>
     private readonly HashSet<int> _cutAtLimit = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The objects the chain's own load stopped at as the document opened, a guard having cut the header where the entry
+    /// places them (<see cref="TryParseWhereEntryPlaces"/>): cut until a load reads them again, which decides as any load
+    /// does (#292). Null while there is none.
+    /// </summary>
+    private HashSet<int>? _cutAtStop;
 
     /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
@@ -1704,10 +1716,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, was cut by one of the reader's limits and
-    /// kept as far as the limit let it be read; or, during one of the library's walks, read as null for
+    /// kept as far as the limit let it be read; or, the chain's own load having stopped at a guard that cut its header, left
+    /// unread until a load reads it again; or, during one of the library's walks, read as null for
     /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, until the walk ends.
     /// </summary>
-    internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number) || _walkCut?.Contains(number) == true;
+    internal bool IsCutAtLimit(int number) =>
+        _cutAtLimit.Contains(number) || _cutAtStop?.Contains(number) == true || _walkCut?.Contains(number) == true;
 
     /// <summary>
     /// Starts one of the library's walks of the document, which <see cref="EndWalk"/> ends: the search for a catalog, or a
@@ -2250,6 +2264,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _nullWhileDecoding.TrimExcess();
         Release(_unproduced);
         Release(_cutAtLimit);
+        _cutAtStop = null;
         _endObjMissing.Clear();
         _endObjMissing.TrimExcess();
         _streamLengthFaults.Clear();

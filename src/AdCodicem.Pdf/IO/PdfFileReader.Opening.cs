@@ -227,8 +227,8 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// A load that reaches the guard on the object's header, where its entry places it, stops there, as the chain did: it
     /// looks for nothing near the entry, rebuilds nothing, and keeps no null, the object marked cut. A later read of the
-    /// object, or a validation, reads it as any read does, which may search near the entry and rebuild the index
-    /// (<see cref="TryParseWhereEntryPlaces"/>, #292).
+    /// object, or a validation, reads it as any read does, which may search near the entry and rebuild the index, and what
+    /// it reads decides whether the object is cut (<see cref="TryParseWhereEntryPlaces"/>, #292).
     /// </remarks>
     private void ReachChainValuesCut()
     {
