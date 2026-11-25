@@ -2048,14 +2048,14 @@ internal sealed partial class PdfFileReader
         if (_refusedNumbers is not null && _refusedNumbers.TryGetValue(number, out var refuser))
         {
             section.RowsRefusedBefore |= refuser != section.Ordinal;
-            NoteRowNotTaken(entry, section);
+            NoteRowNotTaken(number, entry);
             return false;
         }
 
         if (RefusedToOlderRows(number))
         {
             section.RowsRefusedBefore = true;
-            NoteRowNotTaken(entry, section);
+            NoteRowNotTaken(number, entry);
             return false;
         }
 
@@ -2064,7 +2064,7 @@ internal sealed partial class PdfFileReader
         {
             if (!_xref.TryAdd(number, entry))
             {
-                NoteRowNotTaken(entry, section);
+                NoteRowNotTaken(number, entry);
             }
         }
         else if (!_xref.TryGet(number, out _))
@@ -2074,18 +2074,20 @@ internal sealed partial class PdfFileReader
         }
         else
         {
-            NoteRowNotTaken(entry, section);
+            NoteRowNotTaken(number, entry);
         }
 
         return true;
     }
 
     /// <summary>
-    /// Notes where a row of <paramref name="section"/> the chain did not take places its object, when it places one in the
-    /// file directly (<see cref="_rowsNotTaken"/>, #287): held apart while a place a search tries is read, kept once it is.
-    /// Past <see cref="PdfReaderLimits.MaxIndexEntries"/> places, none is kept, and the guard is reported once.
+    /// Notes where a row the chain did not take places object <paramref name="number"/>, when it places one in the file
+    /// directly, elsewhere than the entry the index holds for the number (<see cref="_rowsNotTaken"/>, #287): a row read
+    /// again, whose entry the index took from the same row, gives no new place. Past
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> rows noted, none is, and the guard is reported once, where the first
+    /// left out places its object.
     /// </summary>
-    private void NoteRowNotTaken(XRefEntry entry, XRefSectionRecord section)
+    private void NoteRowNotTaken(int number, XRefEntry entry)
     {
         if (entry.Kind != XRefEntryKind.Regular)
         {
@@ -2094,7 +2096,7 @@ internal sealed partial class PdfFileReader
 
         var at = PositionOf(entry.Offset);
 
-        if (!IsInFile(at))
+        if (!IsInFile(at) || (_xref.TryGet(number, out var held) && held.Kind == XRefEntryKind.Regular && PositionOf(held) == at))
         {
             return;
         }
@@ -2109,21 +2111,26 @@ internal sealed partial class PdfFileReader
                     string.Create(
                         CultureInfo.InvariantCulture,
                         $"The cross-reference sections hold more than {CountText.Of(_guard.Bound(PdfLimit.IndexEntries), "row", "rows")} the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not."),
-                    section.Offset);
+                    at);
             }
 
             return;
         }
 
         _rowsNotTakenCount++;
+        (_rowsNotTakenHeld ??= []).Add(at);
+    }
 
-        if (_rowsNotTakenTentative is { } tentative)
+    /// <summary>
+    /// Gives back the rows not taken noted since <see cref="_rowsNotTakenHeld"/> held <paramref name="mark"/> places: what a
+    /// reading read again, or a place dropped, noted.
+    /// </summary>
+    private void GiveBackRowsNotTaken(int mark)
+    {
+        if (_rowsNotTakenHeld is { } held && held.Count > mark)
         {
-            tentative.Add(at);
-        }
-        else
-        {
-            (_rowsNotTaken ??= new()).Add(at);
+            _rowsNotTakenCount -= held.Count - mark;
+            held.RemoveRange(mark, held.Count - mark);
         }
     }
 

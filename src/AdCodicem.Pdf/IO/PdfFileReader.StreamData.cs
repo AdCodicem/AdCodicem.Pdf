@@ -804,16 +804,41 @@ internal sealed partial class PdfFileReader
     {
         var (position, boundary) = EndStreamFollower(absoluteDataEnd, endObj);
         return position >= 0 &&
-            (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position) || IsPlacedAt(position, RowNotTakenAtOrBefore(position)));
+            (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position) || IsPlacedByRowNotTaken(position));
     }
+
+    /// <summary>
+    /// Determines whether a row the chain read and did not take places the object whose header starts at
+    /// <paramref name="position"/> (<see cref="RowNotTakenAtOrBefore"/>), and a header does start there: such a row is an
+    /// older revision's, which a rewrite of the file may have left naming bytes of no object's, and is trusted no further
+    /// than the header the bytes hold (#287).
+    /// </summary>
+    private bool IsPlacedByRowNotTaken(long position) =>
+        IsPlacedAt(position, RowNotTakenAtOrBefore(position)) && PlacedHeaderStartsAt(position);
 
     /// <summary>
     /// Gives the last place at or before <paramref name="position"/> a row the chain read and did not take gives an object
     /// at (<see cref="_rowsNotTaken"/>): one that names white space and comments before a header proves that header as one
     /// that names it does, and only the nearest can name the run the header ends. Null when none does.
     /// </summary>
-    private long? RowNotTakenAtOrBefore(long position) =>
-        _rowsNotTaken?.LastBefore(position + 1) is >= 0 and var at ? at : null;
+    /// <remarks>
+    /// The rows held since a proof last asked are sorted in first, but while a place a search near an offset tries is read,
+    /// whose rows wait until it is kept or dropped.
+    /// </remarks>
+    private long? RowNotTakenAtOrBefore(long position)
+    {
+        if (_rowsNotTakenMark < 0 && _rowsNotTakenHeld is { Count: > 0 } held)
+        {
+            foreach (var place in held)
+            {
+                (_rowsNotTaken ??= new()).Add(place);
+            }
+
+            held.Clear();
+        }
+
+        return _rowsNotTaken?.LastBefore(position + 1) is >= 0 and var at ? at : null;
+    }
 
     /// <inheritdoc/>
     bool IPdfStreamDataProvider.EndsBesideWhiteSpace(long absoluteDataEnd)

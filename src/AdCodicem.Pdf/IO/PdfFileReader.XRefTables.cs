@@ -196,9 +196,12 @@ internal sealed partial class PdfFileReader
         var windowSize = Math.Min(XRefWindow, maxWindow);
         var reserved = false;
         var at = absolute + section.Padding;
+        var rowsNotTaken = _rowsNotTakenHeld?.Count ?? 0;
 
         while (true)
         {
+            // A larger window reads the rows again: those the last one noted as not taken are given back first (#287).
+            GiveBackRowsNotTaken(rowsNotTaken);
             using var window = _source.GetWindow(at, windowSize);
             var span = window.Memory.Span;
             var lexer = new PdfLexer(span);

@@ -500,8 +500,11 @@ public static class PdfDiagnosticCodes
     /// reached that many while it awaited the object of a stream's indirect <c>/Length</c>, that stream's data's start —
     /// and short of where the end of a read that a source answered with fewer bytes than asked left it whole, past which
     /// raising the bound would not let it answer: a header or a section it found past there is taken as the bytes give
-    /// it. Each is reported once a document, apart from the other, the second where the first place the scan left out
-    /// starts.
+    /// it. Or the cross-reference sections hold that many rows the index does not take — rows a newer section superseded,
+    /// or that the chain refused —, and where those past them place objects was not kept: an <c>endstream</c> only they
+    /// would prove a stream's own, under a <c>/Length</c> a guard cut or left out, leaves the data the guard's (#287). Each
+    /// is reported once a document, apart from the others: the second where the first place the scan left out starts, the
+    /// third where the first row left out places its object.
     /// </summary>
     public const string LimitIndexEntries = "limit.index-entries";
 

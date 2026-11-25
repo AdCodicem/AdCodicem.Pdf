@@ -211,7 +211,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   the data spells, as an embedded PDF file's does, or at an `endstream` the data spells, as a string may, an `endobj`
   after it or not: the length that tells those from the end of the data is the guard's. An `endstream` ends data that
   is the file's only where what follows its object's end — its `endobj`, or the `endstream` itself where none follows —
-  proves it the stream's own: the next object the index places, a cross-reference stream the chain read, or the end of
+  proves it the stream's own: the next object the index places, an object a row the chain read and did not take places
+  — an older definition an update superseded —, a header starting there, a cross-reference stream the chain read, or the end of
   the file, which no data that goes on is followed by, or the `xref` or `startxref` keyword — which data may spell too: data that spells `endstream`, then
   `xref` or `startxref`, and goes on is taken to end there as the file's, which only the hidden length could tell; white
   space before the keyword, which only the length says is the data's or not, leaves the data's end to the guard as it
