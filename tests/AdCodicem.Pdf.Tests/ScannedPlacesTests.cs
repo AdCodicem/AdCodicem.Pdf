@@ -1418,6 +1418,41 @@ public class ScannedPlacesTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void A_member_written_before_a_definition_with_no_value_stands_whether_the_rebuild_scans_or_replays_the_memo(bool memoFirst)
+    {
+        // Object stream 10 holds object 3, and a header of object 3 that holds no value follows the stream. Reading object 4,
+        // whose row lies outside the file, rebuilds the index: the member replaces the header, whose verdict a rebuild that
+        // replays the memo asked for first takes from it, and one that scans reads from the file (#351).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+            [10] = file.ObjectStream(10, [(3, "(three)")]),
+        };
+        var header = file.Position;
+        file.Raw("3 0 obj\nendobj\n");
+        rows[4] = 999_999;
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        if (memoFirst)
+        {
+            document.Reader.GetScanMemo().TryGetHeaderAt(header, out var scanned).Should().BeTrue();
+            scanned.HoldsNoValue.Should().BeTrue();
+        }
+
+        document.GetObject(new PdfObjectId(4));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().EndWith("as one of object 3 does.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void A_definition_with_no_value_the_end_of_the_scan_s_piece_parts_from_what_follows_it_is_told_from_the_file(bool memoFirst)
     {
         // Object 3's last header starts 20 bytes before the scan's first piece ends, short of the 64 bytes the scan reads to
