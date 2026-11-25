@@ -2354,6 +2354,38 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void A_row_a_faulted_table_refuses_proves_the_endstream_before_the_object_it_places()
+    {
+        // The first table places stream 4, whose /Length object 9 MaxObjectLength cuts, and object 6 right after it. A newer
+        // table a /Prev names places stream 4 again, then holds a stray token: read on to its trailer, it refuses every number
+        // below its /Size, 7, that no newer row indexes to the first table's rows, object 6's among them. That refused row
+        // alone places object 6, and proves the endstream before it the stream's own (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>"),
+            [9] = file.Object(9, new string(' ', 2000) + "5"),
+            [4] = file.Object(4, "<< /Length 9 0 R >>\nstream\nBT ET\nendstream"),
+            [6] = file.Object(6, "(six)"),
+        };
+        var first = file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        var faulted = file.Position;
+        file.Raw(Invariant($"xref\n0 5\n0000000000 65535 f \n{rows[1]:D10} 00000 n \n{rows[2]:D10} 00000 n \n{rows[3]:D10} 00000 n \n{rows[4]:D10} 00000 n \nstray\ntrailer\n<< /Size 7 /Root 1 0 R /Prev {first} >>\nstartxref\n{faulted}\n%%EOF\n"));
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 2\n0000000000 65535 f \n{one:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {faulted} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.Reader.Index.TryGet(6, out _).Should().BeFalse();
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeFalse();
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+    }
+
+    [Fact]
     public void A_row_not_taken_that_places_its_object_outside_the_file_counts_toward_no_bound()
     {
         // An update's rows place objects 1 to 4 past the end of the file, and a newer update rewrites them: the first

@@ -1475,6 +1475,57 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData(20, 3)]
+    [InlineData(64, 5)]
+    public void The_scan_tells_a_definition_with_no_value_from_its_piece_where_it_holds_64_bytes_and_from_the_file_otherwise(int beforeEnd, int kept)
+    {
+        // Object 7's later header, which holds a string, starts 20 or 64 bytes before the scan's first piece ends; the source
+        // gives a read that starts at the header 7 bytes, its obj keyword's last. Where the piece holds the 64 bytes the scan
+        // reads, it tells the string from them, and the later definition is kept; where it holds fewer, it reads them from the
+        // source, whose short read ends the data there (#52), and the header holds no value (#351).
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+        file.Object(7, "<< /Real true >>", generation: 3);
+        PadWithComments(file, Piece - beforeEnd);
+        var last = file.Position;
+        file.Raw("7 5 obj (five) endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == last ? 7 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        last.Should().Be(Piece - beforeEnd);
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(kept);
+    }
+
+    [Fact]
+    public void A_rebuild_that_replays_the_memo_takes_its_verdict_on_a_definition_after_a_member_rather_than_read_it_again()
+    {
+        // As above, a member of object stream 10 and a header of object 3 after it that holds no value; the source gives a
+        // read that starts at that header 6 bytes, which parts its obj keyword. The memo, asked for first, noted the header's
+        // verdict from its piece, and a rebuild that replays it takes that verdict: the member replaces the header (#351).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+            [10] = file.ObjectStream(10, [(3, "(three)")]),
+        };
+        var header = file.Position;
+        file.Raw("3 0 obj\nendobj\n");
+        rows[4] = 999_999;
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == header ? 6 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        document.Reader.GetScanMemo();
+        document.GetObject(new PdfObjectId(4));
+
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_definition_with_no_value_the_end_of_the_scan_s_piece_parts_from_what_follows_it_is_told_from_the_file(bool memoFirst)
