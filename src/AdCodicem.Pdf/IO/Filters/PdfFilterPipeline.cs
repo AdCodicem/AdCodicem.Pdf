@@ -236,7 +236,7 @@ internal static class PdfFilterPipeline
                 silenced = true;
                 var run = HiddenRunStart(data.Span, comments: step.Name != PdfName.ASCII85Decode);
 
-                if (step.Name == PdfName.FlateDecode && FlateBodyEnds(data, maxLength, out var whole, out var clean))
+                if (step.Name == PdfName.FlateDecode && FlateBodyEnds(data, maxLength, out var whole, out var ending, out var clean))
                 {
                     if (clean)
                     {
@@ -245,8 +245,11 @@ internal static class PdfFilterPipeline
                         continue;
                     }
 
-                    // A checksum that disagrees only where it reaches into the run says nothing of the file.
-                    checksumHidden = run < data.Length && !ChecksumDisagrees(data[..run], maxLength);
+                    // A checksum that disagrees only where it reaches into the run says nothing of the file. Only one that
+                    // disagrees over the data as taken is asked about: raw deflate has none, and a short one disagrees with
+                    // nothing, so their data is not decoded a third time for an answer nothing reads.
+                    checksumHidden = ending == FlateEnding.ChecksumMismatch && run < data.Length &&
+                        !ChecksumDisagrees(data[..run], maxLength);
                 }
                 else
                 {
@@ -365,11 +368,12 @@ internal static class PdfFilterPipeline
     /// <summary>
     /// Decodes Flate data whose end a guard hides as the search took it, and determines whether its deflate body ends in it
     /// — its checksum whole, disagreeing or short —, the bound not reached: what it decoded to is then whole, and
-    /// <paramref name="clean"/> says whether it is zlib data whose checksum agrees, with nothing to report.
+    /// <paramref name="clean"/> says whether it is zlib data whose checksum agrees, with nothing to report;
+    /// <paramref name="ending"/> says how the data ended.
     /// </summary>
-    private static bool FlateBodyEnds(ReadOnlyMemory<byte> data, int maxLength, out byte[] decoded, out bool clean)
+    private static bool FlateBodyEnds(ReadOnlyMemory<byte> data, int maxLength, out byte[] decoded, out FlateEnding ending, out bool clean)
     {
-        var ended = FlateFilter.TryDecode(data, out decoded, out var repaired, out var ending, out _, out var limited, maxLength) &&
+        var ended = FlateFilter.TryDecode(data, out decoded, out var repaired, out ending, out _, out var limited, maxLength) &&
             !limited && ending is FlateEnding.Whole or FlateEnding.ChecksumMismatch or FlateEnding.ChecksumMissing;
         clean = ended && !repaired && ending == FlateEnding.Whole;
         return ended;
