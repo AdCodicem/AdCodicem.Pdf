@@ -112,7 +112,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#427]'s branch at `8e75b8e`, as Codecov counts it, 98.64 % of the patch; its three partial lines, in
+- **Coverage**: on [#436]'s branch at `91c3fde`, as Codecov counts it, 97.95 % of the patch, 143 of its 146 coverable
+  lines whole; the other three, in `PdfFileReader.Scan.cs`, are arms no input takes: the `objAt < 0` arm of
+  `TellNoValueFromPiece`, whose callers that pass it give an empty piece and return first, and `TellNoValue`'s check of
+  a header's tokens with its `return false`, which every header the scan took passes, only a source whose bytes change
+  between two reads failing it. Before it, on [#427]'s branch at `8e75b8e`, as Codecov counts it, 98.64 % of the patch; its three partial lines, in
   `PdfFileReader.XRefStreams.cs`, are arms no input takes: `MayStartHeader`'s empty span, and the `?.` and `??` of
   `DeclaredBesideCut`. Before it, on [#407]'s branch at `5fb2ae2`, counted from the unit suite's report by Codecov's
   rule, 96.40 % of the patch: 134 of its 139 coverable lines whole; the other five, two missed and three partial, are

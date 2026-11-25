@@ -7,6 +7,48 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-25 — Batch 27, fourth pull request: a hidden end proven by the rows not taken, and a rebuild's readable definition ([#436])
+
+- **The question.** Measured on `main` at `98db003`. A stream whose `/Length` a guard hid was proven by the object the
+  merged index places after it, so that after an update redefining that object, the older definition sitting right
+  there proved nothing: under `MaxObjectLength` 1024, the stream read as cut (#287). Once the searches for `endstream`
+  had read their budget, a deferred length counting the end-of-line before the chain's `endstream` was reported past
+  it (#293: 2,296,059 bytes searched against 2,103,660). Under a hidden end, Flate decoded the data three times where
+  a run of white space followed, raw deflate included (#290, point 2). A rebuild kept a last definition that holds no
+  value — `7 5 obj` then `)`, `trailer` or the end of the file — over the readable one before it (#351).
+- **Settled with the maintainer**, on 2026-11-25, each as recommended: a definition met again that holds no value
+  leaves the one before it kept, a value read in part still winning, and `object.redefined` says so (#351); R12-2
+  kept, a section lacking rows beside a cut value read as read whole whatever the value holds, written in ADR 34
+  (#290, point 1). Settled by the measurement: the chain's `endstream` is read where it stopped, without a search
+  (#293); every in-file row the chain reads and does not take is kept, bounded by `MaxIndexEntries` apart from the
+  index (#287).
+- **What changed.** The rebuild's scan judges a number defined again by the 64 bytes past its `obj` (`NoValueReach`,
+  ADR 34), its memo noting the verdict per header; an object stream member replaces a direct definition with no value
+  after it. The chain notes the places of the rows it supersedes or refuses, given back when a table is read again or
+  a place a search tried is dropped; a proof counts them where a header starts there. `EndStreamAfter` reads the
+  keyword past a lone LF. `ChecksumDisagrees` runs only on a checksum mismatch, with a benchmark.
+- **Review** (ADR 54): two rounds. Round 1, four lenses — the rebuild's scan, the chain's proofs, texts and tests,
+  real damage over about 32,300 variants a side: no blocker; two majors, confirmed by refuters and fixed — an update
+  cut after the header of a number an object stream held served null, and a classic table read again in a larger
+  window noted its rows twice, a false `limit.index-entries` under a lowered bound —; three minors fixed; about twelve
+  nits. Round 2, two lenses over the fixes: no blocker, no major — two minors and four nits; its behavior fixes, made
+  before the loop stopped, taken back and filed, its tests kept.
+- **Mutation** (ADR 53 amended): 69 mutants. 40 killed by the suite, 21 by new tests; 5 equivalent, confirmed by a
+  second agent, which refuted two more claims, then killed; 3 filed in [#437] (the give-backs, the sorting while a
+  place is read). The final pass's speed fix had ten more: 6 killed, 1 of them by a new row, 4 equivalent, confirmed.
+- **The issues.** Closes [#287], [#290], [#293], [#351]. Filed under M02: [#437], [#438].
+- **Checks.** The batch check at `91c3fde`, 10,703 unit tests; the 69 timing and memory tests, the 359 of
+  `HostileInputTests` and the 252 of `FilterTests` alone; the corpus differential against `main` identical; `Remote
+  corpus` run 142 green at `91c3fde`. Benchmarks against `main`, alone, twice in opposite orders: Flate under a hidden
+  end 23 to 53 % faster on raw deflate and a short checksum, allocating a third less; opening an index within the
+  noise, `Update` allocating 0.5 MB more for the 30,000 rows it supersedes. They caught the scan for the memo 16 to 45
+  % slower on files of 100,000 small objects, a rebuild redefining one number 200,000 times 36 to 51 %: the final pass
+  lexes the verdict from past `obj` (11 to 20 %, and 3 to 15 %, left in [#438]). Patch coverage 97.95 %, three arms no
+  input takes.
+- **For callers.** No public API change. A stream after a redefined object is proven by the definition the file still
+  holds; a rebuild serves the readable definition before one that holds no value, and says so; `limit.index-entries`
+  also bounds the rows the chain does not take.
+
 ## 2026-11-25 — Batch 27, third pull request: the chain at its guards ([#427])
 
 - **The question.** Measured on `main` at `ba64b1f`. White space past `MaxTrailerLength` before a section `startxref` or
@@ -1479,3 +1521,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#433]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/433
 [#434]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/434
 [#435]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/435
+[#293]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/293
+[#436]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/436
+[#437]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/437
+[#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
