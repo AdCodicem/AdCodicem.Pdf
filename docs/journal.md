@@ -7,6 +7,46 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-25 — Batch 27, third pull request: the chain at its guards ([#427])
+
+- **The question.** Measured on `main` at `ba64b1f`. White space past `MaxTrailerLength` before a section `startxref` or
+  a `/Prev` names was charged to the file: `file.startxref-wrong` or `xref.section-not-found`, Errors, and the
+  section searched for nearby (#289; #295's two files had been settled by batch 19). A `/Prev` written whole before a
+  trailer guard's cut, or in a stream whose value a guard cut, was neither judged nor followed (#328, #329). The chain's
+  own load of a `/Prev` whose header `MaxObjectLength` cut searched near the entry and rebuilt the index (#292). A table
+  mid-chain with a bad row, header or stray token ended the chain: older sections unread, everything they index rebuilt
+  (#324).
+- **Settled with the maintainer**, on 2026-11-24, each as recommended: that white space makes the guard's section, as
+  does a header cut inside its tokens (ADR 34 amended), and white space before an object's header keeps its behavior,
+  filed ([#428]); the chain's own loads stop at the guard, a later read following the load rule; a faulted table named
+  by a `/Prev` is read on to its own trailer and its `/Prev` handed on, every number below its `/Size` refused to older
+  rows. Settled by the measurement: a `/Prev` whole before a cut is judged, not followed, as #264 judges one past a rows
+  guard; a whole `/XRefStm` before a trailer cut over rows read whole is still followed.
+- **What changed.** A classic table's windows open at its keyword. A stream whose header is whole but whose value a
+  trailer guard cut before it said what it is makes the guard's section (`PdfObjectParser.ValueKindCut`). Faulted tables
+  read on from their first fault, the search for their trailer in growing pieces, ending at a `startxref` or `xref`;
+  a `/Size` the rows read contradict, or too many lost ranges, refuse every number. The chain's stop is marked apart
+  (`_cutAtStop`) and dropped by the next load. `TrailerValueWrongRule` judges a table's `/Prev`.
+- **Review** (ADR 54): two rounds. Round 1, four lenses — loading and faulted tables, the chain at guards, texts and
+  tests, real damage over 168 corpus documents in about 128,000 runs: one blocker, a stream's value cut before it starts
+  taken for a shifted section and an older revision served under the default limits, the same on `main`, confirmed by a
+  refuter and fixed; three minors fixed (the refusal against `/Size`, the read-on's start and its search crossing into a
+  newer table's trailer, seen on a PDFMaker file damaged by one byte); about thirteen nits. Round 2, three lenses over
+  the fixes: no blocker, no major — one minor and four nits, fixed in the final pass or filed.
+- **Mutation** (ADR 53 amended): 162 mutants over 21 defenses. 148 killed by the suite, two of them by hanging the
+  search past a table's rows; 7 by new tests — where the read-on starts when the misreading runs over the trailer
+  keyword, what a `/Size` of 0 or 1 refuses, the chain's stop past a rebuild it set off and a stopped object a rebuild
+  finds in an object stream —; 7 equivalent, confirmed by a second agent, which refuted two more claims.
+- **The issues.** Closes [#289], [#295], [#328], [#329], [#292], [#324]. Filed under M02: [#428] to [#435].
+- **Checks.** The batch check at `8e75b8e`, 10,627 unit tests; the 69 timing and memory tests and the 359 of
+  `HostileInputTests` alone; the corpus differential against `main` identical; `Remote corpus` run 138 green on its
+  first attempt; benchmarks against `main`, alone, twice in opposite orders: allocation identical but for a field of
+  the reader, time within the noise — opening 300,000 one-row subsections 6 to 7 % slower in both orders, as the probe,
+  whose code is untouched, 4 to 8 %. Patch coverage 98.64 %, three partial lines no input takes.
+- **For callers.** No public API change. Under a trailer guard, a section the guard hid is reported as the guard's
+  (`xref.checked-in-part`) instead of an Error of the file, and a `/Prev` written whole before the cut is judged; a
+  faulted table mid-chain no longer costs a rebuild of what older sections index.
+
 ## 2026-11-24 — Batch 27, second pull request: the parser at its guards ([#419])
 
 - **The question.** Measured on `main` at `5780810`. At the largest window `MaxObjectLength` or `MaxTrailerLength`
@@ -1430,3 +1470,12 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#423]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/423
 [#425]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/425
 [#426]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/426
+[#427]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/427
+[#428]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/428
+[#429]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/429
+[#430]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/430
+[#431]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/431
+[#432]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/432
+[#433]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/433
+[#434]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/434
+[#435]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/435
