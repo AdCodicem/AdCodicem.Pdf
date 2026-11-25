@@ -35,7 +35,8 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 for — an object, or one the newest `/Size` numbers —, up to about 80 when a rebuild grew it and about 96 for numbers
 spread far apart, so 335 MB or more at the default bound. While the chain is read, the numbers whose rows it refused,
 which the bound counts with the index, are held apart as well: about 60 bytes a number allocated as that set grows, let
-go once the chain is read. A rebuild keeps nothing of its scan of the file but the index. The scan of the file that the
+go once the chain is read. Where the rows the chain read and did not take place objects is kept as well, 8 bytes each,
+up to the same bound apart from the index. A rebuild keeps nothing of its scan of the file but the index. The scan of the file that the
 searches near an entry's offset and near an offset the chain names ask for, once a document
 ([Lazy reading](../concepts/lazy-reading.md#the-cost-of-the-trade)), keeps, within the same bound, each object header
 and keyword it takes, each definition of a number counted where the index counts the number once: under 25 bytes a
@@ -126,6 +127,11 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   a place short of where the end of a read that a source answered with fewer bytes than asked left what the scan keeps
   whole: past there, raising the bound would not let the scan answer. A rebuild never reports it: where that scan
   does not answer, the rebuild scans the file again, and serves and reports what it would have.
+- Apart from the index, the reader keeps where the rows the chain reads and does not take — rows a newer section
+  superseded, or that the chain refused — place objects, up to `MaxIndexEntries` of them: an older definition there
+  proves the `endstream` of the stream before it its own, where a limit cut or left out the stream's `/Length`. Past
+  the bound it keeps no more, reports `limit.index-entries` once, and an `endstream` only those rows would prove leaves
+  the stream's data the limit's.
 - A rebuild whose scan reaches `MaxRebuildReadPasses` reports it once, where the data starts of the first stream it then
   reads up to its first `endstream`, and finishes the index before `ThrowOnLimit` throws it. Such data of an attached
   file that holds an `endstream` of its own before the stream's has the object headers past that keyword taken, and a

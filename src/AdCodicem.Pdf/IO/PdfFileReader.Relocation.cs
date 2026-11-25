@@ -336,6 +336,7 @@ internal sealed partial class PdfFileReader
             {
                 // The source failed the reading: what it recorded is kept, as before the place was tried.
                 _xref.KeepTentative();
+                KeepRowsNotTaken();
                 throw;
             }
             finally
@@ -358,6 +359,7 @@ internal sealed partial class PdfFileReader
                             StartsItsLine(window.Span, start - lead, lead, candidate, passedOver: null)))))
             {
                 _xref.KeepTentative();
+                KeepRowsNotTaken();
                 section.RelocateTo(attempt);
                 section.Unconfirmed = check is PlaceCheck.Raw or PlaceCheck.PastMemo;
                 _diagnostics.Repair(
@@ -756,6 +758,7 @@ internal sealed partial class PdfFileReader
     {
         _xref.StartTentative();
         _refusedOrder = [];
+        _rowsNotTakenTentative = [];
         return new(_refusedOrder, _indexIncomplete, _cutByGuard);
     }
 
@@ -769,6 +772,8 @@ internal sealed partial class PdfFileReader
     private void RollBackIndex(IndexMark mark)
     {
         _xref.DropTentative();
+        _rowsNotTakenCount -= _rowsNotTakenTentative?.Count ?? 0;
+        _rowsNotTakenTentative = null;
 
         foreach (var number in mark.Refused)
         {
@@ -778,6 +783,25 @@ internal sealed partial class PdfFileReader
         if (_cutByGuard == mark.CutByGuard)
         {
             _indexIncomplete = mark.Incomplete;
+        }
+    }
+
+    /// <summary>
+    /// Keeps where the rows the reading of a place the search took did not take place objects (<see cref="_rowsNotTaken"/>):
+    /// the place is a section of the file's, and so are its rows.
+    /// </summary>
+    private void KeepRowsNotTaken()
+    {
+        if (_rowsNotTakenTentative is not { } tentative)
+        {
+            return;
+        }
+
+        _rowsNotTakenTentative = null;
+
+        foreach (var at in tentative)
+        {
+            (_rowsNotTaken ??= new()).Add(at);
         }
     }
 

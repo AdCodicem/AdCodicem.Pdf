@@ -803,8 +803,17 @@ internal sealed partial class PdfFileReader
     bool IPdfStreamDataProvider.IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject)
     {
         var (position, boundary) = EndStreamFollower(absoluteDataEnd, endObj);
-        return position >= 0 && (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position));
+        return position >= 0 &&
+            (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position) || IsPlacedAt(position, RowNotTakenAtOrBefore(position)));
     }
+
+    /// <summary>
+    /// Gives the last place at or before <paramref name="position"/> a row the chain read and did not take gives an object
+    /// at (<see cref="_rowsNotTaken"/>): one that names white space and comments before a header proves that header as one
+    /// that names it does, and only the nearest can name the run the header ends. Null when none does.
+    /// </summary>
+    private long? RowNotTakenAtOrBefore(long position) =>
+        _rowsNotTaken?.LastBefore(position + 1) is >= 0 and var at ? at : null;
 
     /// <inheritdoc/>
     bool IPdfStreamDataProvider.EndsBesideWhiteSpace(long absoluteDataEnd)

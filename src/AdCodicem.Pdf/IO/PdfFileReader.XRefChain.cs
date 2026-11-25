@@ -2048,27 +2048,83 @@ internal sealed partial class PdfFileReader
         if (_refusedNumbers is not null && _refusedNumbers.TryGetValue(number, out var refuser))
         {
             section.RowsRefusedBefore |= refuser != section.Ordinal;
+            NoteRowNotTaken(entry, section);
             return false;
         }
 
         if (RefusedToOlderRows(number))
         {
             section.RowsRefusedBefore = true;
+            NoteRowNotTaken(entry, section);
             return false;
         }
 
         // While the index has room, a number it holds is simply not taken again: one lookup a row.
         if (IndexHasRoom)
         {
-            _xref.TryAdd(number, entry);
+            if (!_xref.TryAdd(number, entry))
+            {
+                NoteRowNotTaken(entry, section);
+            }
         }
         else if (!_xref.TryGet(number, out _))
         {
             ReachIndexBound(section.Offset);
             section.CutByLimit = true;
         }
+        else
+        {
+            NoteRowNotTaken(entry, section);
+        }
 
         return true;
+    }
+
+    /// <summary>
+    /// Notes where a row of <paramref name="section"/> the chain did not take places its object, when it places one in the
+    /// file directly (<see cref="_rowsNotTaken"/>, #287): held apart while a place a search tries is read, kept once it is.
+    /// Past <see cref="PdfReaderLimits.MaxIndexEntries"/> places, none is kept, and the guard is reported once.
+    /// </summary>
+    private void NoteRowNotTaken(XRefEntry entry, XRefSectionRecord section)
+    {
+        if (entry.Kind != XRefEntryKind.Regular)
+        {
+            return;
+        }
+
+        var at = PositionOf(entry.Offset);
+
+        if (!IsInFile(at))
+        {
+            return;
+        }
+
+        if (_rowsNotTakenCount >= _guard.Bound(PdfLimit.IndexEntries))
+        {
+            if (!_rowsNotTakenFull)
+            {
+                _rowsNotTakenFull = true;
+                ReachLimit(
+                    PdfLimit.IndexEntries,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The cross-reference sections hold more than {CountText.Of(_guard.Bound(PdfLimit.IndexEntries), "row", "rows")} the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not."),
+                    section.Offset);
+            }
+
+            return;
+        }
+
+        _rowsNotTakenCount++;
+
+        if (_rowsNotTakenTentative is { } tentative)
+        {
+            tentative.Add(at);
+        }
+        else
+        {
+            (_rowsNotTaken ??= new()).Add(at);
+        }
     }
 
     /// <summary>
