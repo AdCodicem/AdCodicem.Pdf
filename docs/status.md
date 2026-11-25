@@ -71,48 +71,47 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
   the 69 timing and memory tests, the 359 of `HostileInputTests` and the 252 of `FilterTests` alone; `Remote corpus`
-  run 141 green on its code but for a refactor after it. Before it, 10,627 unit on [#427]'s branch at `8e75b8e`,
-  without the remote documents, 10,603 passed and 24 skipped; the 69 timing and memory tests and the 359 of
-  `HostileInputTests` alone; `Remote corpus` run 138 green on its code. Before it, 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
-  and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 133 green over all 242 on its code. Before
-  it, 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote documents fetched, 12,956 passed
-  and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 131 green
-  over all 242 on its code. Before it,
-  12,829 unit on [#400]'s branch at `2f8cc89`, with 235 of the 242 remote documents fetched, 12,826 passed
-  and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 130
-  green over all 242 on its code. Before it, 12,769 unit on [#398]'s branch at `d95e0f0`, with 235
-  of the 242 remote documents fetched, 12,766 passed
-  and 3 skipped; the 61 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 128 green
-  over all 242 on its code. Before it, 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents
-  fetched, 12,586 passed and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI;
-  `Remote corpus` run 125 green over all 242. Before it, 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
-  and 3 skipped; the 58 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 123 green
-  over all 242. Before it, 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
-  reached neither web.archive.org nor a GitHub release for the other seven —, 12,211 passed and 3 skipped; the 54 timing
-  and memory tests alone; the integration suite green in CI; `Remote corpus` run 122 green over all 242. Before it, 12,231 unit
-  on [#382]'s branch at `f72cff6`, with 240 of the 242 remote documents fetched, 12,228 passed
-  and 3 skipped — on the committed corpus, 9,321, 9,297 passed and 24 skipped —; the 54 timing and memory tests alone;
-  `Remote corpus` run 120 over all 242. Before it, 12,206 unit on [#380]'s branch at `de0482b`, with 240 of the 242
-  remote documents fetched, 12,203 passed
-  and 3 skipped — on the committed corpus, 9,297, 9,273 passed and 24 skipped, at the commit after it —; the 54 timing
-  and memory tests alone; the integration suite green in CI, and `Remote corpus` run 118 over all 242.
-  Before it, 8,644 unit on [#352]'s branch at `7a91f02`, on the committed corpus, 8,620 passed and 24 skipped; with
-  235 of the 242 remote documents fetched, 11,267 at `0dc139f`, 11,264 passed and 3 skipped; the 52 timing and memory
-  tests alone; the integration suite green in CI, and `Remote corpus` run 113's acceptance tests and referee checks
-  over all 242, on the library code [#352] ends with. Before it, 8,497 unit on [#347]'s branch, on the committed corpus; with 235 of the 242 remote documents fetched — the
-  container reached neither web.archive.org nor a GitHub release for the other seven —, 11,120 at `0423a7f`, 11,117
-  passed and 3 skipped; the integration suite green in CI, and `Remote corpus` run 111's acceptance tests and referee
-  checks over all 242, on the library code [#347] ends with. Before it, 8,466 unit on [#344]'s branch (20 skipped: 2 by design, the theory over the
-  remote corpus's streams whose length is wrong, the fifteen remote documents of the theory over the corpus's filter
-  chains, which have no document without them, the test held to PDFBox's remote report, and iPRES's stream that lost its
-  `endstream`) + 1,495 integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's
-  mirror on GitHub. With all 242 remote documents fetched, on [#344]'s branch:
-  11,155 unit on the maintainer's machine at `2c7cf01` — 11,052 at `19a2296` —, 11,152 passed and 3 skipped — the
-  laziness test on the two documents recorded as unsupported until [#47], which every other
-  test holds to their expectations, and the private manifest the machine lacks —; 3,760 integration against qpdf in its
-  container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
-  pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
-  [#344] ends with.
+  run 142 green on its code. Before it, 10,627 unit on [#427]'s branch at `8e75b8e`, without the remote documents,
+  10,603 passed and 24 skipped; the 69 timing and memory tests and the 359 of `HostileInputTests` alone; `Remote
+  corpus` run 138 green on its code. Before it, 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242
+  remote documents fetched, 12,994 passed and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 133
+  green over all 242 on its code. Before it, 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote
+  documents fetched, 12,956 passed and 3 skipped; the 69 timing and memory tests alone; the integration suite green in
+  CI; `Remote corpus` run 131 green over all 242 on its code. Before it, 12,829 unit on [#400]'s branch at `2f8cc89`,
+  with 235 of the 242 remote documents fetched, 12,826 passed and 3 skipped; the 69 timing and memory tests alone; the
+  integration suite green in CI; `Remote corpus` run 130 green over all 242 on its code. Before it, 12,769 unit on
+  [#398]'s branch at `d95e0f0`, with 235 of the 242 remote documents fetched, 12,766 passed and 3 skipped; the 61
+  timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 128 green over all 242 on its
+  code. Before it, 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents fetched, 12,586
+  passed and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run
+  125 green over all 242. Before it, 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents
+  fetched, 12,360 passed and 3 skipped; the 58 timing and memory tests alone; the integration suite green in CI;
+  `Remote corpus` run 123 green over all 242. Before it, 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the
+  242 remote documents fetched — the container reached neither web.archive.org nor a GitHub release for the other
+  seven —, 12,211 passed and 3 skipped; the 54 timing and memory tests alone; the integration suite green in CI;
+  `Remote corpus` run 122 green over all 242. Before it, 12,231 unit on [#382]'s branch at `f72cff6`, with 240 of the
+  242 remote documents fetched, 12,228 passed and 3 skipped — on the committed corpus, 9,321, 9,297 passed and 24
+  skipped —; the 54 timing and memory tests alone; `Remote corpus` run 120 over all 242. Before it, 12,206 unit on
+  [#380]'s branch at `de0482b`, with 240 of the 242 remote documents fetched, 12,203 passed and 3 skipped — on the
+  committed corpus, 9,297, 9,273 passed and 24 skipped, at the commit after it —; the 54 timing and memory tests
+  alone; the integration suite green in CI, and `Remote corpus` run 118 over all 242. Before it, 8,644 unit on
+  [#352]'s branch at `7a91f02`, on the committed corpus, 8,620 passed and 24 skipped; with 235 of the 242 remote
+  documents fetched, 11,267 at `0dc139f`, 11,264 passed and 3 skipped; the 52 timing and memory tests alone; the
+  integration suite green in CI, and `Remote corpus` run 113's acceptance tests and referee checks over all 242, on
+  the library code [#352] ends with. Before it, 8,497 unit on [#347]'s branch, on the committed corpus; with 235 of
+  the 242 remote documents fetched — the container reached neither web.archive.org nor a GitHub release for the other
+  seven —, 11,120 at `0423a7f`, 11,117 passed and 3 skipped; the integration suite green in CI, and `Remote corpus`
+  run 111's acceptance tests and referee checks over all 242, on the library code [#347] ends with. Before it, 8,466
+  unit on [#344]'s branch (20 skipped: 2 by design, the theory over the remote corpus's streams whose length is wrong,
+  the fifteen remote documents of the theory over the corpus's filter chains, which have no document without them, the
+  test held to PDFBox's remote report, and iPRES's stream that lost its `endstream`) + 1,495 integration (skipped
+  without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With all 242 remote
+  documents fetched, on [#344]'s branch: 11,155 unit on the maintainer's machine at `2c7cf01` — 11,052 at `19a2296` —,
+  11,152 passed and 3 skipped — the laziness test on the two documents recorded as unsupported until [#47], which
+  every other test holds to their expectations, and the private manifest the machine lacks —; 3,760 integration
+  against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
+  damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
+  library code [#344] ends with.
 - **Coverage**: on [#427]'s branch at `8e75b8e`, as Codecov counts it, 98.64 % of the patch; its three partial lines, in
   `PdfFileReader.XRefStreams.cs`, are arms no input takes: `MayStartHeader`'s empty span, and the `?.` and `??` of
   `DeclaredBesideCut`. Before it, on [#407]'s branch at `5fb2ae2`, counted from the unit suite's report by Codecov's
@@ -720,7 +719,7 @@ One pull request per batch, each design question put to the maintainer after mea
        `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
        merged on 2026-11-25, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02
        (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
-       and [#351], in [#436], open, `Remote corpus` run 141 green on its branch, which filed [#437] and [#438]
+       and [#351], in [#436], open, `Remote corpus` run 142 green on its branch, which filed [#437] and [#438]
        under M02 (journal of 2026-11-25).
    28. [#185].
    29. [#173].
