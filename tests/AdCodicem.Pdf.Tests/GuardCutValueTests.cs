@@ -2413,6 +2413,39 @@ public class GuardCutValueTests
         stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_row_not_taken_that_places_its_object_at_the_file_s_first_byte_proves_what_only_comments_precede(bool endObj)
+    {
+        // The objects up to stream 4, whose /Length object 5 MaxObjectLength cuts, lie on a comment line, and so does the
+        // stream's data with its endstream; object 6 starts the next line. An older row places object 6 at the file's first
+        // byte, which only comments follow up to object 6's header, and an update supersedes it: that place, offset 0, proves
+        // the endstream the stream's own as any place a row gives does (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>();
+        file.Raw("% ");
+        rows[1] = file.Position;
+        file.Raw("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj ");
+        rows[2] = file.Position;
+        file.Raw("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj ");
+        rows[3] = file.Position;
+        file.Raw("3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >> endobj ");
+        rows[5] = file.Position;
+        file.Raw("5 0 obj " + new string(' ', 2000) + "5 endobj ");
+        rows[4] = file.Position;
+        file.Raw("4 0 obj << /Length 5 0 R >> stream\n%BT ET endstream " + (endObj ? "endobj" : string.Empty) + "\n");
+        file.Raw("6 0 obj\n(old six)\nendobj\n");
+        rows[6] = 0;
+        var first = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var six = file.Object(6, "(new six)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {first} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+    }
+
     [Fact]
     public void A_row_not_taken_that_places_its_object_outside_the_file_counts_toward_no_bound()
     {
