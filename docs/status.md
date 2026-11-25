@@ -389,6 +389,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   requires no status check by name, and only administrators bypass it. CodeQL runs as GitHub's default setup
   since 2026-09-22; the repository's own workflow and configuration, disabled since then, were deleted on
   2026-09-26 at the maintainer's choice (T35).
+- **Dependabot auto-merge** runs on `pull_request` since 2026-11-25, as GitHub blocks `pull_request_target` by
+  default from 2026-12-02; its job raises the read-only token Dependabot's runs get. It queues patches and minors, but
+  none has merged for weeks: the ruleset waits for a code-owner approval ([#439]). Security updates under
+  `/docs/website` arrive one pull request each ([#440]).
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
@@ -1203,3 +1207,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#436]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/436
 [#437]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/437
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
+[#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
+[#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440

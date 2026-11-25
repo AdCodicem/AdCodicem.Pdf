@@ -667,8 +667,9 @@ Known gaps:
   review alone ([#179]). The AOT and trimming analyzers run, warnings fail the build, and unsafe code is off.
 - **Workflows** declare read-only permissions at their top and raise one per job where needed. Every action is pinned to
   a commit SHA. CI and the commit checks run on `pull_request`, so a fork's pull request gets no secret and no write
-  token. The one `pull_request_target` workflow, Dependabot's auto-merge, checks out no code and queues only what
-  `fetch-metadata` classifies as a patch or a minor. Every Dependabot entry waits a week before proposing a version.
+  token. No workflow runs on `pull_request_target`. Dependabot's auto-merge runs on `pull_request` too: its job runs
+  only on Dependabot's own pull requests from a branch of this repository, raises their read-only token to write, checks
+  out no code and queues only what `fetch-metadata` classifies as a patch or a minor. Every Dependabot entry waits a week before proposing a version.
 - **Publishing** uses trusted publishing ([ADR 25](adr/0025-trusted-publishing-rather-than-an-api-key.md)): a key valid
   one hour, exchanged for the job's OIDC token just before the push, and no NuGet secret stored. The `AdCodicem.*`
   prefix is reserved on nuget.org. Builds are deterministic and carry their sources' location and symbols.
