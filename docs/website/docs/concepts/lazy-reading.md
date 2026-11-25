@@ -215,8 +215,9 @@ A section an offset names short of its first token, white space and comments bet
 that token — a cross-reference stream from its object's header, a classic table from its `xref` keyword, its rows
 bounded by `MaxXRefSectionLength` alone ([#295](https://github.com/AdCodicem/AdCodicem.Pdf/issues/295)) —, as long as
 they run for no more than `MaxTrailerLength`: white space and comments that run on past it reach that guard, as an
-object's header it cuts there does, and the section is the guard's, not looked for nearby, the chain ending there, the
-map rebuilt for the one `startxref` names ([Reader limits](reader-limits.md),
+object's header it cuts there does, or an object it cuts there before its value says what it is, and the section is the
+guard's, not looked for nearby, the chain ending there, the map rebuilt for the one `startxref` names
+([Reader limits](reader-limits.md),
 [#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). A section is never found where a section the chain
 reached starts — one it read, or one there that it could not read though it declares itself a section, and a stream it
 reached from a `+` of the run of signs its number is written with, or from the digit past it, found at that digit too,

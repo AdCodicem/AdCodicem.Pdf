@@ -255,11 +255,14 @@ section is a section the guard cut: where it was named, not looked for near ther
 `startxref` names, the index is rebuilt, as for any guard that leaves the chain no section. The search near the offset
 read up to 512 bytes past it, past a bound set below that, and could take a section other than the one past the run — an
 older table, which then served an object the update's stream frees —, the file charged with Errors. A first token no
-header starts with — a `-`, a letter — is no section's whatever the cut hid, and stays the file's. A classic table's
-windows open at its `xref` keyword, as a stream's at its header, so that `MaxXRefSectionLength` bounds its rows alone
-and the white space is read once. The white space before an object's header, where its row names it, still counts toward
-`MaxObjectLength`, and a load reads near the row past the guard: left as debt, since bounding it apart is a change to
-the reader's most read path.
+header starts with — a `-`, a letter — is no section's whatever the cut hid, and stays the file's. A header read whole
+whose value the bound cuts before the value says what it is — white space or a comment after `obj` running on past it,
+or a `<` its last byte, which may open the dictionary — is the guard's section too, while a value that starts before the
+cut with anything else, a number, `null`, a string, is no cross-reference stream however it goes on, and stays the
+file's. A classic table's windows open at its `xref` keyword, as a stream's at its header, so that
+`MaxXRefSectionLength` bounds its rows alone and the white space is read once. The white space before an object's
+header, where its row names it, still counts toward `MaxObjectLength`, and a load reads near the row past the guard:
+left as debt, since bounding it apart is a change to the reader's most read path.
 
 The same day, while [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328) and
 [#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329) were fixed, the maintainer closed what the 2026-11-04
