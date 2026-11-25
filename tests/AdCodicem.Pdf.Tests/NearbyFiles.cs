@@ -1079,6 +1079,52 @@ internal static class NearbyFiles
     }
 
     /// <summary>
+    /// A document saved twice, or three times. The first revision writes the catalog, an empty page tree and object 5,
+    /// <c>(old five)</c>, and the classic table at <c>Older</c>, which indexes them. The second writes object 5 again,
+    /// <c>(new five)</c>, and cross-reference stream 7, at <c>Stream</c>, less than 512 bytes past that table: its header,
+    /// <c>7 0 obj</c>, is followed by <paramref name="afterHeader"/>, then an end of line and its dictionary, which indexes
+    /// the catalog, the page tree and object 5 and names the table through <c>/Prev</c>. Where <paramref name="named"/> is <c>startxref</c>, the
+    /// <c>startxref</c> past it names stream 7, and the file ends. Otherwise a third revision, past a comment of 1,000 bytes
+    /// that keeps it out of a search near stream 7, writes object 4, <c>(four)</c>, and a classic table, at <c>Newest</c>,
+    /// which indexes it and names stream 7 through <paramref name="named"/>, <c>/Prev</c> or <c>/XRefStm</c> — and, with
+    /// <c>/XRefStm</c>, the first table through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Older, long Stream, long Newest) StreamNearAnOlderTable(string named, string afterHeader)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(old five)"),
+        };
+        var older = file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var newFive = file.Object(5, "(new five)");
+        var stream = file.CrossReferenceStream(
+            7,
+            8,
+            new Dictionary<int, (int, long, int)> { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [5] = (1, newFive, 0) },
+            string.Create(CultureInfo.InvariantCulture, $"/Root 1 0 R /Prev {older}"),
+            header: "7 0 obj" + afterHeader);
+
+        if (named == "startxref")
+        {
+            return (file.Bytes, older, stream, stream);
+        }
+
+        file.Raw("%" + new string('-', 998) + "\n");
+        var four = file.Object(4, "(four)");
+        var newest = file.Position;
+        var links = named == "/XRefStm"
+            ? string.Create(CultureInfo.InvariantCulture, $"/Prev {older} /XRefStm {stream}")
+            : string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}");
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 8 /Root 1 0 R {links} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, older, stream, newest);
+    }
+
+    /// <summary>
     /// A document saved twice, whose header line is <c>%PDF-</c> followed by <paramref name="version"/> — such as
     /// <c>1.7 xref</c>, the word <c>xref</c> in the comment the header is, or <c>1.7</c>, an end of line and the comment
     /// <c>%xref</c> —, then its catalog, an empty page tree and a comment, past which the first table, at

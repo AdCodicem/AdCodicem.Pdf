@@ -6347,6 +6347,11 @@ public class CrossReferenceChainTests
     [InlineData("a dictionary whose type is no name that a lowered guard cuts before its /W", 1024, true)]
     [InlineData("a dictionary whose type a lowered guard parts", 1024, true)]
     [InlineData("a font whose type a lowered guard reads before its cut", 1024, false)]
+    [InlineData("a font past white space a guard cuts", 0, true)]
+    [InlineData("a font past white space a guard cuts", 1024 * 1024, false)]
+    [InlineData("a font past a comment a guard cuts", 0, true)]
+    [InlineData("a font whose << a guard parts past white space", 0, true)]
+    [InlineData("null past white space a guard cuts", 0, false)]
     [InlineData("a stream of no type", 0, false)]
     [InlineData("a dictionary of no type", 0, false)]
     [InlineData("a dictionary of no type", 1024, false)]
@@ -6361,19 +6366,21 @@ public class CrossReferenceChainTests
         // MaxTrailerLength cuts before the /Type unless it is raised, or 2,000 bytes, which MaxTrailerLength lowered to 1,024
         // cuts; a dictionary whose /Type gives a string, then 2,000 bytes before a /W, which that guard cuts before the /W; a
         // dictionary whose /Type /XRef that guard parts after /XR; a font whose /Type is read before that guard cuts
-        // it; a stream of 70,000 bytes whose dictionary gives no /Type; a dictionary read whole that gives none either,
-        // within MaxTrailerLength lowered to 1,024 too; a dictionary a string the file never closes runs to the end of
-        // the file, which MaxTrailerLength lowered to the bytes from object 4 to that end (-1) reaches; or an object
-        // that gives a /W and no /Type and does not read as a section — a border's dictionary, a stream whose /W gives
-        // a negative width —, which the search stopped at, as at a section the /Prev would read, leaving the stream
-        // unread and an older revision of object 7 served. The /Prev keeps its place where a guard cut what is there
-        // before it said what it is — before its /Type, inside the name it gives, which the parser drops (#279), or
-        // before the /W of a dictionary whose /Type is no name, which declares nothing —, the guard's, and the
-        // /XRefStm's search stops there, leaving it to the /Prev, the naming the guard's too: no report, the index not
-        // left incomplete, where the naming was reported, as if the file were at fault, and what only the stream
-        // indexes found by rebuilding the index. Anywhere else — the end of the file, and a dictionary a guard cut past
-        // a /Type that names another type, among it —, the /Prev looks for its own section nearby, and the search goes
-        // on to the stream (#156, #264).
+        // it; a font past 70,000 spaces or a comment of 70,000 dashes, which MaxTrailerLength cuts before the value starts
+        // unless it is raised, or past 65,527 spaces, which leave its first < the last byte the guard holds; null past
+        // 70,000 spaces, a value whole before the cut; a stream of 70,000 bytes whose dictionary gives no /Type; a
+        // dictionary read whole that gives none either, within MaxTrailerLength lowered to 1,024 too; a dictionary a string
+        // the file never closes runs to the end of the file, which MaxTrailerLength lowered to the bytes from object 4 to
+        // that end (-1) reaches; or an object that gives a /W and no /Type and does not read as a section — a border's
+        // dictionary, a stream whose /W gives a negative width —, which the search stopped at, as at a section the /Prev
+        // would read, leaving the stream unread and an older revision of object 7 served. The /Prev keeps its place where a
+        // guard cut what is there before it said what it is — before its value starts, or at a < that may open its
+        // dictionary, before its /Type, inside the name it gives, which the parser drops (#279), or before the /W of a
+        // dictionary whose /Type is no name, which declares nothing —, the guard's, and the /XRefStm's search stops there,
+        // leaving it to the /Prev, the naming the guard's too: no report, the index not left incomplete, where the naming
+        // was reported, as if the file were at fault, and what only the stream indexes found by rebuilding the index.
+        // Anywhere else — the end of the file, and a dictionary a guard cut past a /Type that names another type,
+        // among it —, the /Prev looks for its own section nearby, and the search goes on to the stream (#156, #264).
         var body = four switch
         {
             "a font whose dictionary a guard cuts" => "<< /Pad (" + new string('-', 70_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
@@ -6381,6 +6388,10 @@ public class CrossReferenceChainTests
             "a dictionary whose type is no name that a lowered guard cuts before its /W" => "<< /Type (Font) /Pad (" + new string('-', 2_000) + ") /W [1 4 2] >>",
             "a dictionary whose type a lowered guard parts" => "<< /Pad (" + new string('-', 996) + ") /Type /XRef >>",
             "a font whose type a lowered guard reads before its cut" => "<< /Type /Font /Pad (" + new string('-', 2_000) + ") /Subtype /Type1 /BaseFont /Helvetica >>",
+            "a font past white space a guard cuts" => new string(' ', 70_000) + "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "a font past a comment a guard cuts" => "%" + new string('-', 70_000) + "\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "a font whose << a guard parts past white space" => new string(' ', 65_527) + "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "null past white space a guard cuts" => "null" + new string(' ', 70_000),
             "a stream of no type" => "<< /Length 70000 >>\nstream\n" + new string('-', 70_000) + "\nendstream",
             "a dictionary of no type" => "<< /Pad (none) >>",
             "a dictionary of no type that gives a /W" => "<< /W 1 /S /S >>",
@@ -9724,6 +9735,123 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("/Prev", "white space", 0)]
+    [InlineData("/Prev", "a comment", 0)]
+    [InlineData("/Prev", "white space up to a <", 0)]
+    [InlineData("/Prev", "nothing", 7)]
+    [InlineData("/Prev", "nothing", 8)]
+    [InlineData("/Prev", "nothing", 9)]
+    [InlineData("startxref", "white space", 0)]
+    [InlineData("startxref", "a comment", 0)]
+    [InlineData("startxref", "nothing", 7)]
+    [InlineData("startxref", "nothing", 8)]
+    [InlineData("startxref", "nothing", 9)]
+    [InlineData("/XRefStm", "white space", 0)]
+    [InlineData("/XRefStm", "a comment", 0)]
+    [InlineData("/XRefStm", "white space up to a <", 0)]
+    [InlineData("/XRefStm", "nothing", 7)]
+    [InlineData("/XRefStm", "nothing", 8)]
+    [InlineData("/XRefStm", "nothing", 9)]
+    public void A_value_a_trailer_guard_cuts_before_it_says_what_it_is_at_an_offset_the_chain_names_is_the_guard_s_section_as_a_header_it_cuts_is(
+        string named, string afterHeader, int maxTrailerLength)
+    {
+        // Cross-reference stream 7, which indexes object 5's new revision, lies less than 512 bytes past the older table,
+        // which indexes its old one: the /Prev of a newer table names it, or startxref, or a hybrid table's /XRefStm. Its
+        // header is read whole, but MaxTrailerLength cuts the reading before its value says what it is: 70,000 spaces or a
+        // comment of 70,000 dashes after obj, which ISO 32000-1 allows, run past the default 64 KB, or leave the first < of
+        // the dictionary the bound's last byte; a bound of 7, 8 or 9 bytes ends at obj, at the end of line after it, or at
+        // that <. What lies past the cut may be the section, as past a header the guard cuts: the guard's, cut where it is
+        // named and not looked for nearby, the chain ending there, and the validator saying it checked the chain in part. The
+        // reading took the value for a null that is no cross-reference stream: the search near the offset took the older
+        // table, and served object 5's old revision, the section said to be shifted and the newest table's /Size wrong — or,
+        // past the /XRefStm, left the stream to the /Prev, the naming said to be wrong. Where startxref names the place, the
+        // index is rebuilt as the document opens, which finds object 5's new revision, and the validator no longer says
+        // startxref is wrong. The bound raised reads the stream whole (#289, ADR 34).
+        var (file, _, stream, _) = NearbyFiles.StreamNearAnOlderTable(named, AfterStreamSevensHeader(afterHeader));
+        var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
+        var raised = maxTrailerLength == 0 ? PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = raised });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset)).Last().Should().Be(
+            (named, XRefSectionState.Malformed, XRefSectionKind.Unknown, true, stream));
+        document.Reader.Structure.Sections[^1].Fault.Should().Be("holds object 7, whose value one of the reader's limits cut before it said what it is");
+
+        if (named == "startxref")
+        {
+            document.Reader.Structure.Sections.Should().ContainSingle();
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                (PdfDiagnosticCodes.LimitTrailer, stream), (PdfDiagnosticCodes.XRefRebuilt, -1L), (PdfDiagnosticCodes.ObjectRedefined, -1L));
+            Text(document, 5).Should().Be("new five");
+            document.WasRepaired.Should().BeTrue();
+        }
+        else
+        {
+            document.Reader.Structure.Sections.Should().HaveCount(2);
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, stream));
+            document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance, "only the sections past the guard index object 5");
+            Text(document, 4).Should().Be("four");
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        document.Reader.ChainStoppedByGuard.Should().Be(named != "startxref");
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefCheckedInPart);
+
+        whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind)).Should().Equal(
+            named == "startxref"
+                ? [("startxref", XRefSectionState.Read, XRefSectionKind.Stream), ("/Prev", XRefSectionState.Read, XRefSectionKind.Table)]
+                : [("startxref", XRefSectionState.Read, XRefSectionKind.Table), (named, XRefSectionState.Read, XRefSectionKind.Stream), ("/Prev", XRefSectionState.Read, XRefSectionKind.Table)]);
+        whole.Diagnostics.Should().BeEmpty();
+        Text(whole, 5).Should().Be("new five");
+        new PdfValidator().Validate(whole).Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/Prev", "null", 0)]
+    [InlineData("/Prev", "12", 0)]
+    [InlineData("/Prev", "a hex string", 10)]
+    [InlineData("startxref", "null", 0)]
+    [InlineData("/XRefStm", "12", 0)]
+    public void A_value_that_says_what_it_is_before_a_trailer_guard_s_cut_at_an_offset_the_chain_names_is_judged_as_read_whole(
+        string named, string afterHeader, int maxTrailerLength)
+    {
+        // As above, but object 7's value is written whole before MaxTrailerLength cuts the reading: null or 12, then 70,000
+        // spaces, which run past the default 64 KB, or a hexadecimal string whose < and first digit lie before a cut 10 bytes
+        // past the header. However the value goes on past the cut — 12 may start a reference there —, it is no dictionary,
+        // and the object no cross-reference stream: the section is the file's to lack, read as the bound raised reads it,
+        // the guard reported first. The /Prev's search near the offset takes the older table, and serves object 5's old
+        // revision; the /XRefStm leaves the stream to the /Prev; startxref has the index rebuilt, and is said to be wrong
+        // (#289, ADR 34).
+        var (file, _, stream, _) = NearbyFiles.StreamNearAnOlderTable(named, AfterStreamSevensHeader(afterHeader));
+        var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
+        var raised = maxTrailerLength == 0 ? PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = raised });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset, section.Fault))
+            .Should().Equal(whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset, section.Fault)));
+        // The guard's report stands in for the report of the section startxref names as missing, as for any section a guard
+        // met as it was read.
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            whole.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position))
+                .Where(diagnostic => diagnostic.Code != PdfDiagnosticCodes.XRefSectionMissing)
+                .Prepend((PdfDiagnosticCodes.LimitTrailer, stream)));
+        whole.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.XRefSectionMissing).Should().Be(named == "startxref");
+        Text(document, 5).Should().Be(named == "startxref" ? "new five" : "old five").And.Be(Text(whole, 5));
+        document.WasRepaired.Should().Be(named == "startxref").And.Be(whole.WasRepaired);
+        document.Reader.ChainStoppedByGuard.Should().BeFalse();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(
+            named switch
+            {
+                "startxref" => PdfValidationRuleIds.FileStartXRefWrong,
+                "/Prev" => PdfValidationRuleIds.XRefSectionShifted,
+                _ => PdfValidationRuleIds.XRefHybridStreamWrong,
+            });
+        findings.Should().Equal(new PdfValidator().Validate(whole).Findings.Select(finding => finding.RuleId));
+    }
+
+    [Theory]
     [InlineData("a header in a comment", false, "9 0 obj")]
     [InlineData("a header in a comment", false, "9 0 obj", 480)]
     [InlineData("a header in a string", false, "9 0 obj")]
@@ -11076,6 +11204,25 @@ public class CrossReferenceChainTests
         "a comment before the generation" => Invariant($"{number} %") + new string('-', 300) + "\n0 obj",
         "a long run of signs" => "+" + new string('-', 300) + Invariant($"{number} 0 obj"),
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "No such header."),
+    };
+
+    /// <summary>
+    /// Gives what <see cref="NearbyFiles.StreamNearAnOlderTable"/> writes between stream 7's header and the end of line
+    /// before its dictionary, as <paramref name="shape"/> says: nothing; 70,000 spaces, or a comment of 70,000 dashes, on a
+    /// line of their own, more than the default <c>MaxTrailerLength</c> holds; 65,526 spaces, which leave the first
+    /// <c>&lt;</c> of the dictionary the last byte that bound holds; <c>null</c> or <c>12</c>, then 70,000 spaces; or the
+    /// hexadecimal string <c>&lt;41&gt;</c>.
+    /// </summary>
+    private static string AfterStreamSevensHeader(string shape) => shape switch
+    {
+        "nothing" => string.Empty,
+        "white space" => "\n" + new string(' ', 70_000),
+        "a comment" => "\n%" + new string('-', 70_000),
+        "white space up to a <" => "\n" + new string(' ', 65_526),
+        "null" => "\nnull" + new string(' ', 70_000),
+        "12" => "\n12" + new string(' ', 70_000),
+        "a hex string" => "\n<41>",
+        _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "No such shape."),
     };
 
     /// <summary>

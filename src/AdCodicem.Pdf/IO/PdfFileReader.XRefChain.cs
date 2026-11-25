@@ -821,8 +821,9 @@ internal sealed partial class PdfFileReader
     /// declares itself a section there — a table's <c>xref</c> keyword (<paramref name="table"/>), or an object whose
     /// dictionary gives <c>/Type /XRef</c>, read or not —, or the object reads there as a section, whole or in part —
     /// whatever it is, so long as it gives a <c>/W</c> —: <see cref="KeptPlace.Section"/>. A guard cut it there — its
-    /// object's header, which leaves no object read (#289), its dictionary before it said what it is, a <c>/Type</c> that
-    /// is no name saying nothing, or a value its rows are read with —: <see cref="KeptPlace.Guard"/>, the guard's to hide.
+    /// object's header, which leaves no object read (#289), the object before its value said what it is
+    /// (<see cref="PdfObjectParser.ValueKindCut"/>), its dictionary before it said what it is, a <c>/Type</c> that is no
+    /// name saying nothing, or a value its rows are read with —: <see cref="KeptPlace.Guard"/>, the guard's to hide.
     /// Anything else — an object that gives a <c>/W</c> and does not read as a section, a font whose header was read
     /// whole, cut or not, a string, no object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for
     /// its section nearby. Asked only of a <c>/Prev</c> the chain reads next: one that names what the chain has reached
@@ -897,15 +898,20 @@ internal sealed partial class PdfFileReader
     /// Whether the guard's window cut what was read, where <see cref="TryParseNumberedAt"/> reaches the guard: the object, or
     /// its header, which leaves none read.
     /// </param>
+    /// <param name="valueKindCut">
+    /// Whether that cut came before the object's value said what it is, as <see cref="TryParseNumberedAt"/> tells it
+    /// (<see cref="PdfObjectParser.ValueKindCut"/>).
+    /// </param>
     /// <returns>Whether an object starts there, whole or cut.</returns>
     private bool TryParseUnrecordedAt(
-        long offset, out PdfObject value, out int foundNumber, out long headerAt, out long digitsAt, out bool cut)
+        long offset, out PdfObject value, out int foundNumber, out long headerAt, out long digitsAt, out bool cut, out bool valueKindCut)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
         headerAt = offset;
         digitsAt = offset;
         cut = false;
+        valueKindCut = false;
 
         if (offset < 0 || offset >= _source.Length)
         {
@@ -948,6 +954,7 @@ internal sealed partial class PdfFileReader
                 if (cut)
                 {
                     MarkCutByGuard(parsed, offset + window.Length);
+                    valueKindCut = parser.ValueKindCut;
                 }
 
                 value = parsed;

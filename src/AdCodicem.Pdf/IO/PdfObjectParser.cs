@@ -178,6 +178,12 @@ internal ref struct PdfObjectParser
     /// </summary>
     private int _headerDigits;
 
+    /// <summary>
+    /// Whether the end of the buffer came before the value of the last indirect object <see cref="TryReadIndirectObject"/>
+    /// read said what it is (<see cref="ValueKindCut"/>).
+    /// </summary>
+    private bool _valueKindCut;
+
     /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
     /// <param name="memory">The bytes to parse.</param>
     /// <param name="baseOffset">Where the bytes start in the file.</param>
@@ -345,6 +351,15 @@ internal ref struct PdfObjectParser
     /// </summary>
     public readonly int HeaderDigits => _headerDigits;
 
+    /// <summary>
+    /// Gets a value indicating whether the end of the buffer, which does not end the data, came before the value of the last
+    /// indirect object <see cref="TryReadIndirectObject"/> read said what it is: no byte of the value lies within the buffer,
+    /// past the header and the white space and comments after it, or its first is a <c>&lt;</c> the buffer's last byte, which
+    /// a <c>&lt;</c> past it would make a dictionary's opening. Any other first byte starts what is no dictionary however it
+    /// goes on: a number, a name, a string, an array, a keyword.
+    /// </summary>
+    public readonly bool ValueKindCut => _valueKindCut;
+
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
 
@@ -405,6 +420,7 @@ internal ref struct PdfObjectParser
         id = default;
         value = PdfNull.Instance;
         _wholeValueEnd = -1;
+        _valueKindCut = false;
 
         var start = _lexer.Position;
         var number = _lexer.Read();
@@ -445,6 +461,8 @@ internal ref struct PdfObjectParser
         var first = _lexer.Read();
         var empty = first.IsKeyword("endobj"u8);
         _lexer.Position = beforeValue;
+        _valueKindCut = !_endsData &&
+            (first.Kind == PdfTokenKind.EndOfInput || (first.Start == _memory.Length - 1 && _memory.Span[first.Start] == (byte)'<'));
 
         _inObject = true;
         value = ParseObject();

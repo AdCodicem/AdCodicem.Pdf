@@ -175,6 +175,34 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("7 0 obj", false, true)]
+    [InlineData("7 0 obj\n   ", false, true)]
+    [InlineData("7 0 obj\n% a comment that runs on", false, true)]
+    [InlineData("7 0 obj\n<", false, true)]
+    [InlineData("7 0 obj\n<<", false, false)]
+    [InlineData("7 0 obj\n<4", false, false)]
+    [InlineData("7 0 obj\n< ", false, false)]
+    [InlineData("7 0 obj\n<< /Type /XRef", false, false)]
+    [InlineData("7 0 obj\nnull   ", false, false)]
+    [InlineData("7 0 obj\n12", false, false)]
+    [InlineData("7 0 obj\n(", false, false)]
+    [InlineData("7 0 obj\n   ", true, false)]
+    [InlineData("7 0 obj\n<", true, false)]
+    [InlineData("7 0", false, false)]
+    public void Says_whether_the_end_of_the_buffer_came_before_an_object_s_value_said_what_it_is(string text, bool endsData, bool cut)
+    {
+        // A buffer that does not end the data, past a header read whole, may end before any byte of the value — white space
+        // or a comment running on to its end —, or right after a < that may open a dictionary past it: what the value is lies
+        // past the end. Any other first byte starts what is no dictionary however it goes on, and bytes that end the data cut
+        // nothing; a header the end cuts reads no object.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: endsData);
+
+        parser.TryReadIndirectObject(out _, out _);
+
+        parser.ValueKindCut.Should().Be(cut);
+    }
+
+    [Theory]
     [InlineData("0 0 obj\nnull\nendobj\n")]
     [InlineData("3000000000 0 obj\nnull\nendobj\n")]
     [InlineData("7 -1 obj\nnull\nendobj\n")]

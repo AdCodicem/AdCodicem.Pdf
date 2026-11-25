@@ -174,7 +174,7 @@ internal sealed partial class PdfFileReader
     /// past its end. Returns false when nothing with that number is there.
     /// </summary>
     private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt);
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, out _, recordedAt: recordedAt);
 
     /// <summary>
     /// Parses object <paramref name="number"/> where <paramref name="entry"/> places it, as a load looks for it: at the offset
@@ -216,7 +216,7 @@ internal sealed partial class PdfFileReader
         var guards = _guardsReached;
 
         if (TryParseNumberedAt(
-            offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
+            offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
         {
             generation = 0;
             stopped = false;
@@ -279,6 +279,11 @@ internal sealed partial class PdfFileReader
     /// Whether the reading kept met a fault of the syntax, or may have, the pending diagnostics full: reported now or
     /// already, by an earlier reading of the same bytes.
     /// </param>
+    /// <param name="valueKindCut">
+    /// Whether the guard the reading kept reached cut the object before its value said what it is
+    /// (<see cref="PdfObjectParser.ValueKindCut"/>): white space or a comment past the header running on past the guard,
+    /// or a <c>&lt;</c> the guard's last byte, which may open a dictionary past it.
+    /// </param>
     /// <param name="initialWindow">The window the first attempt reads through.</param>
     /// <param name="keep">
     /// Whether what was read is what was looked for: when it says no, nothing the reading met is reported or recorded —
@@ -304,6 +309,7 @@ internal sealed partial class PdfFileReader
         out long headerAt,
         out long digitsAt,
         out bool syntaxFault,
+        out bool valueKindCut,
         int initialWindow = InitialObjectWindow,
         Func<PdfObject, bool>? keep = null,
         long recordedAt = RecordedAnywhere,
@@ -314,6 +320,7 @@ internal sealed partial class PdfFileReader
         headerAt = offset;
         digitsAt = offset;
         syntaxFault = false;
+        valueKindCut = false;
 
         if (offset < 0 || offset >= _source.Length)
         {
@@ -413,6 +420,7 @@ internal sealed partial class PdfFileReader
                     syntaxFault = SyntaxFaultSince(_pending, mark);
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + bytes.Length);
+                    valueKindCut = parser.ValueKindCut;
 
                     // What the chain reads of a cross-reference stream is the section's, which records its cut: the object of that
                     // number a load reads is noted when it is read (#175).
