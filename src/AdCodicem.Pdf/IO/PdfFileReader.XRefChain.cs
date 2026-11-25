@@ -2103,15 +2103,11 @@ internal sealed partial class PdfFileReader
 
         if (_rowsNotTakenCount >= _guard.Bound(PdfLimit.IndexEntries))
         {
-            // Reported once by its own flag, not by the place, which the index's report or the scan memo's may share: each
-            // says what it left out (ReachLimit keeps one report a place).
             if (!_rowsNotTakenFull)
             {
                 _rowsNotTakenFull = true;
-                _guardsReached++;
-                _guard.Reach(
+                ReachLimit(
                     PdfLimit.IndexEntries,
-                    _diagnostics,
                     string.Create(
                         CultureInfo.InvariantCulture,
                         $"The cross-reference sections hold more than {CountText.Of(_guard.Bound(PdfLimit.IndexEntries), "row", "rows")} the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not."),
