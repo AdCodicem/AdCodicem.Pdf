@@ -170,9 +170,12 @@ public sealed record PdfReaderLimits
     /// that its dictionary is cut only where it alone runs past the bound, and a classic table from its <c>xref</c>
     /// keyword, so that its rows are bounded by <see cref="MaxXRefSectionLength"/> alone. White space and comments that run
     /// on past the bound reach it too, reported under the same code, and so does an object's header the bound cuts there —
-    /// its number or generation running on past it, or white space or a comment between its tokens: the section is the
-    /// guard's, cut where it is named and not looked for near there, the chain ending at it as at any section the guard
-    /// cuts; for the one <c>startxref</c> names, which leaves the chain no section, the index is rebuilt (#289). What the
+    /// its number or generation running on past it, or white space or a comment between its tokens —, or an object the
+    /// bound cuts past a whole header before its value says what it is — white space or a comment after <c>obj</c> running
+    /// on past it, or a <c>&lt;</c> its last byte, which may open the dictionary: the section is the guard's, cut where it
+    /// is named and not looked for near there, the chain ending at it as at any section the guard cuts; for the one
+    /// <c>startxref</c> names, which leaves the chain no section, the index is rebuilt (#289). A value that starts before the
+    /// bound with anything else — a number, <c>null</c>, a string — is no cross-reference stream however it goes on. What the
     /// bound cuts keeps no token it parts, as <see cref="MaxObjectLength"/> says: a cross-reference stream's dictionary
     /// whose <c>/Type</c> the bound parts has not said what it is, and where the chain names it is a section the guard cut
     /// (#279).

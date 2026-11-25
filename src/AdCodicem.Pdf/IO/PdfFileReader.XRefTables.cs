@@ -589,7 +589,7 @@ internal sealed partial class PdfFileReader
         section.TrailerPosition = found >= 0 ? found : dictionary;
         var guards = _guardsReached;
         _ = TryParseNumberedAt(
-            found >= 0 ? found + TrailerKeyword.Length : dictionary, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
+            found >= 0 ? found + TrailerKeyword.Length : dictionary, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault, out _);
 
         if (_guardsReached != guards)
         {
@@ -751,7 +751,7 @@ internal sealed partial class PdfFileReader
         // The trailer starts inside the window, so inside the file as long as the source's length holds;
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault, out _);
 
         if (_guardsReached != guards)
         {

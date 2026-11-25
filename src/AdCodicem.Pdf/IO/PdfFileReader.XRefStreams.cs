@@ -35,8 +35,10 @@ internal sealed partial class PdfFileReader
     /// leaves it the section, as read whole — a place it may have been moved to takes no stream of another type. Where the
     /// chain names the section, a guard that cut the dictionary before it declared anything — before its <c>/Type</c>, or
     /// before the <c>/W</c> of one whose <c>/Type</c> is no name, which declares nothing — cut what may be the section,
-    /// which is the guard's (ADR 34). What makes it unreadable whatever a value a guard cut holds is the file's fault, as
-    /// read whole (<see cref="FaultBesideCut"/>). At a place the section may have been moved to
+    /// which is the guard's (ADR 34); so did one that cut the object's header where a header may start
+    /// (<see cref="MayStartHeader"/>), or the object before its value said what it is
+    /// (<see cref="PdfObjectParser.ValueKindCut"/>). What makes it unreadable whatever a value a guard cut holds is the
+    /// file's fault, as read whole (<see cref="FaultBesideCut"/>). At a place the section may have been moved to
     /// (<paramref name="candidate"/>), nothing such an object's reading met is reported or recorded — its search for an
     /// <c>endstream</c> aside, which is kept as every search is —: it was read as a section, through a section's window,
     /// and is read as itself when something asks for it.
@@ -65,17 +67,18 @@ internal sealed partial class PdfFileReader
     /// <para>
     /// A check (<paramref name="checkOnly"/>) tells only whether the stream reads, as the chain naming it would read it: the
     /// object is read as <see cref="TryParseUnrecordedAt"/> reads it, and the same faults are looked for — what the object
-    /// declares, a guard's cut of its dictionary, its stream data, a <c>/Length</c> the chain cannot read whose data ends
-    /// nowhere, a value its rows are read with that no section read so far places or a guard cut, a fault beside that cut,
-    /// <c>/W</c>, <c>/Index</c> and <c>/Size</c>, then data its filters decode nothing of —, and the record says what the
-    /// reading found, but nothing is indexed, refused, reported or recorded: the data is decoded as the reading first decodes
-    /// it, what the decoding reports dropped — but for a guard it reached, which stands, reported once for the stream, where
-    /// its data is first read, and by no later reading —, and no row is read. Reading the rows makes no section unreadable —
-    /// rows the data lacks, or that a guard on decoding cut, leave it read in part —, and the check gives
-    /// <see cref="XRefSectionState.Read"/> there. The data of a stream of <c>/Type /XRef</c> is not decoded, the check
-    /// giving <see cref="XRefSectionState.Read"/> once its numbering is read, and judging beside a value a guard cut only
-    /// what the values read give: such a stream keeps its place whatever its data holds (<see cref="KeepsItsPlace"/>). What
-    /// a value it read through a guard's cut leads to is the caller's to forget (<see cref="ForgetReadThrough"/>).
+    /// declares, a guard's cut of its header, of what lies before its value or of its dictionary, its stream data, a
+    /// <c>/Length</c> the chain cannot read whose data ends nowhere, a value its rows are read with that no section read so
+    /// far places or a guard cut, a fault beside that cut, <c>/W</c>, <c>/Index</c> and <c>/Size</c>, then data its filters
+    /// decode nothing of —, and the record says what the reading found, but nothing is indexed, refused, reported or
+    /// recorded: the data is decoded as the reading first decodes it, what the decoding reports dropped — but for a guard
+    /// it reached, which stands, reported once for the stream, where its data is first read, and by no later reading —, and
+    /// no row is read. Reading the rows makes no section unreadable — rows the data lacks, or that a guard on decoding cut,
+    /// leave it read in part —, and the check gives <see cref="XRefSectionState.Read"/> there. The data of a stream of
+    /// <c>/Type /XRef</c> is not decoded, the check giving <see cref="XRefSectionState.Read"/> once its numbering is read,
+    /// and judging beside a value a guard cut only what the values read give: such a stream keeps its place whatever its
+    /// data holds (<see cref="KeepsItsPlace"/>). What a value it read through a guard's cut leads to is the caller's to
+    /// forget (<see cref="ForgetReadThrough"/>).
     /// </para>
     /// <para>
     /// Data the filters decode nothing of — left at a filter the library does not know, at an element of <c>/Filter</c>
@@ -122,6 +125,7 @@ internal sealed partial class PdfFileReader
         bool syntaxFault;
         bool objectRead;
         bool cutByGuard;
+        var valueKindCut = false;
 
         // A place the section may have been moved to is a guess: what is there and does not declare itself a cross-reference
         // stream — an object of another /Type, one that gives neither /Type /XRef nor a /W, or no dictionary — leaves nothing
@@ -132,7 +136,7 @@ internal sealed partial class PdfFileReader
         // section, the guard is reported; where it is only checked, the guard's cut is known and nothing is reported.
         if (checkOnly)
         {
-            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out digits, out cutByGuard);
+            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out digits, out cutByGuard, out valueKindCut);
             syntaxFault = false;
         }
         else
@@ -152,6 +156,7 @@ internal sealed partial class PdfFileReader
                     out header,
                     out digits,
                     out syntaxFault,
+                    out valueKindCut,
                     XRefWindow,
                     candidate ? DeclaresOnlyCrossReferenceStream : null);
 
@@ -169,10 +174,12 @@ internal sealed partial class PdfFileReader
             // A guard that cut the reading at an offset the chain names hid what lay past the cut, whatever it cut: a
             // dictionary, which the parser keeps as far as it read it, a token the cut parted dropped (#279); the object's
             // header — its number, its generation or its obj keyword running on past the guard, or white space or a comment
-            // between its tokens —, which leaves no object read and is the guard's section (#289); or a token where no header
-            // starts, such as dashes read from inside a comment. The guard is MaxTrailerLength, the only one this reading
-            // counts: its windows are a trailer's, a value it reads through a reference is read without loading, no guard
-            // counted (ReadWithoutLoading), and the stream's data is neither read nor decoded yet. Where a /Prev or startxref
+            // between its tokens —, which leaves no object read and is the guard's section (#289); the white space or
+            // comment between a header read whole and its value, or the < that may open its dictionary, which leaves the
+            // value unread and is the guard's section too; or a token where no header starts, such as dashes read from
+            // inside a comment. The guard is MaxTrailerLength, the only one this reading counts: its windows are a
+            // trailer's, a value it reads through a reference is read without loading, no guard counted
+            // (ReadWithoutLoading), and the stream's data is neither read nor decoded yet. Where a /Prev or startxref
             // names the offset, any /W makes a stream of any /Type the section there (#263): the cut may have hidden a /Prev
             // the chain would follow — a stream of another /Type, whole before the cut, that gives a /W, or a /Type given
             // twice whose later /XRef lies past the cut —, which the reading, finding an object of another type there, does
@@ -201,6 +208,20 @@ internal sealed partial class PdfFileReader
                 // parts that no header starts with is no section however it goes on, and the file's (MayStartHeader).
                 section.CutByLimit = true;
                 section.Fault = "holds an object header one of the reader's limits cut";
+                return XRefSectionState.Malformed;
+            }
+
+            if (!candidate && valueKindCut)
+            {
+                // So does a header read whole whose value MaxTrailerLength cut before it said what it is: white space or a
+                // comment after obj running on past the guard, which ISO 32000-1 allows too, or a < the guard's last byte,
+                // which may open a dictionary past it. A value whose first byte lies before the cut and opens no dictionary —
+                // a number, null, a string, an array, a name — is no cross-reference stream however it goes on, and the
+                // file's, looked for nearby (PdfObjectParser.ValueKindCut). A place the search tries keeps only an object that
+                // declares a section, a dictionary no cut left unsaid.
+                section.CutByLimit = true;
+                section.Fault = string.Create(
+                    CultureInfo.InvariantCulture, $"holds object {number}, whose value one of the reader's limits cut before it said what it is");
                 return XRefSectionState.Malformed;
             }
 
@@ -779,6 +800,7 @@ internal sealed partial class PdfFileReader
             out header,
             out digits,
             out syntaxFault,
+            out _,
             XRefWindow,
             parsed =>
             {

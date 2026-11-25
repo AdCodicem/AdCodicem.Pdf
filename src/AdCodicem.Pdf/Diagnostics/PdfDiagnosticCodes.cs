@@ -476,9 +476,10 @@ public static class PdfDiagnosticCodes
     /// A trailer, or a cross-reference stream's dictionary, measured from its object's header, is longer than
     /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, and only the part within it was parsed; or the white space
     /// and comments an offset that names a cross-reference section falls short of it by run past that bound, and the section
-    /// was not read from that offset. That white space, or an object's header the bound cuts there, makes the section the
-    /// guard's, cut where it is named and not looked for near the offset, the chain ending at it; for the one
-    /// <c>startxref</c> names, which leaves the chain no section, the index is rebuilt (#289).
+    /// was not read from that offset. That white space, an object's header the bound cuts there, or an object the bound cuts
+    /// past its header before its value says what it is, makes the section the guard's, cut where it is named and not looked
+    /// for near the offset, the chain ending at it; for the one <c>startxref</c> names, which leaves the chain no section,
+    /// the index is rebuilt (#289).
     /// </summary>
     public const string LimitTrailer = "limit.trailer";
 
