@@ -119,6 +119,10 @@ internal sealed partial class PdfFileReader
     {
         var offset = PositionOf(entry);
 
+        // What a stop of the chain's own load marked is the opening's: this load reads the object as any load does, and what
+        // it reads decides whether the object is cut (#292).
+        _cutAtStop?.Remove(id.Number);
+
         if (!IsInFile(offset))
         {
             // No position in the file names the entry, which the index does not keep where it was read. Only a row of the
@@ -148,9 +152,11 @@ internal sealed partial class PdfFileReader
             return found;
         }
 
-        // Counted as a re-entry, so that the null is not kept: a later read of the object loads it again, as any read does.
+        // Marked cut until a load reads the object again, and counted as a re-entry, so that the null is not kept: a later
+        // read of the object loads it again, as any read does.
         if (stopped)
         {
+            (_cutAtStop ??= new(SeededComparer.Instance)).Add(id.Number);
             _reentries++;
             return null;
         }
@@ -191,10 +197,12 @@ internal sealed partial class PdfFileReader
     /// vouch for it (<see cref="Validation.PdfValidationRuleIds.XRefEntryUnconfirmed"/>).
     /// <para>
     /// The outermost of the loads the chain makes of its own values once it is read (<see cref="_loadingChainValues"/>)
-    /// stops where a guard cuts the object's header at the offset, the guard reported or thrown: the chain ended there for
+    /// stops where a guard cuts the header at the offset itself, the guard reported or thrown: the chain ended there for
     /// the guard (ADR 34), and a search near the offset, or the rebuild that follows it, would read past the guard for
-    /// what its report names. Nothing near is searched, and the object is marked cut (<see cref="IsCutAtLimit"/>); a later
-    /// read of it, or a validation, looks for it as any read does (#292).
+    /// what its report names. Nothing near is searched, and the load marks the object cut until a load reads it again
+    /// (<see cref="IsCutAtLimit"/>); a later read of it, or a validation, looks for it as any read does (#292). A guard a
+    /// load the header's value sets off reaches — a stream's indirect <c>/Length</c>, under a header that names another
+    /// object or the object's own — is that load's, and stops nothing here.
     /// </para>
     /// </remarks>
     /// <param name="number">The object's number.</param>
@@ -213,7 +221,6 @@ internal sealed partial class PdfFileReader
     {
         var offset = PositionOf(entry);
         nearby = -1;
-        var guards = _guardsReached;
 
         if (TryParseNumberedAt(
             offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
@@ -223,13 +230,12 @@ internal sealed partial class PdfFileReader
             return true;
         }
 
-        // A guard reached here is one that cut the header: a header read whole returns above, with what the guard left of its
-        // value, or names another object, which reaches no guard.
-        stopped = _loadingChainValues && _loading.Count == 1 && _guardsReached != guards;
+        // Only a guard that cut the header at the offset stops the chain's own load: one a load its value set off reached is
+        // that load's.
+        stopped = _loadingChainValues && _loading.Count == 1 && found == HeaderPastGuard;
 
         if (stopped)
         {
-            _cutAtLimit.Add(number);
             generation = 0;
             return false;
         }
@@ -268,7 +274,8 @@ internal sealed partial class PdfFileReader
     /// <param name="value">The object read.</param>
     /// <param name="foundNumber">
     /// The number of the object found, even when <paramref name="keep"/> refuses it; <see cref="HeaderCutsNumber"/> where
-    /// <paramref name="atRow"/> and the row cuts a number, where nothing is read.
+    /// <paramref name="atRow"/> and the row cuts a number, where nothing is read; <see cref="HeaderPastGuard"/> where the
+    /// guard cut the header at the offset of an object asked for by its number.
     /// </param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
     /// <param name="digitsAt">
@@ -375,7 +382,11 @@ internal sealed partial class PdfFileReader
 
                     if (windowSize >= maxWindow)
                     {
+                        // The guard cut the header itself, under which no value was read: a caller that asked for a number
+                        // is told so, apart from a guard a load a value set off reached (TryParseWhereEntryPlaces). One that
+                        // asked for any object reads no number there.
                         ReachLimit(limit, LimitSubject(number, maxWindow), offset);
+                        foundNumber = number == AnyObject ? 0 : (int)HeaderPastGuard;
                         return false;
                     }
 

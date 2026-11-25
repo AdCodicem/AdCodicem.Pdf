@@ -147,6 +147,7 @@ internal sealed partial class PdfFileReader
         _nullWhileDecoding.Clear();
         _unproduced.Clear();
         _cutAtLimit.Clear();
+        _cutAtStop = null;
         _endObjMissing.Clear();
         _streamLengthFaults.Clear();
     }
@@ -212,10 +213,31 @@ internal sealed partial class PdfFileReader
     /// again from its scan. A finish that fails — the source failing to give its bytes — leaves the rebuild to be finished
     /// again, from the scan's index, by the next read or validation; a rebuild run again from its scan, to be run so again.
     /// </summary>
+    /// <remarks>
+    /// The finish's loads are the rebuild's, and follow the load rule, though the load that finishes it be one the chain
+    /// makes of its own values, which stops at a guard that cuts a header (<see cref="_loadingChainValues"/>): the root, a
+    /// catalog candidate or an object stream it reads is no value of the chain's (#292).
+    /// </remarks>
     /// <exception cref="PdfLimitExceededException">
     /// A guard was reached in finishing, and the document was opened to throw on one; the index is finished.
     /// </exception>
     private void FinishUnfinishedRebuild()
+    {
+        var chainValues = _loadingChainValues;
+        _loadingChainValues = false;
+
+        try
+        {
+            FinishUnfinishedRebuildCore();
+        }
+        finally
+        {
+            _loadingChainValues = chainValues;
+        }
+    }
+
+    /// <summary>Finishes the rebuild a load set off, as <see cref="FinishUnfinishedRebuild"/> does.</summary>
+    private void FinishUnfinishedRebuildCore()
     {
         var unfinished = _unfinishedRebuild!;
         _unfinishedRebuild = null;

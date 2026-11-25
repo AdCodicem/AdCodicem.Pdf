@@ -3413,35 +3413,181 @@ public class GuardCutValueTests
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(thrown);
     }
 
-    [Fact]
-    public void A_load_the_chain_s_own_load_sets_off_follows_the_load_rule()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_later_load_of_an_object_the_chain_s_own_load_stopped_at_decides_whether_it_is_cut(bool contents)
     {
-        // The cross-reference stream's /Length is object 9, a stream whose own /Length is object 12, whose header
-        // MaxObjectLength cuts. The chain's own load is that of object 9, which stops at no guard; the load of object 12 it
-        // sets off is a stream's length, read as any read reads a header past the guard: looked for near its entry, and the
-        // index rebuilt (#292).
+        // Object 9, the cross-reference stream's /Length, lies 300 blanks past where its row places it, and MaxObjectLength =
+        // 256 cuts before its header: the chain's own load stops there, and marks the object cut. A later load looks for it
+        // near the row, as any load does, and finds it whole: what that load reads decides the mark, not the stop (#292).
+        // Where object 9 is also the /Length of the page's contents, stream 4, whose data holds 50 bytes, the later load is
+        // the one reading the stream sets off, and the stream reports the length its data lacks, as a whole read does.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Invariant($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >>{(contents ? " /Contents 4 0 R" : "")} >>")),
+        };
+        var older = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var nine = file.Position;
+        file.Raw(new string(' ', 300));
+        file.Object(9, "91");
+        var streamRows = new Dictionary<int, (int, long, int)> { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [3] = (1, rows[3], 0), [9] = (1, nine, 0) };
+
+        if (contents)
+        {
+            streamRows[4] = (1, file.Object(4, "<< /Length 9 0 R >>\nstream\n" + new string('q', 50) + "\nendstream"), 0);
+        }
+
+        file.CrossReferenceStream(10, 13, streamRows, Invariant($"/Root 1 0 R /Prev {older} /Length 9 0 R"), length: false);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } };
+        string[] later = contents
+            ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.StreamLengthInvalid]
+            : [PdfDiagnosticCodes.XRefOffsetAdjusted];
+
+        using (var document = PdfDocument.Open(file.Bytes, options))
+        {
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+            document.Reader.IsCutAtLimit(9).Should().BeTrue();
+
+            var count = document.Diagnostics.Count;
+
+            if (contents)
+            {
+                document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>().Which.Data.Length.Should().Be(50);
+            }
+
+            document.GetObject(new PdfObjectId(9)).AsInteger().Should().Be(91);
+
+            document.Reader.IsCutAtLimit(9).Should().BeFalse();
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Skip(count).Select(entry => entry.Code).Should().Equal(later);
+            document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Select(entry => entry.Message).Should().Equal(
+                contents ? ["The stream declared 91 bytes but ended after 50."] : []);
+        }
+
+        using var validated = PdfDocument.Open(file.Bytes, options);
+        var report = new PdfValidator().Validate(validated);
+
+        validated.WasRepaired.Should().BeFalse();
+        validated.Reader.IsCutAtLimit(9).Should().BeFalse();
+        validated.Diagnostics.Select(entry => entry.Code).Should().Equal([PdfDiagnosticCodes.LimitObject, .. later]);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Message).Should().Equal(
+            Invariant($"Reading the header of object 9 where its entry places it, at offset {nine}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be."));
+    }
+
+    [Theory]
+    [InlineData("length header", 12, PdfValidationRuleIds.XRefCheckedInPart, "limit.object", "xref.rebuilt", "stream.length-invalid", "stream.length-invalid")]
+    [InlineData("other header", 9, PdfValidationRuleIds.XRefEntryShifted, "limit.object", "xref.offset-adjusted", "stream.length-invalid")]
+    [InlineData("finish", 1, PdfValidationRuleIds.XRefCheckedInPart, "xref.rebuilt", "limit.object", "limit.object", "stream.length-invalid", "stream.length-invalid", "trailer.root-recovered")]
+    public void A_load_the_chain_s_own_load_sets_off_follows_the_load_rule(string shape, int number, string found, params string[] opened)
+    {
+        // The cross-reference stream's /Length is object 9, a stream whose own /Length is object 12. The chain's own load is
+        // that of object 9; a load it sets off follows the load rule, and a guard that load reaches stops nothing, nor marks
+        // object N cut (#292). Opened to throw on a guard, Open throws the guard that load reached.
+        // - "length header": MaxObjectLength cuts object 12's header. Its load, a stream's length, reads it as any read reads
+        //   a header past the guard: looked for near its entry, the index rebuilt, and the guard's report stands.
+        // - "other header": the row of object 9 places object 8, a stream that lies just before it, and the guard cuts object
+        //   12's value, object 8's /Length: the guard is reached under a header that names another object. The load of
+        //   object 9 looks for it near its row and finds it, 999 where the data the chain took holds 105 bytes, which the
+        //   opening reports, as a whole read does.
+        // - "finish": object 12's row places object 2, and no header of object 12 lies near it: the index is rebuilt while
+        //   object 9 loads. The chain ended at a guard that cut the value of its /Prev, object 14, so the rebuilt index keeps
+        //   the chain's entry of the catalog, object 1, whose header the guard cuts. The rebuild's finish reads it as any
+        //   load does, finds no catalog there, and takes object 20 for it.
+        var bytes = LengthSettingOffALoad(shape);
+
+        using (var document = PdfDocument.Open(bytes, ObjectGuard))
+        {
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(opened);
+            document.WasRepaired.Should().Be(shape != "other header");
+            document.Reader.IsCutAtLimit(number).Should().BeFalse();
+            document.Catalog.Should().NotBeNull();
+
+            var count = document.Diagnostics.Count;
+            _ = document.GetObject(new PdfObjectId(number));
+
+            document.Diagnostics.Count.Should().Be(count);
+            document.Reader.IsCutAtLimit(number).Should().BeFalse();
+
+            if (shape == "other header")
+            {
+                document.Diagnostics[2].Message.Should().Be("The stream declared 999 bytes but ended after 105.");
+                document.GetObject(new PdfObjectId(9)).AsInteger().Should().Be(999);
+            }
+        }
+
+        using (var validated = PdfDocument.Open(bytes, ObjectGuard))
+        {
+            var count = validated.Diagnostics.Count;
+            var report = new PdfValidator().Validate(validated);
+
+            validated.Diagnostics.Count.Should().Be(count);
+            validated.Reader.IsCutAtLimit(number).Should().BeFalse();
+            report.Contains(found).Should().BeTrue();
+            report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+        }
+
+        var throwing = () => PdfDocument.Open(bytes, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    /// <summary>
+    /// Gives a file whose cross-reference stream's <c>/Length</c> is object 9, which the chain reads once it is read, a
+    /// stream whose own <c>/Length</c> is object 12, laid out as <paramref name="shape"/> says.
+    /// </summary>
+    /// <param name="shape">
+    /// "length header": object 12's header runs past 3,000 blanks; "other header": object 9's row places object 8, the
+    /// stream, whose /Length, object 12, holds its value past 3,000 blanks, and object 9 holds 999 just after it; "finish":
+    /// object 12's row places object 2, the stream's /Prev is object 14, whose value lies past 3,000 blanks, and the
+    /// catalog's header runs past 3,000 blanks, object 20 another catalog.
+    /// </param>
+    private static byte[] LengthSettingOffALoad(string shape)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var one = file.Position;
+        file.Raw(Invariant($"1 0{(shape == "finish" ? new string(' ', 3000) : " ")}obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"));
+        var rows = new Dictionary<int, long>
+        {
+            [1] = one,
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
         };
         var older = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var prev = older.ToString(CultureInfo.InvariantCulture);
+        var streamRows = new Dictionary<int, (int, long, int)> { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [3] = (1, rows[3], 0) };
         var twelve = file.Position;
-        file.Raw(Invariant($"12 0{new string(' ', 3000)}obj\n5\nendobj\n"));
-        var nine = file.Object(9, "<< /Length 12 0 R >>\nstream\nabcde\nendstream");
-        file.CrossReferenceStream(
-            10,
-            13,
-            new Dictionary<int, (int, long, int)> { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [3] = (1, rows[3], 0), [9] = (1, nine, 0), [12] = (1, twelve, 0) },
-            Invariant($"/Root 1 0 R /Prev {older} /Length 9 0 R"),
-            length: false);
 
-        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        switch (shape)
+        {
+            case "length header":
+                file.Raw(Invariant($"12 0{new string(' ', 3000)}obj\n5\nendobj\n"));
+                streamRows[9] = (1, file.Object(9, "<< /Length 12 0 R >>\nstream\nabcde\nendstream"), 0);
+                streamRows[12] = (1, twelve, 0);
+                break;
+            case "other header":
+                file.Raw(Invariant($"12 0 obj{new string(' ', 3000)}5\nendobj\n"));
+                var eight = file.Object(8, "<< /Length 12 0 R >>\nstream\nabcde\nendstream");
+                file.Object(9, "999");
+                streamRows[8] = (1, eight, 0);
+                streamRows[9] = (1, eight, 0);
+                streamRows[12] = (1, twelve, 0);
+                break;
+            default:
+                file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+                var fourteen = file.Position;
+                file.Raw(Invariant($"14 0 obj{new string(' ', 3000)}{older}\nendobj\n"));
+                streamRows[9] = (1, file.Object(9, "<< /Length 12 0 R >>\nstream\nabcde\nendstream"), 0);
+                streamRows[12] = (1, rows[2], 0);
+                streamRows[14] = (1, fourteen, 0);
+                prev = "14 0 R";
+                break;
+        }
 
-        document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.XRefRebuilt);
+        file.CrossReferenceStream(10, 15, streamRows, Invariant($"/Root 1 0 R /Prev {prev} /Length 9 0 R"), length: false);
+        return file.Bytes;
     }
 
     /// <summary>

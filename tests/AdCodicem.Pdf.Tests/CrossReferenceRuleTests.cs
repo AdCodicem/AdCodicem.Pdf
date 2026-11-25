@@ -3305,6 +3305,22 @@ public class CrossReferenceRuleTests
             .And.NotContain(PdfValidationRuleIds.XRefSectionMalformed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_first_token_no_header_starts_with_that_a_trailer_s_guard_cuts_holds_neither_the_xref_keyword_nor_an_object(bool prev)
+    {
+        // Startxref, or the /Prev of a newer table, names 300 dashes, one token, which a MaxTrailerLength of 256 cuts: the guard
+        // is reported, but a dash starts no header however the token goes on, and the place holds no object, nor a section
+        // within 512 bytes of it.
+        var file = SectionPastSpaces(0, new string('-', 300), prev, out var named);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Contain((PdfDiagnosticCodes.LimitTrailer, named));
+        var section = document.Reader.Structure.Sections.Single(section => section.Offset == named);
+        (section.State, section.CutByLimit, section.Fault).Should().Be((XRefSectionState.NotFound, false, "holds neither the xref keyword nor an object"));
+    }
+
     /// <summary>
     /// Writes the catalog, the page tree and the page, then <paramref name="spaces"/> spaces, at <paramref name="named"/>,
     /// then a classic table of them whose keyword is written <paramref name="keyword"/>, named by <c>startxref</c> at the
