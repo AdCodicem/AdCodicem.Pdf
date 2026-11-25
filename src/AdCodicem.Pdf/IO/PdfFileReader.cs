@@ -1124,9 +1124,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _rowsNotTakenCount;
 
     /// <summary>
-    /// How many places <see cref="_rowsNotTakenHeld"/> held when the reading of a place a search near an offset tries began,
-    /// which a place dropped gives back to (<see cref="RollBackIndex"/>); -1 outside such a reading, which keeps the rows
-    /// held until it ends.
+    /// Where in <see cref="_rowsNotTakenHeld"/> the rows the reading of a place a search near an offset tries noted start,
+    /// which a place dropped gives back from (<see cref="RollBackIndex"/>) and a proof leaves held until it ends; -1 outside
+    /// such a reading.
     /// </summary>
     private int _rowsNotTakenMark = -1;
 

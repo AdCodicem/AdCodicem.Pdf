@@ -2282,14 +2282,16 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void A_table_read_again_in_a_larger_window_counts_none_of_its_rows_as_rows_not_taken(bool straddle)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void A_table_read_again_in_a_larger_window_counts_none_of_its_rows_as_rows_not_taken(bool straddle, bool everyObject)
     {
         // The first table indexes 3,275 objects, its trailer keyword parted by the edge of the 64 KB window it is first read
-        // in, or not; an update rewrites objects 1 and 2. Read again in a larger window, each of the table's rows was noted
-        // as a row not taken, the index having taken it from the same row: with MaxIndexEntries at the 3,276 numbers the
-        // index holds, the bound on rows not taken was reported, and thrown under ThrowOnLimit, on a valid file (#287).
+        // in, or not; two updates rewrite objects 1 and 2, or one rewrites them all. Read again in a larger window, each of
+        // the table's rows was noted as a row not taken, the index having taken it from the same row, and the rows the last
+        // window noted were noted again: with MaxIndexEntries at the 3,276 numbers the index holds, the bound on rows not
+        // taken was reported, and thrown under ThrowOnLimit, on a valid file (#287).
         const int Size = 3276;
         var file = new HandWrittenFile();
         var offsets = new long[Size];
@@ -2319,10 +2321,29 @@ public class GuardCutValueTests
 
         table.Append(Invariant($"trailer\n<< /Size {Size} /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
         file.Raw(table.ToString());
-        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev 2 >>");
-        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        var update = file.Position;
-        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \ntrailer\n<< /Size {Size} /Root 1 0 R /Prev {first} >>\nstartxref\n{update}\n%%EOF\n"));
+        var previous = first;
+
+        for (var revision = 0; revision < (everyObject ? 1 : 2); revision++)
+        {
+            var rewritten = everyObject ? Size - 1 : 2;
+            var rows = new StringBuilder(Invariant($"xref\n0 {rewritten + 1}\n0000000000 65535 f \n"));
+
+            for (var number = 1; number <= rewritten; number++)
+            {
+                var at = file.Object(number, number switch
+                {
+                    1 => "<< /Type /Catalog /Pages 2 0 R /Rev 2 >>",
+                    2 => "<< /Type /Pages /Kids [] /Count 0 >>",
+                    _ => "null",
+                });
+                rows.Append(Invariant($"{at:D10} 00000 n \n"));
+            }
+
+            var update = file.Position;
+            file.Raw(rows + Invariant($"trailer\n<< /Size {Size} /Root 1 0 R /Prev {previous} >>\nstartxref\n{update}\n%%EOF\n"));
+            previous = update;
+        }
+
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = Size }, ThrowOnLimit = true };
 
         using var document = PdfDocument.Open(file.Bytes, options);

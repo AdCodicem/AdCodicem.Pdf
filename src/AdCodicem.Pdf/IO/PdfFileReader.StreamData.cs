@@ -822,19 +822,32 @@ internal sealed partial class PdfFileReader
     /// that names it does, and only the nearest can name the run the header ends. Null when none does.
     /// </summary>
     /// <remarks>
-    /// The rows held since a proof last asked are sorted in first, but while a place a search near an offset tries is read,
-    /// whose rows wait until it is kept or dropped.
+    /// The rows held since a proof last asked are sorted in first, but those the reading of a place a search near an offset
+    /// tries noted, which wait until it is kept or dropped: the rows held before it began are sorted in, and the place's
+    /// mark moves to the start of what stays held.
     /// </remarks>
     private long? RowNotTakenAtOrBefore(long position)
     {
-        if (_rowsNotTakenMark < 0 && _rowsNotTakenHeld is { Count: > 0 } held)
+        if (_rowsNotTakenHeld is { } held)
         {
-            foreach (var place in held)
+            var settled = _rowsNotTakenMark < 0 ? held.Count : _rowsNotTakenMark;
+
+            for (var i = 0; i < settled; i++)
             {
-                (_rowsNotTaken ??= new()).Add(place);
+                (_rowsNotTaken ??= new()).Add(held[i]);
             }
 
-            held.Clear();
+            if (settled == held.Count)
+            {
+                // Let go of the list itself: the places live on sorted, 8 bytes each.
+                _rowsNotTakenHeld = null;
+            }
+            else
+            {
+                held.RemoveRange(0, settled);
+            }
+
+            _rowsNotTakenMark = _rowsNotTakenMark < 0 ? -1 : 0;
         }
 
         return _rowsNotTaken?.LastBefore(position + 1) is >= 0 and var at ? at : null;

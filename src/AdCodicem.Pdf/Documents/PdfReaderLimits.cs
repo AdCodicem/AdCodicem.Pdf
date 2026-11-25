@@ -201,10 +201,11 @@ public sealed record PdfReaderLimits
     /// section superseded, or that the chain refused, each counted once —, whose places are kept for the document's life to
     /// prove an <c>endstream</c> the stream's own where a guard cut or left out its <c>/Length</c>: 8 bytes a place once
     /// sorted, and up to about four times that allocated while they are gathered and sorted. Past it, none more is kept, the
-    /// code is reported once, and an <c>endstream</c> only those places would prove leaves the data the guard's. The same bound applies to what the reader keeps of the scan of the file that the
-    /// searches near an entry's offset and near an offset the chain names ask for, once a document: the object headers
-    /// and keywords it takes, each definition of a number and each keyword counted, 16 bytes at most for a header or an
-    /// <c>xref</c> keyword, under 9 for a <c>trailer</c> keyword and under 25 for a cross-reference stream's header —
+    /// code is reported once, and an <c>endstream</c> only those places would prove leaves the data the guard's. The same
+    /// bound applies to what the reader keeps of the scan of the file that the searches near an entry's offset and near an
+    /// offset the chain names ask for, once a document: the object headers and keywords it takes, each definition of a
+    /// number and each keyword counted, 16 bytes at most for a header or an <c>xref</c> keyword, under 9 for a
+    /// <c>trailer</c> keyword and under 25 for a cross-reference stream's header —
     /// the lists that hold the last two keep up to a ninth more room than they use —, about 201 MB at most at the
     /// default, and from two to five times what it keeps allocated while it grows. What the scan takes past it is not
     /// kept; what it took from the data of a stream whose length's object it then awaited is kept, and counted toward
