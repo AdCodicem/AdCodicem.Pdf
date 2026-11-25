@@ -200,7 +200,9 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 - **Tracking lives on GitHub; the roadmap stays the reference.** `docs/roadmap.md` says what the milestones
   are and where each stands, and the `Tracking` workflow mirrors it as GitHub milestones. A milestone's
   slices are issues labeled `slice`, opened when it starts; debt is issues labeled `debt`, filed under the
-  milestone that will pay it. A milestone's last slice is its adversarial review, labeled `review` as well, whose
+  milestone that will pay it. **A debt filed under M02 is placed in a batch of its step 4 when it is filed**: an
+  existing batch whose code it shares, within six issues, or a new one; `docs/status.md`'s step 4 list records it, and
+  the issue's body names the batch. A milestone's last slice is its adversarial review, labeled `review` as well, whose
   findings are filed with that label too (ADR 46). A session opens, labels and comments on issues freely; an issue closes only
   through a merged pull request that says `Closes #n`. A commit names the issue it advances in its footer
   (`Refs #58`), never in its subject. Older commits cite debt as T01 to T40, mapped in `docs/status.md`.

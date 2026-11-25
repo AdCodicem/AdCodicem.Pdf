@@ -10,8 +10,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done: the
   engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object, page
-  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-seven batches of
-  reader and validation debts, thirty-two settled with the maintainer on 2026-10-01 and five on 2026-11-17, the first
+  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's forty-five batches of
+  reader and validation debts, thirty-two settled with the maintainer on 2026-10-01, five on 2026-11-17 and eight on
+  2026-11-25, the first
   four of which, [#117], [#187],
   [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the fifth, [#157] and
   [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on 2026-10-03, the seventh,
@@ -46,7 +47,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   and what a read keeps by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the
   parser at its guards, [#262], [#279], [#282] and [#294], with [#415], in [#419] that day, the third, the chain at its
   guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427] on 2026-11-25, the fourth, a hidden end's
-  proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], open in [#436]. Then the other batches,
+  proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], in [#436] that day. Next, batch 38, the
+  rebuild's scan with [#387]'s time in the square of the lines, brought forward as the maintainer chose on 2026-11-25;
+  then the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -646,8 +649,10 @@ One pull request per batch, each design question put to the maintainer after mea
 3. [#56], with [#134] — done, merged with [#147] on 2026-09-30 (*Earlier, in brief*): what a damaged Flate stream
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
-4. The reader and validation debts, in thirty-seven batches: thirty-two settled with the maintainer on 2026-10-01
-   (journal of 2026-10-01), five added on 2026-11-17 for the debts batches 21 and 22 filed (journal of 2026-11-17). The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
+4. The reader and validation debts, in forty-five batches: thirty-two settled with the maintainer on 2026-10-01
+   (journal of 2026-10-01), five added on 2026-11-17 for the debts batches 21 and 22 filed (journal of 2026-11-17), and
+   eight on 2026-11-25 for the thirty-three that batches 26, 27 and 33 filed and no batch held (journal of 2026-11-25).
+   The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
    twenty-five the threat model filed under M02 and the nine of M01's review join them where they share code or where
    their dependencies let them, the denial-of-service debts brought forward. A batch is one pull request; its design
    questions are put to the maintainer when it starts, after measuring; one that can move what a remote document gives
@@ -732,8 +737,8 @@ One pull request per batch, each design question put to the maintainer after mea
        `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
        merged on 2026-11-25, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02
        (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
-       and [#351], in [#436], open, `Remote corpus` run 142 green on its branch, which filed [#437] and [#438]
-       under M02 (journal of 2026-11-25).
+       and [#351], in [#436], merged on 2026-11-25, `Remote corpus` run 142 green on its branch, which filed [#437]
+       and [#438] under M02 (journal of 2026-11-25).
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -741,19 +746,39 @@ One pull request per batch, each design question put to the maintainer after mea
        the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
        two pull requests: the rules, [#107], [#111] and [#381]; the searches around a hybrid table's `/XRefStm`, [#321],
        [#330], [#332] and [#333].
-   32. What remains of [#158], with [#223].
+   32. What remains of [#158], with [#223], [#336], [#342] and [#426]: the tests' own debt.
    33. [#362], [#361], [#363], [#365], [#366] and [#372]: the headers the rebuild's scan takes in stream data it cannot
        confirm, its memo's kinds and its read budget, the denial of service first — in two pull requests, as the
        maintainer chose on 2026-11-17: [#362] and [#361] in [#386] (journal of 2026-11-18), which filed [#387] to
        [#389] under M02 and [#390] under M23; then [#363], [#365], [#366] and [#372] in [#394], merged on 2026-11-19, `Remote
        corpus` run 125 green on its branch (journal of 2026-11-19), which filed [#391] to [#393] under M02.
-   34. [#368], [#369], [#370] and [#371]: the searches near a row and near an offset, and where a stream's data ends
-       without `endstream`.
-   35. [#353], [#357], [#358] and [#356]: the rebuild's header walk, where its scan's pieces start, and the order of the
-       object streams' expansion.
+   34. [#368], [#369], [#370], [#371] and [#392]: the searches near a row and near an offset, where a stream's data ends
+       without `endstream`, and the memo's kinds near a lost one.
+   35. [#353], [#357], [#358], [#356], [#388] and [#432]: the rebuild's header walk, where its scan's pieces start and
+       what their edges take, and the order of the object streams' expansion.
    36. [#354] and [#355]: the trailer a rebuild merges from a cross-reference stream, and the encryption decided at
        opening.
    37. [#375], [#376], [#377], [#378] and [#379]: the chain's tables and trailers since [#322].
+   38. [#387], [#389] and [#438]: the rebuild's scan — values a window cuts, among headers in comment lines or strings,
+       regrowing every load's window, in time the square of the lines; a header a stream's data hides once the
+       confirming reads are spent; the verdict on a definition that holds no value. Brought forward as the maintainer
+       chose on 2026-11-25: it opens before batch 28.
+   39. [#391], [#393] and [#405]: the indirect lengths a rebuild reads — one its scan does not find, one an object
+       stream holds, as Ghostscript writes them — and the members an expansion takes in through a definition a later
+       stream replaces.
+   40. [#411], [#424], [#425] and [#416]: an object stream's `/N`, `/First` and `/Type`, and a stream's `/Length`,
+       `/Filter` and `/DecodeParms`, that a cut object holds whole or a nesting cut hides, and a member read through a
+       stack cut.
+   41. [#412], [#413], [#410] and [#414]: the nesting guards under `ThrowOnLimit`, the validator's walk and probe of
+       object streams, and the mutants of the nesting defenses [#409] left.
+   42. [#420], [#421], [#422] and [#423]: the parser at a guard's edge — a string or a delimiter left undecided, a whole
+       token's syntax report, a signed generation — and a trailer `/Root` the guard parts.
+   43. [#428], [#429], [#430], [#431] and [#435]: the chain and the loads at guards — white space before a header, a
+       trailer cut not taken for a section, the chain's own stop, a deferred `/Length` after a rebuild, the first
+       section's report.
+   44. [#433], [#434] and [#437]: classic tables read on past a fault, and the tally of the rows the chain does not take.
+   45. [#401], [#402] and [#403]: filter reports — two that depend on how much was decoded, the retake of a deferred
+       cross-reference stream's data, an object stream whose filters decode nothing.
 
    Slice 4's blockers, [#141] and [#144], are paid in [#254]; nothing else filed blocks it. The four defects the
    planning found outside every issue, [#199] to [#202], and the four batch 2 found, [#207] to [#210], are filed under
@@ -830,18 +855,18 @@ One pull request per batch, each design question put to the maintainer after mea
    contract removes it, as [#331] went; and [#373] under M23, which only a file of over 10 GB tells, as [#343] went.
    Batch 25's first pull request filed three under M02, [#395] to [#397], what the reader says and keeps of a value a
    guard cut, which the maintainer placed in batch 27 on 2026-11-22, with [#163], the reader at its guards; its second
-   filed [#399] under M23. Batch 26's first pull request filed three under M02, placed in no batch yet: [#401], two
+   filed [#399] under M23. Batch 26's first pull request filed three under M02: [#401], two
    filter reports that still depend on how much of the data was decoded; [#402], three edges of the retake of a
    deferred cross-reference stream's data without its carriage return; [#403], an object stream whose filters decode
-   nothing reported as a header fault. Its second filed [#405] under M02, placed in no batch yet: a rebuild that takes
+   nothing reported as a header fault. Its second filed [#405] under M02: a rebuild that takes
    an object stream's members in through a value of its dictionary that a stream it expands later replaces.
-   Batch 27's second pull request filed seven under M02, placed in no batch yet: [#420], a string or a delimiter a
+   Batch 27's second pull request filed seven under M02: [#420], a string or a delimiter a
    guard's edge leaves undecided, kept as far as it was read; [#421], a whole token at a guard's edge that loses its
    syntax report, and a prefix of `stream` that still cuts a member; [#422], a signed generation cut after its sign;
    [#423], a `/Root` a trailer's guard hides reported as recovered; [#424], a header value a cut object holds whole
    but of the wrong kind taken for the guard's; [#425], whether a whole `/Length`, `/Filter` or `/DecodeParms` a cut
    object holds is the file's, for the maintainer; [#426], a stack-cut test whose 600 nested dictionaries ran short of
-   its 1.5 MB thread once in CI. Its third filed eight under M02, placed in no batch yet: [#428], white space before an
+   its 1.5 MB thread once in CI. Its third filed eight under M02: [#428], white space before an
    object's header, which counts toward `MaxObjectLength`, [#289]'s other half; [#429], a cut of `MaxTrailerLength` the
    chain does not take for the guard's and sends to a search near the offset; [#430], the chain's own stop at a row
    that cuts a number, and its mark outliving direct reads; [#431], a deferred `/Length` after a rebuild reported as
@@ -849,11 +874,15 @@ One pull request per batch, each design question put to the maintainer after mea
    misread past a table's first fault that still count; [#434], three edges of a faulted table read on — a name or a
    string that ends the search, the findings a cut trailer's `/Prev` loses, a hybrid's `/XRefStm` not followed —; and
    [#435], a section `startxref` names whose value is whole before a trailer guard's cut, given no
-   `xref.section-missing`. Its fourth filed two under M02, placed in no batch yet: [#437], four edges of the tally of
+   `xref.section-missing`. Its fourth filed two under M02: [#437], four edges of the tally of
    rows the chain does not take — a proof made while a place a search tries is read, the bound's report hiding the
    index's own, a section read twice through [#156], the held list's storage — and three mutants of it no test kills;
    [#438], a rebuild taking an integer pair no load reads as a header for another header, a member's verdict read
-   again for each listing, and the scan for the memo telling the verdict of every header it takes.
+   again for each listing, and the scan for the memo telling the verdict of every header it takes. The maintainer
+   placed those twenty-one on 2026-11-25, with the six batch 33 filed, [#387] to [#389] and [#391] to [#393], and the
+   six batch 27's first pull request filed, [#410] to [#414] and [#416], by the code they share: [#426] in batch 32,
+   with the tests' own debt; [#392] in batch 34, with the search near a row; [#388] and [#432] in batch 35, with where
+   the scan's pieces start; the twenty-nine others in batches 38 to 45 above.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
