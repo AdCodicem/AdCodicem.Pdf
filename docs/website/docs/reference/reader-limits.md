@@ -227,7 +227,10 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   though a stream's own `/Prev`, its dictionary read whole, is judged as past a limit that stopped its rows, a
   reference to a row it declares and the limit left unread staying the limit's
   ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)), the index is not rebuilt for the guard, and the
-  guard is reported once the chain is read, or thrown by `Open`. So does a section found near the offset it is named at, which
+  guard is reported once the chain is read, or thrown by `Open`: where it cuts the object's header, the load that reports
+  it looks for nothing near the object's entry and rebuilds nothing, as where it cuts the value; a later read of that
+  object, or a validation, reads it as any read reads a header past the guard, which may rebuild the index
+  ([#292](https://github.com/AdCodicem/AdCodicem.Pdf/issues/292)). So does a section found near the offset it is named at, which
   such a value keeps from being read, or which declared itself one — a table's `xref` keyword, `/Type /XRef` — before a
   guard cut it, as the nearest such place a fault of the file keeps from being read is taken for the section too
   ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)); a place there that declares another type — a CIDFont, whose `/W` gives
