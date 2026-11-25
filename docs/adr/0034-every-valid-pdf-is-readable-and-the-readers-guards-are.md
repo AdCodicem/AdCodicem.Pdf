@@ -290,7 +290,9 @@ look near the entry and rebuild. And while [#324](https://github.com/AdCodicem/A
 classic table a `/Prev` names whose fault lies among its rows came to be read on past that fault to its trailer: a
 `MaxTrailerLength` cut of that trailer leaves the table's fault, met before the cut, the file's — the table reported as
 one that cannot be read, `xref.section-malformed` beside `xref.checked-in-part` —, and its `/Prev`, written whole before
-the cut, is judged as above, never followed.
+the cut, is judged, never followed. Its fault, not a guard, stopped its rows: that `/Prev` is judged as a whole read of
+the table judges it, a reference not taken for one to a row a guard left unread, and its `/XRefStm`, which a whole read
+of such a table does not follow, is not judged.
 
 ## Context
 
