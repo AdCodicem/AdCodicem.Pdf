@@ -77,6 +77,12 @@ internal sealed class ScanMemo
     /// </summary>
     private const int NoValueFlag = 1 << 20;
 
+    /// <summary>
+    /// The bit of a header slot's traits that says the scan's piece did not hold the bytes that tell whether the object
+    /// holds a value (<see cref="ScannedHeader.HoldsNoValue"/> null).
+    /// </summary>
+    private const int NoValueUnknownFlag = 1 << 21;
+
     /// <summary>How many slots a builder makes room for first.</summary>
     private const int FirstCapacity = 64;
 
@@ -171,7 +177,7 @@ internal sealed class ScanMemo
             return false;
         }
 
-        header = new ScannedHeader(position, number, traits & GenerationMask, KindOf(traits), (traits & NoValueFlag) != 0);
+        header = new ScannedHeader(position, number, traits & GenerationMask, KindOf(traits), NoValueOf(traits));
         return true;
     }
 
@@ -264,6 +270,9 @@ internal sealed class ScanMemo
 
     private static int FlagOf(ScannedPlaceKind kind) => kind == ScannedPlaceKind.Raw ? RawFlag : 0;
 
+    /// <summary>Gives whether a header's traits say its object holds no value, or null where the scan could not tell.</summary>
+    private static bool? NoValueOf(int traits) => (traits & NoValueUnknownFlag) != 0 ? null : (traits & NoValueFlag) != 0;
+
     private static ScannedPlaceKind KindOf(int traits) => (traits & RawFlag) != 0 ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean;
 
     /// <summary>
@@ -292,11 +301,11 @@ internal sealed class ScanMemo
         public bool ReadsBounded { get; set; }
 
         /// <summary>
-        /// Adds the header the scan took at <paramref name="position"/>, and whether its object holds no value; false where
-        /// the memo, or the place, is past what it may hold (<see cref="TryCount"/>).
+        /// Adds the header the scan took at <paramref name="position"/>, and whether its object holds no value, null where the
+        /// scan's piece could not tell; false where the memo, or the place, is past what it may hold (<see cref="TryCount"/>).
         /// </summary>
-        public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor, bool holdsNoValue = false) =>
-            TryAdd(position, number, generation | FlagOf(kind) | (holdsNoValue ? NoValueFlag : 0), floor);
+        public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor, bool? holdsNoValue = false) =>
+            TryAdd(position, number, generation | FlagOf(kind) | holdsNoValue switch { true => NoValueFlag, null => NoValueUnknownFlag, _ => 0 }, floor);
 
         /// <summary>
         /// Adds the <c>xref</c> keyword the scan took at <paramref name="position"/>; false where the memo, or the place, is
@@ -679,7 +688,7 @@ internal sealed class ScanMemo
                             return false;
                         }
 
-                        Current = new ScannedHeader(_next, _number, _traits & GenerationMask, KindOf(_traits), (_traits & NoValueFlag) != 0);
+                        Current = new ScannedHeader(_next, _number, _traits & GenerationMask, KindOf(_traits), NoValueOf(_traits));
                         _next += _stride;
                         return true;
                     }
@@ -708,7 +717,7 @@ internal sealed class ScanMemo
 
                 if ((slot.Traits & KeywordFlag) == 0)
                 {
-                    Current = new ScannedHeader(slot.Start, slot.Value, slot.Traits & GenerationMask, KindOf(slot.Traits), (slot.Traits & NoValueFlag) != 0);
+                    Current = new ScannedHeader(slot.Start, slot.Value, slot.Traits & GenerationMask, KindOf(slot.Traits), NoValueOf(slot.Traits));
                     return true;
                 }
             }
