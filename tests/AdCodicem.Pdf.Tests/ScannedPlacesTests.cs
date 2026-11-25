@@ -1500,6 +1500,27 @@ public class ScannedPlacesTests
     }
 
     [Fact]
+    public void A_member_of_a_later_object_stream_replaces_an_earlier_one_whatever_the_bytes_at_its_header_read()
+    {
+        // Object streams 10 and 11 both hold object 20, and the index is rebuilt; the source gives a read of 64 bytes that
+        // starts at stream 11's header 8, its header's last. Only a direct definition after the member is asked whether it
+        // holds no value: the later stream's member replaces the earlier as any later definition does, and the report names
+        // none as holding no value (#351).
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+        file.ObjectStream(10, [(20, "(from-early)")]);
+        var late = file.ObjectStream(11, [(20, "(from-late)")]);
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == late && held == 64 ? 8 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        document.GetObject(new PdfObjectId(20)).AsText().Should().Be("from-late");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().NotContain("holds no value");
+    }
+
+    [Fact]
     public void A_rebuild_that_replays_the_memo_takes_its_verdict_on_a_definition_after_a_member_rather_than_read_it_again()
     {
         // As above, a member of object stream 10 and a header of object 3 after it that holds no value; the source gives a
