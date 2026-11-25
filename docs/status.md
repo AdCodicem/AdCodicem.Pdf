@@ -45,7 +45,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   twenty-seventh, in four pull requests by area as the maintainer chose on 2026-11-23, the first, the nesting guards
   and what a read keeps by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the
   parser at its guards, [#262], [#279], [#282] and [#294], with [#415], in [#419] that day, the third, the chain at its
-  guards, [#289], [#295], [#328], [#329], [#292] and [#324], open in [#427]. Then the other batches,
+  guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427] on 2026-11-25, the fourth, a hidden end's
+  proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], open in [#436]. Then the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -57,8 +58,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
-  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]) and
-  its third ([#428] to [#435]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]),
+  its third ([#428] to [#435]) and its fourth ([#437], [#438]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
   eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -715,8 +716,9 @@ One pull request per batch, each design question put to the maintainer after mea
        [#294], with [#415], which the maintainer chose to close there, in [#419], merged on 2026-11-24, `Remote corpus`
        run 137 green on its branch, which filed [#420] to [#426] under M02 (journal of 2026-11-24) and settled [#328]'s
        `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
-       open, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02 (journal of
-       2026-11-25); then stream ends and the rebuild, [#287], [#293], [#290] and [#351].
+       merged on 2026-11-25, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02
+       (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
+       and [#351], in [#436], open, REMOTE_RUN, which filed [#437] and [#438] under M02 (journal of 2026-11-25).
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -832,7 +834,11 @@ One pull request per batch, each design question put to the maintainer after mea
    misread past a table's first fault that still count; [#434], three edges of a faulted table read on — a name or a
    string that ends the search, the findings a cut trailer's `/Prev` loses, a hybrid's `/XRefStm` not followed —; and
    [#435], a section `startxref` names whose value is whole before a trailer guard's cut, given no
-   `xref.section-missing`.
+   `xref.section-missing`. Its fourth filed two under M02, placed in no batch yet: [#437], four edges of the tally of
+   rows the chain does not take — a proof made while a place a search tries is read, the bound's report hiding the
+   index's own, a section read twice through [#156], the held list's storage — and three mutants of it no test kills;
+   [#438], a rebuild taking an integer pair no load reads as a header for another header, and a member's verdict read
+   again for each listing.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1188,3 +1194,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#433]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/433
 [#434]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/434
 [#435]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/435
+[#436]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/436
+[#437]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/437
+[#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
