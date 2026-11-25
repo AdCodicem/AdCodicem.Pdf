@@ -85,10 +85,10 @@ internal sealed partial class PdfFileReader
     /// dictionary gives <c>/Type /XRef</c>, and its header starts its line (<see cref="StartsItsLine"/>) —, at its first
     /// sign where its number is written with a run of signs that starts with a <c>+</c>, where the chain has not reached
     /// it, at its header or inside its object number, and where none of the reader's limits left part of the chain
-    /// unread, nor may have hidden a link the chain would have followed, as white space past a trailer's window that
-    /// turned the chain's reading of a section it names into a search may, or a cut of the reading at an offset the chain
-    /// names, whatever it cut (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c> is not,
-    /// whether it reads or not. The search is never asked for a section that is there and cannot be read
+    /// unread — white space past a trailer's window among them, which makes the section the chain names there the guard's
+    /// and ends the chain at it —, nor may have hidden a link the chain would have followed, as a cut of the reading at an
+    /// offset the chain names may, whatever it cut (<see cref="ReportStreamsPassedOver"/>): an object that gives only a
+    /// <c>/W</c> is not, whether it reads or not. The search is never asked for a section that is there and cannot be read
     /// (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     /// <param name="offset">The offset that names the section, as written.</param>

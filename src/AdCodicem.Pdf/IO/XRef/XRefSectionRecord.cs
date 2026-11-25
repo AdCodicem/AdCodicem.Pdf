@@ -116,12 +116,11 @@ internal sealed class XRefSectionRecord
     /// its <c>trailer</c> keyword too (#207). A row for any number may lie there, and the reader refuses every number to the
     /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
     /// not followed, the chain goes on through the table that names it (#156, #210) — but for a table a <c>/Prev</c> names,
-    /// read on past its fault to its trailer, which refuses every number below that trailer's <c>/Size</c>, as every row a
-    /// valid table gives numbers, and the rest of each subsection its faults ended (<see cref="NumbersRefused"/>, #324). Rows
-    /// that run into a dictionary no
-    /// trailer keyword introduces may have lost rows with the keyword, a damaged block ending where a subsection would
-    /// start: what lies before that dictionary cannot be known either, though it is read as the trailer, the chain going on
-    /// through its links (#322).
+    /// read on past its fault to its trailer, which refuses every number below that trailer's <c>/Size</c>, since every row
+    /// of a valid table numbers an object below it, and the rest of each subsection its faults ended
+    /// (<see cref="NumbersRefused"/>, #324). Rows that run into a dictionary no trailer keyword introduces may have lost rows
+    /// with the keyword, a damaged block ending where a subsection would start: what lies before that dictionary cannot be
+    /// known either, though it is read as the trailer, the chain going on through its links (#322).
     /// </summary>
     public bool SubsectionsUnknown { get; set; }
 
