@@ -1563,7 +1563,7 @@ internal sealed partial class PdfFileReader
                 : kept;
             var rebuilt = _everyNumberRefused
                 ? "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows"
-                : "the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows";
+                : "the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows";
             lost = stand + (goesOn ? "; the chain goes on through its trailer's /Prev, and " : "; ") + rebuilt + ".";
         }
         else if (section.EveryNumberRefusedBefore && (!section.NumbersRefused || section.Kind == XRefSectionKind.Table))

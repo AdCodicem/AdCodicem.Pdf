@@ -1790,7 +1790,7 @@ public class CrossReferenceChainTests
         report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
         report.Position.Should().Be(middle);
         report.Message.Should().Be(Invariant(
-            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: {said.Replace("{five}", five.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}. The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: {said.Replace("{five}", five.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}. The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
         var sections = document.Reader.Structure.Sections;
         sections.Select(section => (section.Offset, section.State)).Should().Equal(
             (newest, XRefSectionState.Read), (middle, XRefSectionState.Malformed), (oldest, XRefSectionState.Read));
@@ -1831,7 +1831,7 @@ public class CrossReferenceChainTests
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics.Should().ContainSingle().Which.Message.Should().EndWith(counts
-            ? "the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."
+            ? "the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."
             : "the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.");
         document.Reader.Structure.Sections.Should().HaveCount(3);
         document.Reader.ChainIndex!.TryGet(9, out _).Should().Be(counts);
@@ -1853,7 +1853,7 @@ public class CrossReferenceChainTests
 
         document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionMissing);
         document.Diagnostics[0].Message.Should().EndWith(
-            "The rows read before the fault, if any, were kept; the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.");
+            "The rows read before the fault, if any, were kept; the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.");
         document.Diagnostics[1].Message.Should().Be(Invariant(
             $"The /Prev of the cross-reference section at offset {middle} is not an offset; the sections it names are looked for by rebuilding the index."));
         var sections = document.Reader.Structure.Sections;
@@ -5190,7 +5190,7 @@ public class CrossReferenceChainTests
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics[1].Message.Should().Be(Invariant(
-            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept but for those it refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept but for those it refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
         document.Reader.Structure.Sections[2].State.Should().Be(XRefSectionState.Malformed);
         document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Read);
         ShouldServeTheNewerRevisions(document, three: false, four: true);
@@ -5218,8 +5218,8 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("/X", "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows; the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.", false, false)]
-    [InlineData("[3 2]", "The rows read before the fault, if any, were kept but for those whose numbers a newer section refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", false, false)]
-    [InlineData("[10 1]", "The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", true, true)]
+    [InlineData("[3 2]", "The rows read before the fault, if any, were kept but for those whose numbers a newer section refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", false, false)]
+    [InlineData("[10 1]", "The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", true, true)]
     public void A_table_that_cannot_be_read_past_a_lost_stream_says_which_of_the_rows_read_before_its_fault_stand(string index, string said, bool three, bool four)
     {
         // The table the lost stream's /Prev names runs from its rows for objects 3 and 4 into a row that is no row, then a stray
@@ -9942,6 +9942,14 @@ public class CrossReferenceChainTests
         }
 
         using var validated = PdfDocument.Open(read, new PdfReaderOptions { Limits = limits });
+
+        // The guard's words name a dictionary only where the cut met one.
+        validated.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer).Select(diagnostic => diagnostic.Message).Should().Equal(
+            cut
+                ? [maxTrailerLength == JustPastTheHeader
+                    ? Invariant($"The dictionary of the object read as a cross-reference stream runs past {limits.MaxTrailerLength} bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.")
+                    : Invariant($"The object read as a cross-reference stream runs past {limits.MaxTrailerLength} bytes before it says what it is; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.")]
+                : []);
         var findings = new PdfValidator().Validate(validated).Findings.Select(finding => finding.RuleId).ToList();
         findings.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().Be(cut);
         findings.Should().NotContain([PdfValidationRuleIds.XRefSectionNotFound, PdfValidationRuleIds.FileStartXRefWrong]);
@@ -9989,6 +9997,8 @@ public class CrossReferenceChainTests
         document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset)).Last().Should().Be(
             (named, XRefSectionState.Malformed, XRefSectionKind.Unknown, true, stream));
         document.Reader.Structure.Sections[^1].Fault.Should().Be("holds object 7, whose value one of the reader's limits cut before it said what it is");
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The object read as a cross-reference stream runs past {(maxTrailerLength == 0 ? "64 KB" : $"{maxTrailerLength} bytes")} before it says what it is; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
 
         if (named == "startxref")
         {
@@ -10050,6 +10060,8 @@ public class CrossReferenceChainTests
                 .Where(diagnostic => diagnostic.Code != PdfDiagnosticCodes.XRefSectionMissing)
                 .Prepend((PdfDiagnosticCodes.LimitTrailer, stream)));
         whole.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.XRefSectionMissing).Should().Be(named == "startxref");
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The object read as a cross-reference stream runs past {(maxTrailerLength == 0 ? "64 KB" : $"{maxTrailerLength} bytes")}; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
         Text(document, 5).Should().Be(named == "startxref" ? "new five" : "old five").And.Be(Text(whole, 5));
         document.WasRepaired.Should().Be(named == "startxref").And.Be(whole.WasRepaired);
         document.Reader.ChainStoppedByGuard.Should().BeFalse();
