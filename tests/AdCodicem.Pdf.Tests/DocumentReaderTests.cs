@@ -3644,6 +3644,22 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public void A_deferred_length_counting_the_end_of_line_before_the_chain_s_endstream_says_nothing_once_the_searches_have_read_all_they_may(int sections)
+    {
+        // As above, but the newest length counts the end-of-line before the endstream the chain stopped at: the stream's own,
+        // which says nothing. Once the searches had read all they may, where that keyword starts was asked of them, which
+        // gave no answer, and the data's end was taken for it: the length was reported as giving data past it (#293).
+        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 1);
+        using var document = PdfDocument.Open(file);
+
+        (document.Reader.EndStreamSearchBytes >= PdfFileReader.EndStreamSearchPasses * file.Length).Should().Be(sections == 5);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(sections + 1).And.OnlyContain(section => section.State == XRefSectionState.Read);
+    }
+
+    [Theory]
     [InlineData(false, false, "\n")]
     [InlineData(true, false, "\n")]
     [InlineData(false, true, "\r\n")]
