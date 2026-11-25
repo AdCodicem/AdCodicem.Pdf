@@ -5201,21 +5201,27 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("/Prev")]
-    [InlineData("/XRefStm")]
-    public void A_section_lacking_rows_beside_a_value_a_guard_cut_reaches_the_guard_once_the_chain_is_read(string naming)
+    [InlineData("/Prev", "0")]
+    [InlineData("/XRefStm", "0")]
+    [InlineData("/Prev", "(x)")]
+    [InlineData("/XRefStm", "(x)")]
+    public void A_section_lacking_rows_beside_a_value_a_guard_cut_reaches_the_guard_once_the_chain_is_read(string naming, string five)
     {
         // As above, but stream 6's data, three bytes, holds no row of seven bytes: the section lacks rows whatever the value
         // holds, its trailer merged and the chain going on, the first revision's table read. The value the guard cut was
         // never loaded: the guard was neither reported nor thrown. It is reached once the chain is read, before the index is
         // rebuilt at opening: the stream's /Index holds a reference, so the numbers it declares are unknown and no older row
-        // stands for any (#210) — the catalog's among them, whose newer definition the rebuild finds.
-        var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", _ => "abc", out var sixAt);
+        // stands for any (#210) — the catalog's among them, whose newer definition the rebuild finds. A value of the wrong
+        // type makes the whole read unreadable rather than incomplete: the section is the file's either way, and no row is
+        // read either way, so the guard's read keeps the verdict the data gives (ADR 34, #290).
+        var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", _ => "abc", out var sixAt, five: five);
         string[] wholeCodes;
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt).Incomplete.Should().BeTrue();
+            var wholeSection = whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt);
+            wholeSection.State.Should().Be(five == "0" ? XRefSectionState.Read : XRefSectionState.Malformed);
+            wholeSection.Incomplete.Should().Be(five == "0");
             wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
             Revision(whole).Should().Be("two");
         }
@@ -5269,7 +5275,7 @@ public class GuardCutValueTests
     /// 9; the third's table, placing object 5, which names stream 6 by <paramref name="naming"/>.
     /// </summary>
     private static byte[] LackingBesideCut(
-        string naming, string numbering, Func<string[], string> data, out long sixAt, int tableSize = 8)
+        string naming, string numbering, Func<string[], string> data, out long sixAt, int tableSize = 8, string five = "0")
     {
         static string Row(int type, long offset, int generation) => string.Concat(
             (char)type, (char)((offset >> 24) & 0xFF), (char)((offset >> 16) & 0xFF), (char)((offset >> 8) & 0xFF),
@@ -5281,19 +5287,19 @@ public class GuardCutValueTests
         var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
         var first = file.Table(4, new Dictionary<int, long> { [1] = older, [2] = two, [3] = three }, "/Size 4 /Root 1 0 R");
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev (two) >>");
-        var five = file.Object(5, "0" + new string(' ', 1100));
+        var fiveAt = file.Object(5, five + new string(' ', 1100));
         var nine = file.Object(9, "(nine)");
         sixAt = file.Position;
         var rows = data(
         [
-            Row(0, 0, 65535), Row(1, one, 0), Row(1, two, 0), Row(1, three, 0), Row(0, 0, 0), Row(1, five, 0), Row(1, sixAt, 0),
+            Row(0, 0, 65535), Row(1, one, 0), Row(1, two, 0), Row(1, three, 0), Row(0, 0, 0), Row(1, fiveAt, 0), Row(1, sixAt, 0),
             Row(0, 0, 0), Row(0, 0, 0), Row(1, nine, 0),
         ]);
         var prev = naming == "/Prev" ? Invariant($" /Prev {first}") : string.Empty;
         file.Raw(Invariant($"6 0 obj\n<< /Type /XRef /W [1 4 2] {numbering} /Root 1 0 R{prev} /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
         var table = file.Position;
         var link = naming == "/Prev" ? Invariant($"/Prev {sixAt}") : Invariant($"/Prev {first} /XRefStm {sixAt}");
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{fiveAt:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
         return file.Bytes;
     }
 
