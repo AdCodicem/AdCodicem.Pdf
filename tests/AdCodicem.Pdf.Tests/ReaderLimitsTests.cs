@@ -1432,7 +1432,7 @@ public class ReaderLimitsTests
     [InlineData("object", "Object 1 runs past 1 byte, its stream data aside; only what lies within it was read.")]
     [InlineData("section length", "The cross-reference table runs past 1 byte before its first entry; none of its entries was read.")]
     [InlineData("section count", "The cross-reference chain has more than 1 section; the older ones were not read.")]
-    [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
+    [InlineData("cross-reference stream", "The object read as a cross-reference stream runs past 1 byte before it says what it is; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
     [InlineData("rebuild reads", "Past streams' direct lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
     [InlineData("object-stream decodes", "The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, 35651712 bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends.")]
@@ -1440,7 +1440,8 @@ public class ReaderLimitsTests
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
         // singular (#241). Object 3, a stream in the cases of the guards on streams, is decoded. A table cut at one byte is
-        // cut inside its keyword, before its first entry, which its report says rather than claim entries read (#289).
+        // cut inside its keyword, before its first entry, which its report says rather than claim entries read (#289); a
+        // cross-reference stream, inside its object's header, which its report says rather than name a dictionary.
         var @case = Case.For(guard);
         using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = With(@case.Reached, @case.LimitName, 1) });
 

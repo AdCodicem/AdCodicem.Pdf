@@ -481,7 +481,9 @@ public static class PdfDiagnosticCodes
     /// was not read from that offset. That white space, an object's header the bound cuts there, or an object the bound cuts
     /// past its header before its value says what it is, makes the section the guard's, cut where it is named and not looked
     /// for near the offset, the chain ending at it; for the one <c>startxref</c> names, which leaves the chain no section,
-    /// the index is rebuilt (#289).
+    /// the index is rebuilt (#289). The message then names no dictionary, none having been read. A value that starts before
+    /// the cut as no dictionary, or a first token no header starts with, is no section's whatever the cut hid, and the
+    /// section is looked for as one that is not there.
     /// </summary>
     public const string LimitTrailer = "limit.trailer";
 

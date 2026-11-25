@@ -385,7 +385,7 @@ internal sealed partial class PdfFileReader
                         // The guard cut the header itself, under which no value was read: a caller that asked for a number
                         // is told so, apart from a guard a load a value set off reached (TryParseWhereEntryPlaces). One that
                         // asked for any object reads no number there.
-                        ReachLimit(limit, LimitSubject(number, maxWindow), offset);
+                        ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
                         foundNumber = number == AnyObject ? 0 : (int)HeaderPastGuard;
                         return false;
                     }
@@ -429,7 +429,7 @@ internal sealed partial class PdfFileReader
                     // is the file's, and is kept after it; it reported nothing of the token the window's edge cut, which is
                     // the guard's (ADR 34), and what it found of a stream is dropped with the cut.
                     syntaxFault = SyntaxFaultSince(_pending, mark);
-                    ReachLimit(limit, LimitSubject(number, maxWindow), offset);
+                    ReachLimit(limit, LimitSubject(number, maxWindow, parser.ValueKindCut ? null : parsed), offset);
                     MarkCutByGuard(parsed, offset + bytes.Length);
                     valueKindCut = parser.ValueKindCut;
 
@@ -952,10 +952,29 @@ internal sealed partial class PdfFileReader
         }
     }
 
-    private static string LimitSubject(int number, int bound) => number switch
+    /// <summary>
+    /// Says what a guard cut where <see cref="TryParseNumberedAt"/> reached it, for the message that names the guard: a
+    /// trailer, a numbered object, or the object read as a cross-reference stream — its dictionary where the reading met
+    /// one, the object otherwise, so that the message names no dictionary the reading never met.
+    /// </summary>
+    /// <param name="number">The number asked for, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
+    /// <param name="bound">The guard's bound.</param>
+    /// <param name="read">
+    /// For <see cref="AnyObject"/>, what the reading made of the value before the cut; null where nothing said what the
+    /// object is — the cut parted its header, or came before its value said what it is
+    /// (<see cref="PdfObjectParser.ValueKindCut"/>). Not read for a trailer or a numbered object.
+    /// </param>
+    private static string LimitSubject(int number, int bound, PdfObject? read = null) => number switch
     {
         DirectObject => $"A trailer runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
-        AnyObject => $"The dictionary of the object read as a cross-reference stream runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
+        AnyObject => read switch
+        {
+            PdfDictionary =>
+                $"The dictionary of the object read as a cross-reference stream runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
+            null =>
+                $"The object read as a cross-reference stream runs past {PdfLimitGuard.FormatLength(bound)} before it says what it is; only what lies within it was read.",
+            _ => $"The object read as a cross-reference stream runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
+        },
         _ => string.Create(
             CultureInfo.InvariantCulture,
             $"Object {number} runs past {PdfLimitGuard.FormatLength(bound)}, its stream data aside; only what lies within it was read."),
