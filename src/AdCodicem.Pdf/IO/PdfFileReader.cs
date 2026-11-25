@@ -198,6 +198,17 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const int ScanLead = 64;
 
     /// <summary>
+    /// How many bytes from an object header the rebuild's scan reads to tell whether the object holds no value
+    /// (<see cref="HoldsNoValue"/>, #351): enough for a header, the end of line after it and the token that follows.
+    /// </summary>
+    /// <remarks>
+    /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. Every object of a valid file holds a
+    /// value; one whose white space or comments after its header run past this many bytes is taken to hold one, as every
+    /// definition was before the scan told, and the last definition wins.
+    /// </remarks>
+    private const int NoValueReach = 64;
+
+    /// <summary>
     /// What the object streams kept at once weigh, in bytes: their decoded data, and the tables and lookup of their
     /// headers (#160). Past it the oldest is let go, and decoded again if an object it holds is asked for: the bound is on
     /// memory, not on what can be read. The object stream decoded last is kept whatever its size, so memory follows the
