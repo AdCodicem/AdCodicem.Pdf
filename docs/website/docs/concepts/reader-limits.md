@@ -84,42 +84,39 @@ and could lose what the chain had read.
 
 The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
 those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, cut the trailer
-of a classic table, or cut a value a cross-reference stream's rows are read with, what that section names is still the
-file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev`
-that is no offset or lies outside the file, one that names the section itself or another the chain has reached, an
-`/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file judges it,
-and reads nothing past the guard to do so: such a guard hides no damage that can be seen without reading past it, and
-what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a sound
-section — an offset in the file the chain has not reached, a reference to a row the guard left unread — stays the
-guard's, the older sections with it ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). In a trailer the
-guard cut, a value written whole before the cut is the trailer's, and the `/XRefStm` it gives over rows read whole is
-followed, its stream holding the table's own revision's rows
-([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328),
-[#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)). A hybrid table's `/XRefStm` whose offset holds no
-section, and whose search nearby stops at what the table's `/Prev` names because a guard cut it before it said what it
-is, or cut a value its rows are read with — the `/Prev` may read a section there, which the guard hides —, is the
-guard's too: nothing is reported of it, and the index is not rebuilt for it. Wherever the chain names a section, a
-table or a stream, `MaxTrailerLength` bounds apart the white space and comments the offset falls short by, and the
-section is read from its first token: a stream's dictionary is measured from its object's header, so that that search
-and the `/Prev`'s own reading meet one cut or none, and a classic table's rows from its `xref` keyword, toward
-`MaxXRefSectionLength` alone, the white space crossed once however far the table's windows grow
+of a classic table ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)), or cut a value a cross-reference
+stream's rows are read with ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)), what that section names is
+still the file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev` that is no offset
+or lies outside the file, one that names the section itself or another the chain has reached, an `/XRefStm` that names
+no cross-reference stream. The reader judges such a value as a read of the whole file judges it, and reads nothing past
+the guard to do so: such a guard hides no damage that can be seen without reading past it, and what the lost sections
+index is found by rebuilding the index, as in the file read whole. A value that may name a sound section — an offset in
+the file the chain has not reached, a reference to a row the guard left unread — stays the guard's, the older sections
+with it ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). In a trailer the guard cut, a value written
+whole before the cut is the trailer's, and the `/XRefStm` it gives over rows read whole is followed, its stream holding
+the table's own revision's rows ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)). A hybrid table's
+`/XRefStm` whose offset holds no section, and whose search nearby stops at what the table's `/Prev` names because a
+guard cut it before it said what it is, or cut a value its rows are read with — the `/Prev` may read a section there,
+which the guard hides —, is the guard's too: nothing is reported of it, and the index is not rebuilt for it. Wherever
+the chain names a section, a table or a stream, `MaxTrailerLength` bounds apart the white space and comments the offset
+falls short by, and the section is measured from its first token — a stream's dictionary from its object's header, a
+classic table's rows from its `xref` keyword, toward `MaxXRefSectionLength` alone
 ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289),
-[#295](https://github.com/AdCodicem/AdCodicem.Pdf/issues/295)). White space and comments that run on past
-`MaxTrailerLength` reach the guard themselves, and so does an object's header the guard cuts there — its number or
-generation running on past it, or white space or a comment between its tokens —, or an object it cuts past a whole
-header before the value says what it is — white space or a comment after `obj` running on, or a `<` its last byte, which
-may open the dictionary: the section is the guard's, cut where it is named and not looked for nearby, where a search
-would read past the guard and may take another section, and the chain ends there, as at any section a guard cuts; for
-the one `startxref` names, which leaves the chain no section, the index is rebuilt, and the validator says it checked
-the chain in part. A value that starts before the cut with anything else — a number, `null`, a string — is no
-cross-reference stream however it goes on, the section the file's to lack. Wherever `MaxTrailerLength` cuts the reading
-at an offset the chain names and the reading does not take what it cut for a section — a dictionary whose `/Type`,
-written whole before the cut, names another type, or a token where no header starts —, no cross-reference stream passed
-over near a hybrid table's `/Prev` is reported as one the chain did not reach, anywhere in the document: the cut may
-have hidden the `/Prev` of a section — any `/W` makes the dictionary there one —, or be what would end the chain, where
-an `/XRefStm` names the offset, and the reader cannot tell without reading past the guard, even where the cut hid
-nothing ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). Where the guard cuts the trailer of a classic
-table an `/XRefStm` names, whose links the chain never follows
+[#295](https://github.com/AdCodicem/AdCodicem.Pdf/issues/295)). Where `MaxTrailerLength` cuts what lies at that offset
+before it says whether it is a section — the white space running on past the bound, the object's header, or its value
+before the value says what it is —, the section is the guard's: cut where it is named and not looked for nearby, where a
+search would read past the guard and may take another section, the chain ending there as at any section a guard cuts;
+for the one `startxref` names, which leaves the chain no section, the index is rebuilt, and the validator says it
+checked the chain in part. What the reading tells before the cut stays the file's: a value that starts as no dictionary
+is no cross-reference stream however it goes on. Where the reading does not take what the cut left for a section — a
+dictionary whose `/Type`, written whole before the cut, names another type, or a token no header starts with —, no
+cross-reference stream passed over near a hybrid table's `/Prev` is reported anywhere in the document: the cut may have
+hidden a link the chain would follow, which the reader cannot tell without reading past the guard
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). The reference says what each cut is taken for:
+[`MaxTrailerLength`](../reference/api/AdCodicem.Pdf.Documents.PdfReaderLimits.md#AdCodicem_Pdf_Documents_PdfReaderLimits_MaxTrailerLength)
+and
+[`limit.trailer`](../reference/api/AdCodicem.Pdf.Diagnostics.PdfDiagnosticCodes.md#AdCodicem_Pdf_Diagnostics_PdfDiagnosticCodes_LimitTrailer).
+Where the guard cuts the trailer of a classic table an `/XRefStm` names, whose links the chain never follows
 ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), the cut hides no link the chain follows and ends
 nothing, the chain going on through the table that names it, and the report is made. An `/XRefStm` that names what the
 `/Prev` names, at that offset or in the white space before it, names no stream of the table's revision whatever the
