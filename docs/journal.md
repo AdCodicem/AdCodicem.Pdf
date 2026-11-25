@@ -42,6 +42,24 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   ruleset waits for a code-owner approval, and CodeQL's `neutral` may block too ([#439], the maintainer's to settle).
   npm security updates under `/docs/website` arrive one at a time ([#440]).
 
+## 2026-11-25 — The thirty-three debts no batch held, placed in batches 32 to 45
+
+- **The question.** After batch 27 merged, thirty-three debts filed under M02 held no batch: [#387] to [#389] and
+  [#391] to [#393], which batch 33 filed; [#401] to [#403] and [#405], batch 26; [#410] to [#414] and [#416], [#420] to
+  [#426], [#428] to [#435], [#437] and [#438], batch 27's four pull requests.
+- **Settled with the maintainer**, on 2026-11-25, each as recommended: four join a batch whose code they share —
+  [#426], the stack-cut test's flake, batch 32, the tests' own debt; [#392], the memo's kinds near a lost `endstream`,
+  batch 34, the search near a row; [#388] and [#432], what the edges of the scan's pieces and a load's window take,
+  batch 35. The twenty-nine others make eight new batches by code area, at most six issues each: 38, the rebuild's scan
+  ([#387], [#389], [#438]); 39, a rebuild's indirect lengths and object streams ([#391], [#393], [#405]); 40, object
+  stream headers and stream values a cut object holds ([#411], [#424], [#425], [#416]); 41, the nesting guards under
+  `ThrowOnLimit` and the validator's walk ([#412], [#413], [#410], [#414]); 42, the parser at a guard's edge ([#420] to
+  [#423]); 43, the chain and the loads at guards ([#428] to [#431], [#435]); 44, faulted tables and the rows the chain
+  does not take ([#433], [#434], [#437]); 45, filter reports ([#401] to [#403]).
+- **The order.** Batch 38 opens next, before batch 28: [#387] is a denial of service, a rebuild or a validation in
+  time the square of the lines, and such debts have always come first. Batches 39 to 45 follow batch 37.
+- **Where it is written.** `docs/status.md`, *Next concrete step*, step 4's list and its placements; no issue changes.
+
 ## 2026-11-25 — Batch 27, fourth pull request: a hidden end proven by the rows not taken, and a rebuild's readable definition ([#436])
 
 - **The question.** Measured on `main` at `98db003`. A stream whose `/Length` a guard hid was proven by the object the
@@ -1562,3 +1580,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
 [#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
 [#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440
+[#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
+[#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
