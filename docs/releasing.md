@@ -347,6 +347,7 @@ Without them the release job stops at its first step, before anything is publish
 | Environments `nuget` and `nuget-stable` | Settings → Environments, see [above](#one-time-setup-on-github) | The two publishing jobs, and the approval of a stable release |
 | The release App | See [above](#the-release-app) | The stable release's commit and tag |
 | "Allow auto-merge" | Settings → General | Dependabot auto-merge |
+| Dependabot on the bypass list of the ruleset on `main`, mode "For pull requests only" | Settings → Rules → Rulesets, the ruleset on `main`, Bypass list | Dependabot pull requests merge without waiting for the code owner's approval, which everything else still needs (#439) |
 | Squash merging allowed, with the pull request title as its default commit message | Settings → General → Pull Requests | Dependabot pull requests land as their title says |
 | Required status checks **`Build and unit tests`**, **`Integration tests`**, **`Conventional commits`** and **`workflows`** | Settings → Rules → Rulesets, the ruleset on `main` | Auto-merge cannot merge a red build (#41). The checks are job names: renaming one leaves every pull request waiting for a check that never reports |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
