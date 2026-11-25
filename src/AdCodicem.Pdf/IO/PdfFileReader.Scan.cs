@@ -133,7 +133,23 @@ internal sealed partial class PdfFileReader
     /// Takes into a rebuilt index the header the scan took at <paramref name="at"/>: the last definition of a number wins,
     /// under the generation its header gives.
     /// </summary>
-    private void IndexScannedHeader(long at, int number, int generation, Redefinitions redefinitions, ref ExceptionDispatchInfo? reached)
+    /// <param name="at">Where the header starts.</param>
+    /// <param name="number">The number it gives.</param>
+    /// <param name="generation">The generation it gives.</param>
+    /// <param name="redefinitions">Receives the numbers defined again.</param>
+    /// <param name="reached">Receives the exception a document opened to throw asked for.</param>
+    /// <param name="piece">The bytes the scan holds, which may hold the header and what follows it; empty for a memo's replay.</param>
+    /// <param name="pieceStart">Where <paramref name="piece"/> starts in the file.</param>
+    /// <param name="pieceEndsData">Whether <paramref name="piece"/> runs to the end of the file.</param>
+    private void IndexScannedHeader(
+        long at,
+        int number,
+        int generation,
+        Redefinitions redefinitions,
+        ref ExceptionDispatchInfo? reached,
+        ReadOnlySpan<byte> piece = default,
+        long pieceStart = 0,
+        bool pieceEndsData = false)
     {
         // The last definition wins: that is what an incrementally updated file means. Its entry records the generation its
         // header gives, whatever an earlier definition gave (#118). A number the index lacks takes room in it, which it may
@@ -142,12 +158,129 @@ internal sealed partial class PdfFileReader
 
         if (known)
         {
-            redefinitions.Add(number);
+            // But a definition that holds no value is no newer object: an update cut right after a header, or a header
+            // nothing a load reads as a value follows, would have the rebuild serve null over the readable definition before
+            // it (#351). A value read in part still wins: it is what the newest revision wrote.
+            var empty = HoldsNoValue(at, piece, pieceStart, pieceEndsData);
+            redefinitions.Add(number, empty);
+
+            if (empty)
+            {
+                return;
+            }
         }
 
         if (known || HasRoomInRebuild(at, ref reached))
         {
             _xref.Set(number, XRefEntry.Found(at - _headerOffset, generation));
+        }
+    }
+
+    /// <summary>
+    /// Determines whether the object whose header starts at <paramref name="at"/> holds no value, as a load reads it: past
+    /// its <c>obj</c> keyword, the white space and comments there lead to the end of the file, a closing delimiter or a byte
+    /// a load takes for none of a value's, <c>endobj</c>, <c>trailer</c>, <c>xref</c>, <c>startxref</c>, or another object's
+    /// header (#351).
+    /// </summary>
+    /// <remarks>
+    /// Asked of a number defined again only, whatever the scan takes of the object after. What it reads lies within
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> of the header, the bound a load reads the object within: undecided
+    /// there, the object is taken to hold a value, as every definition was. The bytes the scan holds tell first, as far as
+    /// they reach within the bound; past them, the file is read in windows eight times larger each time. The answer is the
+    /// same wherever the scan's piece ends, and the windows read only where the white space and comments after a header,
+    /// which no other header lies in, run past the piece: what they read stays in proportion to the file.
+    /// </remarks>
+    private bool HoldsNoValue(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
+    {
+        var bound = (long)_guard.Bound(PdfLimit.Object);
+
+        if (at >= pieceStart && at - pieceStart < piece.Length)
+        {
+            var held = piece[(int)(at - pieceStart)..];
+            var whole = pieceEndsData && held.Length <= bound;
+
+            if (TellNoValue(held[..(int)Math.Min(held.Length, bound)], whole) is { } told)
+            {
+                return told;
+            }
+        }
+
+        var size = (long)PdfObjectParser.EndObjLookahead;
+
+        while (true)
+        {
+            var asked = (int)Math.Min(Math.Min(size, bound), _source.Length - at);
+            using var window = _source.GetWindow(at, asked);
+            var toEnd = window.Length < asked || at + window.Length >= _source.Length;
+
+            if (TellNoValue(window.Memory.Span, toEnd) is { } empty)
+            {
+                return empty;
+            }
+
+            if (toEnd || window.Length >= bound)
+            {
+                return false;
+            }
+
+            size *= 8;
+        }
+    }
+
+    /// <summary>
+    /// Tells whether the object whose header starts <paramref name="span"/> holds no value (<see cref="HoldsNoValue"/>), or
+    /// gives null where the tokens that would tell run past it and <paramref name="toEnd"/> says the file goes on.
+    /// </summary>
+    private static bool? TellNoValue(ReadOnlySpan<byte> span, bool toEnd)
+    {
+        var lexer = new PdfLexer(span);
+
+        // The header the scan took: its number, its generation and obj, as the lexer reads them.
+        for (var token = 0; token < 3; token++)
+        {
+            var read = lexer.Read();
+
+            if (!toEnd && read.End >= span.Length)
+            {
+                return null;
+            }
+
+            if (token < 2 ? read.Kind != PdfTokenKind.Integer : !read.IsKeyword(ObjKeyword))
+            {
+                return false;
+            }
+        }
+
+        var next = lexer.Read();
+
+        if (!toEnd && next.End >= span.Length)
+        {
+            return null;
+        }
+
+        switch (next.Kind)
+        {
+            case PdfTokenKind.EndOfInput or PdfTokenKind.Unknown or PdfTokenKind.ArrayEnd or PdfTokenKind.DictionaryEnd or PdfTokenKind.BraceClose:
+                return true;
+
+            case PdfTokenKind.Keyword:
+                return next.IsKeyword(StreamEnds.EndObjKeyword) || next.IsKeyword(TrailerKeyword) ||
+                    next.IsKeyword(XRefKeyword) || next.IsKeyword(StartXRefKeyword);
+
+            case PdfTokenKind.Integer:
+                // Another object's header: two integers and obj, which a load does not read as a value.
+                var generation = lexer.Read();
+                var keyword = generation.Kind == PdfTokenKind.Integer ? lexer.Read() : generation;
+
+                if (!toEnd && keyword.End >= span.Length)
+                {
+                    return null;
+                }
+
+                return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword);
+
+            default:
+                return false;
         }
     }
 
@@ -327,7 +460,7 @@ internal sealed partial class PdfFileReader
 
                 if (memo is null)
                 {
-                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached);
+                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached, span, windowStart, endsData);
                 }
                 else if (!memo.TryAddHeader(at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom))
                 {
