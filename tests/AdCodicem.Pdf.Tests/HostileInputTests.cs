@@ -5938,10 +5938,9 @@ public class HostileInputTests
     {
         // Startxref names the first of 60,000 or 65,530 spaces before a classic table of four rows and its trailer, the file
         // ending past it or going on through a comment of 1 MB. The probe crosses the run once, as far as a trailer's window
-        // and 32 bytes past it. The table's windows opened at the offset named: past 65,530 spaces the first, of 64 KB, held
-        // the run and the keyword but not the rows' end, and grew fourfold, each reading the run again — 215,509 or 411,968
-        // bytes read at the offset, of which the probe read 84,288. They open at the keyword, as a stream's at its header:
-        // the reads that start at the offset are the probe's, and the table is read from its keyword in one window (#295).
+        // and 32 bytes past it. The table's windows open at the keyword, as a stream's at its header, so that a window grown
+        // for the rows never reads the run again, however far it grows: the reads that start at the offset are the probe's, and
+        // the table is read from its keyword in one window (#295).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

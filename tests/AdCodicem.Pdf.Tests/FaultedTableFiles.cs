@@ -24,8 +24,9 @@ internal static class FaultedTableFiles
     /// </summary>
     /// <param name="fault">
     /// The rows of each middle table: "sound", rows for objects 4 and 5; "row", a subsection of three rows whose second, for
-    /// object 5, ends in <c>x</c>, the third read as a subsection header and an <c>f</c>; "header", the row for object 4,
-    /// then the header <c>5 x</c> and the row for object 5; "count", the row for object 4, then the header
+    /// object 5, ends in <c>x</c>, the third read as a subsection header and an <c>f</c>; "row then count", as "row", but the
+    /// third row <c>2147483647 00002 f</c>, read as a header that numbers its rows past the last object number; "header", the
+    /// row for object 4, then the header <c>5 x</c> and the row for object 5; "count", the row for object 4, then the header
     /// <c>5 2147483647</c> and the row for object 5; "stray", the rows for objects 4 and 5, then <c>/Bad 1</c>.
     /// </param>
     /// <param name="prev">
@@ -77,6 +78,7 @@ internal static class FaultedTableFiles
             {
                 "sound" => Invariant($"4 2\n{four}{Row(five)}"),
                 "row" => Invariant($"4 3\n{four}{five:D10} 00000 x \n0000000000 00000 f \n"),
+                "row then count" => Invariant($"4 3\n{four}{five:D10} 00000 x \n2147483647 00002 f \n"),
                 "header" => Invariant($"4 1\n{four}5 x\n{Row(five)}"),
                 "count" => Invariant($"4 1\n{four}5 2147483647\n{Row(five)}"),
                 "stray" => Invariant($"4 2\n{four}{Row(five)}/Bad 1\n"),

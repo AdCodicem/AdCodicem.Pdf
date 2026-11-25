@@ -437,14 +437,12 @@ public class CrossReferenceRuleTests
     [InlineData(600, 8)]
     public void The_white_space_an_offset_falls_short_of_a_classic_table_by_counts_toward_no_section_length(int spaces, int maxLength)
     {
-        // Startxref names 600 or 300 spaces before a classic table of four rows and its trailer, 123 bytes from its
-        // keyword, which MaxTrailerLength, at its default, lets the reader cross. The table's windows opened at the
-        // offset named, and the spaces counted toward MaxXRefSectionLength: a bound of 650 bytes or 1 KB cut the table,
-        // the rows past it reading as null, and one of 128 bytes held the spaces alone, the table cut before its first
-        // row and the index rebuilt, its report saying the entries within the bound were read. The windows open at the
-        // keyword, as a stream's at its header: under those bounds the table is read whole, startxref said to fall
-        // short of it. A bound shorter than the table still cuts it from its keyword, its report saying whether any
-        // entry was read: past the free row of object 0 alone, or before it (#289, #295).
+        // Startxref names 600 or 300 spaces before a classic table of four rows and its trailer, 123 bytes from its keyword,
+        // which MaxTrailerLength, at its default, lets the reader cross. The spaces are MaxTrailerLength's to bound, and
+        // MaxXRefSectionLength bounds the table alone, its windows opening at its keyword, as a stream's at its header: under a
+        // bound of 650 bytes, 1 KB or 128 bytes, the table is read whole whatever the spaces before it, startxref said to fall
+        // short of it. A bound shorter than the table still cuts it from its keyword, its report saying whether any entry was
+        // read: past the free row of object 0 alone, or before it (#289, #295).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -750,13 +748,13 @@ public class CrossReferenceRuleTests
     [InlineData("stray", "it holds a name at offset {fault}, where a subsection or the trailer should start")]
     public void A_table_whose_fault_lies_among_its_rows_is_malformed_and_the_older_table_its_trailer_s_prev_names_is_judged(string fault, string said)
     {
-        // The middle of three revisions is a classic table with a row that is no row, a subsection header that gives no
-        // count, or a stray token among its rows, and the oldest table's row for object 9, which only it indexes, places it 2
-        // bytes past its header, above the middle trailer's /Size 8, which that /Size does not count. The chain stopped at the
-        // faulted table, and the oldest table was neither read nor judged (#324). It goes on through the faulted table's
-        // trailer's /Prev: that table is malformed, an error, and the oldest table judged as in the same file with the table
-        // sound, the row found shifted. The faulted table's /Size, which the sound one's is found wrong for, is not judged:
-        // the rows past the fault are unread, as a lost stream's other values are (#208).
+        // The middle of three revisions is a classic table with a row that is no row, a subsection header that gives no count,
+        // or a stray token among its rows, and the oldest table's row for object 9, which only it indexes, places it 2 bytes
+        // past its header, above the middle trailer's /Size 8, which that /Size does not count. The faulted table's trailer
+        // lies past its fault and names the oldest table: the chain goes on through that trailer's /Prev, so that the oldest
+        // table is read and judged as in the same file with the table sound, the row found shifted, and the faulted table is
+        // malformed, an error (#324). The faulted table's /Size, which the sound one's is found wrong for, is not judged: the
+        // rows past the fault are unread, as a lost stream's other values are (#208).
         var (sound, _, _, _) = FaultedTableFiles.Revisions("sound", shift: 2);
         var (file, _, middle, _) = FaultedTableFiles.Revisions(fault, shift: 2);
         var at = fault switch
@@ -1300,9 +1298,9 @@ public class CrossReferenceRuleTests
         string links, string guard, string? newer, string rule)
     {
         // #328: MaxTrailerLength cuts the second revision's trailer after its links, its table's rows read whole, or past rows
-        // a guard stopped; under a third revision, that table is the older one. A /Prev written whole before the cut that
-        // names an offset outside the file, the table itself or the newer table, or, past stopped rows, such an /XRefStm, is
-        // found as in the file read whole, beside the guards' xref.checked-in-part; it found only that finding.
+        // a guard stopped; under a third revision, that table is the older one. A /Prev written whole before the cut that names
+        // an offset outside the file, the table itself or the newer table, or, past stopped rows, such an /XRefStm, is found as
+        // in the file read whole, beside the guards' xref.checked-in-part: no guard hides a fault its cut left whole.
         var (file, _) = StoppedSectionFiles.Stopped(StoppedSectionFiles.CutAfter(links), newer: newer);
         using var whole = PdfDocument.Open(file, StoppedSectionFiles.Whole);
         using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
@@ -1342,7 +1340,7 @@ public class CrossReferenceRuleTests
         // #329: stream 7's /W is object 5, which MaxObjectLength cuts, and its /Prev, read whole, names an offset outside the
         // file, a number its /Size 8 declares no row for, or the stream itself. The validation finds it as in the file read
         // whole, beside the guard's xref.checked-in-part — a loop in its own words, the chain having reached the stream and
-        // been kept from its rows —; it found only that finding.
+        // been kept from its rows —: the guard hides no fault its cut left whole.
         var file = ChainFiles.UnderAnUpdate("W", placed: true, padding: 3000, prev: prev);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
 
@@ -3144,13 +3142,13 @@ public class CrossReferenceRuleTests
     public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_section_names_the_guard_s_section(
         int padding, bool throwOnLimit, string comment, bool stream)
     {
-        // The reader reads on past white space and comments for the first token of a classic table or a cross-reference
-        // stream as far as MaxTrailerLength reaches: past a byte more than the window holds, or a comment that runs on past
-        // its end, the guard is reached, in words that say the white space ran past it, or thrown. What lies past the guard
-        // is the guard's: the section is cut where startxref names it, rather than said to hold neither the xref keyword nor
-        // an object, the index is rebuilt as for any guard that leaves the chain no section, and the validator says it
-        // checked the chain in part, where it said startxref was wrong. The bound raised reads the section past the white
-        // space, which startxref falls short of (#289, ADR 34).
+        // The reader reads on past white space and comments for the first token of a classic table or a cross-reference stream
+        // as far as MaxTrailerLength reaches: past a byte more than the window holds, or a comment that runs on past its end,
+        // the guard is reached, in words that say the white space ran past it, or thrown. What lies past the guard is the
+        // guard's, which the reader cannot tell from a section without reading past it: the section is cut where startxref
+        // names it, the index is rebuilt as for any guard that leaves the chain no section, and the validator says it checked
+        // the chain in part, the file charged with nothing. The bound raised reads the section past the white space, which
+        // startxref falls short of (#289, ADR 34).
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
         {
@@ -3244,12 +3242,10 @@ public class CrossReferenceRuleTests
     public void A_first_token_past_white_space_that_starts_within_a_trailer_s_window_is_judged_as_under_the_default_bound(
         int spaces, string keyword, bool prev)
     {
-        // Startxref, or the /Prev of a newer table more than 512 bytes past, names 252 spaces before xrefs, or 253 before
-        // xref, under a MaxTrailerLength of 256. The probe stopped at the bound: it took the xref of xrefs for the keyword,
-        // the table's own window refusing xrefs as a table that cannot be read, and stopped inside the keyword past 253
-        // spaces, the guard reached and the section looked for as one not there. A first token that starts within the bound
-        // is read whole: xrefs is no keyword, the section not there, and xref the table's, read past the spaces, as at the
-        // default bound, with no guard reported (#295).
+        // Startxref, or the /Prev of a newer table more than 512 bytes past, names 252 spaces before xrefs, or 253 before xref,
+        // under a MaxTrailerLength of 256. The bound is the white space's, not the token's: a first token that starts within it
+        // is read whole, as at the default bound — xrefs is no keyword, the section not there, and xref the table's, read past
+        // the spaces —, with no guard reported (#295).
         var file = SectionPastSpaces(spaces, keyword, prev, out var named);
         using var lowered = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
         using var standard = PdfDocument.Open(file);
@@ -3285,8 +3281,9 @@ public class CrossReferenceRuleTests
         // As above, startxref or a /Prev names 252 spaces before xrefs, under a MaxTrailerLength of 256. The source gives the
         // probe's read of 288 bytes at the offset back with 256, as a caller's may, which the reader takes for the end of the
         // data there (#52): the probe takes the xref it holds of xrefs for the keyword. The table's own window, opened at that
-        // token, reads xrefs whole and refuses it: no table, as the probe would have said reading it whole, and nothing there
-        // a section. The section was a table that cannot be read; it reads as through a source that gives every byte (#295).
+        // token, reads xrefs whole and refuses it: no table, as the probe would have said reading it whole, and nothing there a
+        // section, as through a source that gives every byte, since what the section is cannot depend on how the source answers
+        // (#295).
         var file = SectionPastSpaces(252, "xrefs", prev, out var named);
         var limits = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } };
         var source = new ShortCountSource(file, (offset, held) => offset == named && held == 256 + PdfFileReader.XRefProbeLength ? 256 : held);
@@ -3986,7 +3983,7 @@ public class CrossReferenceRuleTests
         // row: found within 512 bytes, it is served from there; past them, the index is rebuilt. What the row leads to is the
         // limit's to say, and the validator says the entry was not checked, laying nothing on the file. Read under the
         // default bound, the object is read past the blanks, which its row falls short of. White space before an object's
-        // header keeps counting toward the object's bound, the load reading on past the guard (#289).
+        // header keeps counting toward the object's bound, the load reading on past the guard (#428).
         var file = WithFourWritten(new string(' ', blanks) + "4 0 obj\n(four)\nendobj\n", out var row);
         var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
         using var loaded = PdfDocument.Open(file, options);
