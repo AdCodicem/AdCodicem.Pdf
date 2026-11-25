@@ -3897,6 +3897,23 @@ public class DocumentReaderTests
         document.Reader.Structure.Sections.Should().HaveCount(sections + 1).And.OnlyContain(section => section.State == XRefSectionState.Read);
     }
 
+    [Fact]
+    public void A_deferred_length_counting_the_end_of_line_says_nothing_when_the_read_past_the_chain_s_data_gives_the_line_feed_alone()
+    {
+        // One stream sharing its data, its length counting the line feed before the endstream the chain stopped at. The read
+        // of where that keyword starts gives the line feed alone, as a caller's source may (#52): the keyword is not read
+        // past it, and the searches, which may still read, find it there. The length is the stream's own, and says nothing.
+        var file = SectionsSharingTheirData(1, 512 * 1024, newestExtra: 1);
+        var lineFeed = PdfTemplate.OffsetOf(file, "\nendstream");
+        using var source = new ShortCountSource(
+            file, (offset, held) => offset == lineFeed && held == "\nendstream".Length ? 1 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        source.ShortReads.Should().Be(1);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == XRefSectionState.Read);
+    }
+
     [Theory]
     [InlineData(false, false, "\n")]
     [InlineData(true, false, "\n")]
