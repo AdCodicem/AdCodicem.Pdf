@@ -332,7 +332,12 @@ public static class PdfDiagnosticCodes
     /// already found, the first ten of those numbers, and which definition was kept: the one the file writes last, a member
     /// of an object stream counting where the stream's definition lies — an update appends what it changes, written
     /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
-    /// listed (#189). Only the definition kept of an object stream's own number is read for members: the object streams are
+    /// listed (#189). A definition met again that holds no value — its <c>obj</c> followed, past white space and comments,
+    /// by the end of the file, a closing delimiter or a byte a load takes for none of a value's, <c>endobj</c>,
+    /// <c>trailer</c>, <c>xref</c>, <c>startxref</c> or another object's header, which a load reads as null — leaves the
+    /// definition before it kept, and the report names it: an update cut right after a header is no newer object (#351).
+    /// One whose value is read in part, cut by the end of the file or lacking its <c>endobj</c>, is kept. Only the
+    /// definition kept of an object stream's own number is read for members: the object streams are
     /// taken in from the last written to the first, so that one whose number a later object stream lists gives none (#348).
     /// A header the rebuild's scan finds inside another object — a string, a comment, or the data of a stream whose length
     /// an <c>endstream</c> confirms, a direct <c>/Length</c> or the one an indirect one's object gives (#363) — is no

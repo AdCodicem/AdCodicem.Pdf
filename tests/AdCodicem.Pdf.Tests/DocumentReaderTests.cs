@@ -2611,6 +2611,103 @@ public class DocumentReaderTests
             .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
     }
 
+    private const string KeptOverNoValue =
+        " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies, but for one that holds no value, which leaves the definition before it kept, as the later definition of object 7 does.";
+
+    [Theory]
+    [InlineData("7 5 obj)")]
+    [InlineData("7 5 obj")]
+    [InlineData("7 5 obj\nendobj")]
+    [InlineData("7 5 obj %a comment\n]")]
+    [InlineData("7 5 obj >>")]
+    [InlineData("7 5 obj\n8 0 obj (eight) endobj")]
+    public void A_definition_met_again_that_holds_no_value_leaves_the_readable_one_before_it(string later)
+    {
+        // The file has no table. Object 7's later header is followed by no value — a stray parenthesis, endobj, a closing
+        // delimiter, another header, or the trailer —, which a load reads as null: the rebuild served that null over the
+        // readable definition before it, and said only that it met a second (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true /Missing 98 0 R >> endobj\n" + new string(' ', 48) + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(3);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptOverNoValue);
+    }
+
+    [Theory]
+    [InlineData("7 5 obj\n<< /Partial", true)]
+    [InlineData("7 5 obj (five)", false)]
+    public void A_definition_met_again_whose_value_is_read_in_part_or_whole_is_kept(string later, bool partial)
+    {
+        // A value read in part — the dictionary the trailer keyword interrupts — is what the newest revision wrote, and wins
+        // over the definition before it, as a whole value does (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n" + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        var seven = document.GetObject(new PdfObjectId(7));
+
+        if (partial)
+        {
+            seven.Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeFalse();
+        }
+        else
+        {
+            seven.Should().BeOfType<PdfString>().Which.ToText().Should().Be("five");
+        }
+
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(5);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Fact]
+    public void A_definition_with_a_value_after_one_that_holds_none_wins()
+    {
+        // Object 7 is written three times: readable, then with no value, then readable again. The last with a value wins, and
+        // the report counts the two met again, the one with no value named.
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj (three) endobj\n7 5 obj\nendobj\n7 6 obj (six) endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("six");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be(
+                "Rebuilding the index met 2 definitions of object numbers it had already found, of object 7." + KeptOverNoValue);
+    }
+
+    [Fact]
+    public void An_update_cut_right_after_its_header_leaves_the_definition_the_revision_before_wrote()
+    {
+        // An incremental update rewrites object 7 after a long object 9, and the file is cut right after 7's header: no
+        // startxref lies in the file's last kilobytes, and the index is rebuilt. The cut header holds no value, and the
+        // definition the first revision wrote is kept; object 9, whole, is the update's (#351).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [7] = file.Object(7, "<< /Real true >>"),
+        };
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        file.Object(9, "(" + new string('x', PdfFileReader.TailSearchLength) + ")");
+        file.Raw("7 0 obj\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfString>();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptOverNoValue);
+    }
+
     [Fact]
     public void Reads_a_header_that_straddles_the_start_of_a_scan_window_under_its_own_number()
     {

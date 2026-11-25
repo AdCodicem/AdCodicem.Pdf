@@ -1312,29 +1312,50 @@ internal sealed partial class PdfFileReader
         private int _listed;
         private bool _unlisted;
 
+        /// <summary>The first numbers whose definition met again holds no value, kept apart: the definition before is kept.</summary>
+        private readonly int[] _empty = new int[Listed];
+        private int _emptyListed;
+        private bool _emptyUnlisted;
+
         /// <summary>
         /// Gets how many definitions met a number already found: a long, since the object streams a rebuild expands can
         /// list more members than an int counts.
         /// </summary>
         public long Count { get; private set; }
 
-        /// <summary>Records a definition of <paramref name="number"/>, which was already found.</summary>
-        public void Add(int number)
+        /// <summary>Gets how many of those definitions hold no value, each leaving the definition before it kept (#351).</summary>
+        public long EmptyCount { get; private set; }
+
+        /// <summary>
+        /// Records a definition of <paramref name="number"/>, which was already found, and whether it holds no value, which
+        /// leaves the definition before it kept.
+        /// </summary>
+        public void Add(int number, bool empty = false)
         {
             Count++;
+            List(number, _numbers, ref _listed, ref _unlisted);
 
-            if (_numbers.AsSpan(0, _listed).Contains(number))
+            if (empty)
+            {
+                EmptyCount++;
+                List(number, _empty, ref _emptyListed, ref _emptyUnlisted);
+            }
+        }
+
+        private static void List(int number, int[] numbers, ref int listed, ref bool unlisted)
+        {
+            if (numbers.AsSpan(0, listed).Contains(number))
             {
                 return;
             }
 
-            if (_listed < Listed)
+            if (listed < Listed)
             {
-                _numbers[_listed++] = number;
+                numbers[listed++] = number;
             }
             else
             {
-                _unlisted = true;
+                unlisted = true;
             }
         }
 
@@ -1344,28 +1365,55 @@ internal sealed partial class PdfFileReader
         /// </summary>
         public Redefinitions Copy()
         {
-            var copy = new Redefinitions { Count = Count, _listed = _listed, _unlisted = _unlisted };
+            var copy = new Redefinitions
+            {
+                Count = Count,
+                _listed = _listed,
+                _unlisted = _unlisted,
+                EmptyCount = EmptyCount,
+                _emptyListed = _emptyListed,
+                _emptyUnlisted = _emptyUnlisted,
+            };
             _numbers.CopyTo(copy._numbers, 0);
+            _empty.CopyTo(copy._empty, 0);
             return copy;
         }
 
         /// <summary>Says how many definitions were met, of which numbers, and which definition was kept.</summary>
         public string Describe()
         {
-            var numbers = new StringBuilder();
-
-            foreach (var number in _numbers.AsSpan(0, _listed))
-            {
-                numbers.Append(numbers.Length == 0 ? string.Empty : ", ").Append(number.ToString(CultureInfo.InvariantCulture));
-            }
-
+            var numbers = Join(_numbers.AsSpan(0, _listed));
             var met = Count == 1
                 ? string.Create(CultureInfo.InvariantCulture, $"Rebuilding the index met a second definition of object {numbers}.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
                     $"Rebuilding the index met {Count} definitions of object numbers it had already found, {(_unlisted ? "among them those of objects" : _listed == 1 ? "of object" : "of objects")} {numbers}.");
-            return met +
-                " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies.";
+            var kept = " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies";
+
+            if (EmptyCount == 0)
+            {
+                return met + kept + ".";
+            }
+
+            var empty = Join(_empty.AsSpan(0, _emptyListed));
+            var held = EmptyCount == 1
+                ? string.Create(CultureInfo.InvariantCulture, $"as the later definition of object {empty} does")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"as {EmptyCount} of them do, {(_emptyUnlisted ? "among them those of objects" : _emptyListed == 1 ? "of object" : "of objects")} {empty}");
+            return met + kept + string.Create(CultureInfo.InvariantCulture, $", but for one that holds no value, which leaves the definition before it kept, {held}.");
+        }
+
+        private static StringBuilder Join(ReadOnlySpan<int> listed)
+        {
+            var numbers = new StringBuilder();
+
+            foreach (var number in listed)
+            {
+                numbers.Append(numbers.Length == 0 ? string.Empty : ", ").Append(number.ToString(CultureInfo.InvariantCulture));
+            }
+
+            return numbers;
         }
     }
 }
