@@ -41,10 +41,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#385], in [#398] on 2026-11-21, the second, [#315] and [#181]'s walk, with [#314] closed by its documentation, in
   [#400] on 2026-11-22; the twenty-sixth, in two pull requests by area as the maintainer chose that day, the first,
   decoding, [#162], [#250], [#283] and [#288], in [#404] on 2026-11-22, the second, [#326]'s counts and header faults
-  and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, open in [#407]; the twenty-seventh, in
-  four pull requests by area as the maintainer chose on 2026-11-23, the first, the nesting guards and what a read keeps
-  by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the parser at its guards,
-  [#262], [#279], [#282] and [#294], with [#415], open in [#419]. Then the other batches,
+  and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, in [#407] on 2026-11-23; the
+  twenty-seventh, in four pull requests by area as the maintainer chose on 2026-11-23, the first, the nesting guards
+  and what a read keeps by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the
+  parser at its guards, [#262], [#279], [#282] and [#294], with [#415], in [#419] that day, the third, the chain at its
+  guards, [#289], [#295], [#328], [#329], [#292] and [#324], open in [#427]. Then the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -56,8 +57,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
-  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]) and its second ([#420] to
-  [#426]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]) and
+  its third ([#428] to [#435]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
@@ -698,17 +700,19 @@ One pull request per batch, each design question put to the maintainer after mea
    26. [#162], with [#250], [#283] and [#288], and [#326] and [#349] — six issues, in two pull requests by area, as the
        maintainer chose on 2026-11-22: decoding, [#162], [#250], [#283] and [#288], in [#404], merged on 2026-11-22,
        `Remote corpus` run 131 green on its branch (journal of 2026-11-22), which filed [#401] to [#403] under M02; then
-       the messages and the probe, [#326] and [#349], in [#407], open, `Remote corpus` run 133 green on its branch,
-       which filed [#405] under M02, and closes [#406], its own regression, which the maintainer chose to fix there.
+       the messages and the probe, [#326] and [#349], in [#407], merged on 2026-11-23, `Remote corpus` run 133 green
+       on its branch, which filed [#405] under M02, and closed [#406], its own regression, which the maintainer chose to
+       fix there.
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to
        [#397], which the maintainer placed here on 2026-11-22 — nineteen issues, in four pull requests by area, as the
        maintainer chose on 2026-11-23: the nesting guards and what a read keeps by its depth, [#163], [#395], [#396],
        [#397] and [#313], in [#409], merged on 2026-11-24, `Remote corpus` run 135 green on its branch, which filed
        [#410] to [#416] under M02 (journal of 2026-11-24); then the parser at its guards, [#262], [#279], [#282] and
-       [#294], with [#415], which the maintainer chose to close there, in [#419], open, `Remote corpus` run 137 green on
-       its branch, which filed [#420] to [#426] under M02 (journal of 2026-11-24) and settled [#328]'s `/XRefStm` half;
-       the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324]; stream ends and the rebuild, [#287],
-       [#293], [#290] and [#351].
+       [#294], with [#415], which the maintainer chose to close there, in [#419], merged on 2026-11-24, `Remote corpus`
+       run 137 green on its branch, which filed [#420] to [#426] under M02 (journal of 2026-11-24) and settled [#328]'s
+       `/XRefStm` half; then the chain at its guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427],
+       open, `Remote corpus` run 138 green on its branch, which filed [#428] to [#435] under M02 (journal of
+       2026-11-25); then stream ends and the rebuild, [#287], [#293], [#290] and [#351].
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -816,7 +820,15 @@ One pull request per batch, each design question put to the maintainer after mea
    [#423], a `/Root` a trailer's guard hides reported as recovered; [#424], a header value a cut object holds whole
    but of the wrong kind taken for the guard's; [#425], whether a whole `/Length`, `/Filter` or `/DecodeParms` a cut
    object holds is the file's, for the maintainer; [#426], a stack-cut test whose 600 nested dictionaries ran short of
-   its 1.5 MB thread once in CI.
+   its 1.5 MB thread once in CI. Its third filed eight under M02, placed in no batch yet: [#428], white space before an
+   object's header, which counts toward `MaxObjectLength`, [#289]'s other half; [#429], a cut of `MaxTrailerLength` the
+   chain does not take for the guard's and sends to a search near the offset; [#430], the chain's own stop at a row
+   that cuts a number, and its mark outliving direct reads; [#431], a deferred `/Length` after a rebuild reported as
+   `stream.length-invalid`; [#432], the rebuild's scan taking a header whose `obj` a load's window cuts; [#433], rows
+   misread past a table's first fault that still count; [#434], three edges of a faulted table read on — a name or a
+   string that ends the search, the findings a cut trailer's `/Prev` loses, a hybrid's `/XRefStm` not followed —; and
+   [#435], a section `startxref` names whose value is whole before a trailer guard's cut, given no
+   `xref.section-missing`.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1163,3 +1175,12 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
 [#425]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/425
 [#426]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/426
+[#427]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/427
+[#428]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/428
+[#429]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/429
+[#430]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/430
+[#431]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/431
+[#432]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/432
+[#433]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/433
+[#434]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/434
+[#435]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/435
