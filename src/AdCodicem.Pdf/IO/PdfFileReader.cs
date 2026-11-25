@@ -1091,6 +1091,32 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private Dictionary<int, int>? _refusedNumbers;
 
     /// <summary>
+    /// Where the rows the chain read and did not take place objects: rows a newer section superseded, or that the chain
+    /// refused, written directly and in the file. An old definition of an object an update rewrote is still where the older
+    /// section's row places it, and is the next object after a stream as much as one the index serves: the proof that an
+    /// <c>endstream</c> is the stream's own counts them as the chain's own proof counts every row its section holds (#287).
+    /// Null until the first; kept for the document's life, as the chain's index is.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> bounds how many are kept, apart from the index, whose room they take
+    /// none of: 8 bytes each, sorted as they are asked for (<see cref="SortedOffsets"/>). Past the bound, they are not kept,
+    /// the guard reported once (<see cref="NoteRowNotTaken"/>).
+    /// </remarks>
+    private SortedOffsets? _rowsNotTaken;
+
+    /// <summary>How many places <see cref="_rowsNotTaken"/> holds, with those a reading of a place still holds apart.</summary>
+    private long _rowsNotTakenCount;
+
+    /// <summary>
+    /// The places the reading of a place a search near an offset tries noted, held apart until the place is kept or dropped
+    /// (<see cref="RollBackIndex"/>); null outside such a reading.
+    /// </summary>
+    private List<long>? _rowsNotTakenTentative;
+
+    /// <summary>Whether a row the chain did not take found <see cref="_rowsNotTaken"/> full, which reported the guard.</summary>
+    private bool _rowsNotTakenFull;
+
+    /// <summary>
     /// The numbers the reading of a place a search near an offset tries refuses, while it is read, so that a place dropped
     /// gives them back (<see cref="RollBackIndex"/>, #320); null outside such a reading.
     /// </summary>

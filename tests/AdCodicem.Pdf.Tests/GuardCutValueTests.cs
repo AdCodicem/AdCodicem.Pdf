@@ -2155,6 +2155,102 @@ public class GuardCutValueTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_older_definition_only_a_superseded_row_places_proves_the_endstream_before_it(bool endObj)
+    {
+        // Content stream 4's /Length, object 5, is cut by MaxObjectLength, and object 6 follows it, with its endobj or right
+        // after its endstream; an update redefines object 6, so that only the older table's row, which the merged index
+        // drops, places the definition after the stream. Nothing proved the endstream the stream's own: its data, whole, was
+        // the guard's, and whether an endobj ends it was not judged (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>"),
+            [5] = file.Object(5, new string(' ', 2000) + "5"),
+        };
+        rows[4] = file.Position;
+        file.Raw("4 0 obj\n<< /Length 5 0 R >>\nstream\nBT ET\nendstream\n" + (endObj ? "endobj\n" : string.Empty));
+        rows[6] = file.Object(6, "(old six)");
+        var first = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var six = file.Object(6, "(new six)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {first} >>\nstartxref\n{table}\n%%EOF\n"));
+        string[] wholeRules;
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.GetObject(new PdfObjectId(4)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+            wholeRules = [.. new PdfValidator().Validate(whole).Findings.Select(finding => finding.RuleId).Distinct().Order()];
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeFalse();
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        wholeRules.Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().Be(!endObj);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(wholeRules);
+    }
+
+    [Theory]
+    [InlineData(8, true)]
+    [InlineData(12, false)]
+    public void The_places_of_rows_the_chain_does_not_take_are_kept_up_to_the_index_bound(int maxIndexEntries, bool cut)
+    {
+        // As above, but three updates each redefine objects 1, 2, 3 and 6: the chain reads twelve rows it does not take, the
+        // first table's four last. MaxIndexEntries bounds how many places they give are kept, apart from the index, which
+        // takes six numbers: past eight, the first table's are not kept, the guard reported once, and nothing proves the
+        // endstream of stream 4, which its row of object 6 alone did (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>"),
+            [5] = file.Object(5, new string(' ', 2000) + "5"),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\nBT ET\nendstream"),
+            [6] = file.Object(6, "(old six)"),
+        };
+        var previous = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+
+        for (var update = 0; update < 3; update++)
+        {
+            var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+            var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>");
+            var six = file.Object(6, Invariant($"(six {update})"));
+            var table = file.Position;
+            file.Raw(Invariant(
+                $"xref\n0 4\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n"));
+            previous = table;
+        }
+
+        var options = new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxIndexEntries = maxIndexEntries },
+        };
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().Be(cut);
+        var reports = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Select(entry => entry.Message);
+
+        if (cut)
+        {
+            reports.Should().ContainSingle().Which.Should().StartWith(
+                "The cross-reference sections hold more than 8 rows the index does not take; where those past them place objects is not kept, and an endstream they alone would prove the stream's own is not.");
+        }
+        else
+        {
+            reports.Should().BeEmpty();
+        }
+    }
+
     [Fact]
     public void A_cross_reference_stream_the_chain_read_proves_the_endstream_of_the_older_one_before_it()
     {

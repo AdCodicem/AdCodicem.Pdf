@@ -197,7 +197,11 @@ public sealed record PdfReaderLimits
     /// document can cost, which follows its index: about 24 seconds and 3 GB near the default. While the cross-reference
     /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
     /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
-    /// once the chain is read. The same bound applies to what the reader keeps of the scan of the file that the
+    /// once the chain is read. It bounds apart, as many again, the places the rows the chain reads and does not take give
+    /// objects at — rows a newer section superseded, or that the chain refused —, 8 bytes each, kept for the document's
+    /// life to prove an <c>endstream</c> the stream's own where a guard cut or left out its <c>/Length</c>: past it, none
+    /// more is kept, the code is reported once, and an <c>endstream</c> only those places would prove leaves the data the
+    /// guard's. The same bound applies to what the reader keeps of the scan of the file that the
     /// searches near an entry's offset and near an offset the chain names ask for, once a document: the object headers
     /// and keywords it takes, each definition of a number and each keyword counted, 16 bytes at most for a header or an
     /// <c>xref</c> keyword, under 9 for a <c>trailer</c> keyword and under 25 for a cross-reference stream's header —
