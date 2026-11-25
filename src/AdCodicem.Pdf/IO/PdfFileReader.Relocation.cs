@@ -759,7 +759,7 @@ internal sealed partial class PdfFileReader
         _xref.StartTentative();
         _refusedOrder = [];
         _rowsNotTakenMark = _rowsNotTakenHeld?.Count ?? 0;
-        return new(_refusedOrder, _rowsNotTakenMark, _indexIncomplete, _cutByGuard);
+        return new(_refusedOrder, _indexIncomplete, _cutByGuard);
     }
 
     /// <summary>
@@ -772,7 +772,7 @@ internal sealed partial class PdfFileReader
     private void RollBackIndex(IndexMark mark)
     {
         _xref.DropTentative();
-        GiveBackRowsNotTaken(mark.RowsNotTaken);
+        GiveBackRowsNotTaken(_rowsNotTakenMark);
         _rowsNotTakenMark = -1;
 
         foreach (var number in mark.Refused)
@@ -793,10 +793,9 @@ internal sealed partial class PdfFileReader
     private void KeepRowsNotTaken() => _rowsNotTakenMark = -1;
 
     /// <summary>
-    /// What the reading of a place refused, how many rows not taken were held before it, whether the index was incomplete
-    /// before it, and whether a guard had cut the chain.
+    /// What the reading of a place refused, whether the index was incomplete before it, and whether a guard had cut the chain.
     /// </summary>
-    private readonly record struct IndexMark(List<int> Refused, int RowsNotTaken, bool Incomplete, bool CutByGuard);
+    private readonly record struct IndexMark(List<int> Refused, bool Incomplete, bool CutByGuard);
 
     /// <summary>What the scan's memo says of a place the search near an offset found (<see cref="CheckPlace"/>).</summary>
     private enum PlaceCheck
