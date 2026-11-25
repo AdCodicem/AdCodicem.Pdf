@@ -391,8 +391,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   2026-09-26 at the maintainer's choice (T35).
 - **Dependabot auto-merge** runs on `pull_request` since 2026-11-25, as GitHub blocks `pull_request_target` by
   default from 2026-12-02; its job raises the read-only token Dependabot's runs get. It queues patches and minors, but
-  none has merged for weeks: the ruleset waits for a code-owner approval ([#439]). Security updates under
-  `/docs/website` arrive one pull request each ([#440]).
+  none had merged for weeks: the ruleset waits for a code-owner approval ([#439]). The maintainer chose on 2026-11-25
+  to put Dependabot on the ruleset's bypass list rather than drop the approval for everyone, CodeQL staying required
+  (`docs/releasing.md`); whether the merge auto-merge performs counts as Dependabot's is not yet observed. Each
+  Dependabot entry batches its minor and patch security updates into one pull request since then ([#440]).
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
