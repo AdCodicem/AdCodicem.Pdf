@@ -277,6 +277,14 @@ as naming the section past the guard that cut the trailer. A reference to a row 
 unread stays the guard's, the rows counted through what the stream's `/Index` or `/Size` declares, up to what its data
 can hold, where no guard cut them, any number otherwise.
 
+The same day, while [#292](https://github.com/AdCodicem/AdCodicem.Pdf/issues/292) was fixed, the maintainer settled where
+the chain's end at a guard meets the load rule ADR 50 keeps for a header past `MaxObjectLength`. The loads the chain makes
+of its own values once it is read — the object a `/Prev` or a stream's values led to through a guard's cut, a
+cross-reference stream's `/Length` — stop where the guard cuts the object's header, as where it cuts its value: the guard
+reported, or thrown, nothing looked for near the entry, the index not rebuilt, so that the chain's end costs no rebuild
+and no `xref.rebuilt` on a valid file. A later read of that object, or a validation, follows the load rule, which may
+look near the entry and rebuild.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
