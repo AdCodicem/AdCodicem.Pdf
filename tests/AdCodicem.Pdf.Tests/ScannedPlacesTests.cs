@@ -1388,8 +1388,7 @@ public class ScannedPlacesTests
     {
         // Object 3's last header, past the table, holds no value: the file ends after it. Reading object 4, whose row lies
         // outside the file, rebuilds the index, which keeps the definition before it, whether it scans the file or replays
-        // the memo asked for first, whose scan notes the header as holding none, and the one the piece's end leaves it
-        // undecided for, and so reads no byte more for it (#351).
+        // the memo asked for first, whose scan notes the header as holding none and the readable one as holding one (#351).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [3] = file.Object(3, "(three)") };
         rows[4] = 999_999;
@@ -1413,7 +1412,7 @@ public class ScannedPlacesTests
         scanned.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
         replayed.Diagnostics.Should().Equal(scanned.Diagnostics);
         replayed.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
-            .Which.Message.Should().EndWith("but for one that holds no value, which leaves the definition before it kept, as the later definition of object 3 does.");
+            .Which.Message.Should().EndWith("but for one that holds no value, which leaves the definition before it kept, as one of object 3 does.");
     }
 
     [Theory]
@@ -1447,7 +1446,7 @@ public class ScannedPlacesTests
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
-            .Which.Message.Should().EndWith("as the later definition of object 3 does.");
+            .Which.Message.Should().EndWith("as one of object 3 does.");
     }
 
     [Fact]

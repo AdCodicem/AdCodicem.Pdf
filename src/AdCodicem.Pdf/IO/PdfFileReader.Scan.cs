@@ -183,10 +183,10 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Determines whether the object whose header starts at <paramref name="at"/> holds no value, as a load reads it: past
-    /// its <c>obj</c> keyword, the white space and comments there lead to the end of the file, a closing delimiter or a byte
-    /// a load takes for none of a value's, <c>endobj</c>, <c>trailer</c>, <c>xref</c>, <c>startxref</c>, or another object's
-    /// header (#351).
+    /// Determines whether the object whose header starts at <paramref name="at"/> holds no value: past its <c>obj</c>
+    /// keyword, the white space and comments there lead to nothing that starts a value — the end of the file, a closing
+    /// delimiter, a byte none of a value's, a brace, a keyword other than <c>true</c>, <c>false</c> and <c>null</c>, which a
+    /// load reads as null —, or to another object's header, whose number a load reads as the value (#351).
     /// </summary>
     /// <remarks>
     /// Told from the first <see cref="NoValueReach"/> bytes from the header, within <see cref="PdfReaderLimits.MaxObjectLength"/>:
@@ -263,17 +263,21 @@ internal sealed partial class PdfFileReader
             return null;
         }
 
+        // A value starts with a number, a name, a string, an array's or a dictionary's opening, or true, false or null; a load
+        // reads anything else there as null — the end of the file, a closing delimiter, a byte none of a value's, a brace, any
+        // other keyword: endobj, trailer, xref, stream.
         switch (next.Kind)
         {
-            case PdfTokenKind.EndOfInput or PdfTokenKind.Unknown or PdfTokenKind.ArrayEnd or PdfTokenKind.DictionaryEnd or PdfTokenKind.BraceClose:
-                return true;
+            case PdfTokenKind.Real or PdfTokenKind.Name or PdfTokenKind.LiteralString or PdfTokenKind.HexString or
+                PdfTokenKind.ArrayStart or PdfTokenKind.DictionaryStart:
+                return false;
 
             case PdfTokenKind.Keyword:
-                return next.IsKeyword(StreamEnds.EndObjKeyword) || next.IsKeyword(TrailerKeyword) ||
-                    next.IsKeyword(XRefKeyword) || next.IsKeyword(StartXRefKeyword);
+                return !next.IsKeyword("true"u8) && !next.IsKeyword("false"u8) && !next.IsKeyword("null"u8);
 
             case PdfTokenKind.Integer:
-                // Another object's header: two integers and obj, which a load does not read as a value.
+                // An integer is a value but where it starts another object's header, two integers and obj, which a load
+                // reads its number of as the value: no value this definition wrote.
                 var generation = lexer.Read();
                 var keyword = generation.Kind == PdfTokenKind.Integer ? lexer.Read() : generation;
 
@@ -285,7 +289,7 @@ internal sealed partial class PdfFileReader
                 return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword);
 
             default:
-                return false;
+                return true;
         }
     }
 

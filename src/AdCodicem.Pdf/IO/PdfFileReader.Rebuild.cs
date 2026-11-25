@@ -792,14 +792,18 @@ internal sealed partial class PdfFileReader
 
             if (_xref.TryGet(member, out var held))
             {
-                redefinitions.Add(member);
-
                 // Replacing an entry takes no room. A number the stream lists twice keeps its first place, as does the
                 // stream's own number, which lies where the stream does.
                 var heldAt = held.Kind == XRefEntryKind.Regular ? PositionOf(held)
                     : positions.TryGetValue(held.ObjectStreamNumber, out var at) ? at : long.MaxValue;
 
-                if (stream.Position > heldAt)
+                // A definition written directly after the stream that holds no value — an update cut right after a header —
+                // is no newer object than the member, which is kept as a definition before it is (#351). Only such a number
+                // is asked, for the header the scan indexed, which its memo may already know.
+                var empty = held.Kind == XRefEntryKind.Regular && stream.Position < heldAt && DefinitionHoldsNoValue(heldAt);
+                redefinitions.Add(member, empty);
+
+                if (stream.Position > heldAt || empty)
                 {
                     _xref.Set(member, XRefEntry.Compressed(stream.Number, index));
                     ForgetObject(member);
@@ -812,6 +816,15 @@ internal sealed partial class PdfFileReader
             }
         }
     }
+
+    /// <summary>
+    /// Determines whether the definition whose header starts at <paramref name="at"/>, which the rebuild's scan indexed,
+    /// holds no value (<see cref="HoldsNoValue"/>): as the scan's memo noted it, where it did, else from the file.
+    /// </summary>
+    private bool DefinitionHoldsNoValue(long at) =>
+        _scanMemo is { } memo && memo.TryGetHeaderAt(at, out var header) && header.HoldsNoValue is { } known
+            ? known
+            : HoldsNoValue(at, default, 0, pieceEndsData: false);
 
     /// <summary>
     /// Determines whether <paramref name="value"/>, an object stream's dictionary or a value it holds, names an object the
@@ -1397,7 +1410,7 @@ internal sealed partial class PdfFileReader
 
             var empty = Join(_empty.AsSpan(0, _emptyListed));
             var held = EmptyCount == 1
-                ? string.Create(CultureInfo.InvariantCulture, $"as the later definition of object {empty} does")
+                ? string.Create(CultureInfo.InvariantCulture, $"as one of object {empty} does")
                 : string.Create(
                     CultureInfo.InvariantCulture,
                     $"as {EmptyCount} of them do, {(_emptyUnlisted ? "among them those of objects" : _emptyListed == 1 ? "of object" : "of objects")} {empty}");
