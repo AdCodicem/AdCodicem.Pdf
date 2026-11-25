@@ -32,7 +32,8 @@ call; more take several calls.
 At the end of every session: update `docs/status.md` (actual state, not intentions), add a short entry to
 `docs/journal.md` (about thirty lines; the detail goes in the pull request's body), tick the milestone checklist,
 open an issue labeled `debt` for anything found and left, commit, push, and name in the pull request the issues it
-closes (`Closes #58`, one per line).
+closes (`Closes #58`, one per line). **When a pull request is ready for the maintainer's review**, notify the maintainer
+on the Claude app (`PushNotification`), naming the pull request, once.
 
 **A batch of M02's step 4 follows the `batch` skill** (`.claude/skills/batch/SKILL.md`), and every pull request's
 review follows ADR 54: a finding's severity comes from its effect and from whether real files have its input; the
