@@ -250,14 +250,10 @@ internal sealed partial class PdfFileReader
     /// </param>
     private static bool? TellNoValue(ReadOnlySpan<byte> span, bool toEnd, int afterObj = -1)
     {
+        // Past obj where the scan says where it ends: the header's tokens are the two integers and obj the scan read them as,
+        // and a span they fill leaves the next token at its end, undecided. Otherwise its number, its generation and obj, as
+        // the lexer reads them.
         var lexer = new PdfLexer(span, Math.Max(afterObj, 0));
-
-        // Past obj where the scan says where it ends: the header's tokens end no later, and are the two integers and obj
-        // the scan read them as. Otherwise its number, its generation and obj, as the lexer reads them.
-        if (afterObj >= 0 && !toEnd && afterObj >= span.Length)
-        {
-            return null;
-        }
 
         for (var token = afterObj >= 0 ? 3 : 0; token < 3; token++)
         {
