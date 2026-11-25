@@ -5602,6 +5602,66 @@ public class HostileInputTests
         TableWithDecoys,
     }
 
+    [Theory]
+    [InlineData(1000, 0)]
+    [InlineData(100, 70_000)]
+    public void A_chain_of_tables_faulted_among_their_rows_opens_in_time_each_trailer_searched_from_its_table_s_window(int tables, int gap)
+    {
+        // Classic tables, each holding a row that is no row, each read on past its fault to its trailer and handing its /Prev
+        // on to the next, before 4 MB of comment and the newest revision (#324). A thousand trailers lie a few bytes past
+        // their table's fault, within the window the table was read through: a search that opened a megabyte of the file for
+        // each read a gigabyte, and one that opened a table's window again, 64 MB. A hundred lie 70 KB on, past that window:
+        // the search reads on in pieces from 64 KB, where pieces of a megabyte read a hundred megabytes. On a file, the chain
+        // opens well within two seconds; through a source that counts what it reads, it reads what the same chain of sound
+        // tables reads, and less than 16 KB more for each table.
+        var (sound, _, _, _) = FaultedTableFiles.Revisions("sound", middles: tables, tail: 4 * 1024 * 1024, gap: gap);
+        var (file, _, _, _) = FaultedTableFiles.Revisions("row", middles: tables, tail: 4 * 1024 * 1024, gap: gap);
+        var path = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllBytes(path, file);
+            var stopwatch = Stopwatch.StartNew();
+
+            using (var document = PdfDocument.Open(path))
+            {
+                document.Reader.Structure.Sections.Should().HaveCount(tables + 2);
+                stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        using var whole = new StrictCountingSource(sound);
+        using (PdfDocument.Open(whole, options: null, ownsSource: false))
+        {
+        }
+
+        using var source = new StrictCountingSource(file);
+        using var counted = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        counted.Reader.Structure.Sections.Should().HaveCount(tables + 2);
+        source.BytesRead.Should().BeLessThan(whole.BytesRead + (tables * 16L * 1024));
+    }
+
+    [Fact]
+    public void The_search_for_a_faulted_table_s_trailer_past_its_window_reads_pieces_that_grow_from_64_KB()
+    {
+        // The faulted table's trailer lies past 150 KB of comment, beyond the window the table was read through, and the
+        // file runs on 2 MB past it. The search reads on from that window in pieces of 64 KB, then 512 KB, which reach the
+        // trailer: no piece of a megabyte is opened for a trailer that near (#324).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("row", gap: 150_000, tail: 2 * 1024 * 1024);
+        using var source = new WindowLoggingSource(file);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        source.Windows.Where(window => window.Offset > middle).Select(window => window.Length).Should().Contain([64 * 1024, 512 * 1024])
+            .And.NotContain(length => length > 512 * 1024);
+    }
+
     [Fact]
     public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
     {

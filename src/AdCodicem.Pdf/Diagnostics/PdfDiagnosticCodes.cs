@@ -59,12 +59,17 @@ public static class PdfDiagnosticCodes
     /// an object it numbers — for any, where its numbering cannot be read —, which is missing from the index as the objects
     /// only it indexes are; and one that gives a <c>/Prev</c> hands that <c>/Prev</c> on, the chain going on to the older
     /// sections, as the message says where that <c>/Prev</c> names an offset or leads to what one of the reader's limits
-    /// hides (#208). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the table that names
-    /// it, leaves no older section's row standing for the rest of the subsection its fault ended, nor, where what follows
-    /// the fault cannot be known — a subsection header that is no header, a stray token, the end of the file —, for any
-    /// number its rows do not give (#156). The section <c>startxref</c> names that is there and cannot be read hands nothing
-    /// on: the report says the whole index is rebuilt by scanning the file, which it is as the document opens, unless one of
-    /// the reader's limits met the section as it was read, whose report stands for it (#323).
+    /// hides (#208). A classic table a <c>/Prev</c> names whose fault lies among its rows — a row that is no row and what
+    /// follows it, a subsection header that is no header, a stray token — is read on past the fault to its trailer, which
+    /// is merged, and hands that trailer's <c>/Prev</c> on so too, as the message says, no older section's row standing for
+    /// an object numbered below that trailer's <c>/Size</c> — for any, where that <c>/Size</c> gives no count —; a trailer
+    /// one of the reader's limits cut has its <c>/Prev</c> judged, not followed, and the table is reported all the same, its
+    /// fault met before the cut (#324). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the
+    /// table that names it, leaves no older section's row standing for the rest of the subsection its fault ended, nor,
+    /// where what follows the fault cannot be known — a subsection header that is no header, a stray token, the end of the
+    /// file —, for any number its rows do not give (#156). The section <c>startxref</c> names that is there and cannot be
+    /// read hands nothing on: the report says the whole index is rebuilt by scanning the file, which it is as the document
+    /// opens, unless one of the reader's limits met the section as it was read, whose report stands for it (#323).
     /// Or the section, the one <c>startxref</c> names among them, was read only in part, and kept, the chain going on from
     /// it where its trailer was read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference
     /// stream holds fewer rows than it declares, the end of the file cuts a table before its trailer or within its

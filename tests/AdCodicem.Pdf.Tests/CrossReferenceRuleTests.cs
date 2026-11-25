@@ -744,6 +744,61 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be(Single(whole, PdfValidationRuleIds.FileTrailerValueWrong).Message);
     }
 
+    [Theory]
+    [InlineData("row", "the row for object 5, at offset {fault}, is not an offset, a generation and n or f")]
+    [InlineData("header", "the subsection header at offset {fault} does not give a first object number and a count of rows")]
+    [InlineData("stray", "it holds a name at offset {fault}, where a subsection or the trailer should start")]
+    public void A_table_whose_fault_lies_among_its_rows_is_malformed_and_the_older_table_its_trailer_s_prev_names_is_judged(string fault, string said)
+    {
+        // The middle of three revisions is a classic table with a row that is no row, a subsection header that gives no
+        // count, or a stray token among its rows, and the oldest table's row for object 9, which only it indexes, places it 2
+        // bytes past its header, above the middle trailer's /Size 8, which that /Size does not count. The chain stopped at the
+        // faulted table, and the oldest table was neither read nor judged (#324). It goes on through the faulted table's
+        // trailer's /Prev: that table is malformed, an error, and the oldest table judged as in the same file with the table
+        // sound, the row found shifted. The faulted table's /Size, which the sound one's is found wrong for, is not judged:
+        // the rows past the fault are unread, as a lost stream's other values are (#208).
+        var (sound, _, _, _) = FaultedTableFiles.Revisions("sound", shift: 2);
+        var (file, _, middle, _) = FaultedTableFiles.Revisions(fault, shift: 2);
+        var at = fault switch
+        {
+            "row" => PdfTemplate.OffsetOf(file, " 00000 x") - 10,
+            "header" => PdfTemplate.OffsetOf(file, "5 x\n"),
+            _ => PdfTemplate.OffsetOf(file, "/Bad 1"),
+        };
+
+        var whole = Validate(sound);
+        var report = Validate(file);
+
+        whole.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.FileSizeWrong, PdfValidationRuleIds.XRefEntryShifted);
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefEntryShifted);
+        var malformed = report.Findings[0];
+        malformed.Severity.Should().Be(PdfValidationSeverity.Error);
+        malformed.Location.Position.Should().Be(middle);
+        malformed.Message.Should().Be($"The cross-reference table at offset {middle} cannot be read: {said.Replace("{fault}", at.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}.");
+        report.Findings[1].Message.Should().Be(whole.Findings[1].Message);
+    }
+
+    [Theory]
+    [InlineData("{previous}.0", null, "gives its /Prev as a real number, where Table 15 of ISO 32000-1 asks for an integer.")]
+    [InlineData("8 0 R", "{oldest}", "writes its /Prev as the reference 8 0 R, where ISO 32000-1 makes it direct (Table 15).")]
+    public void The_prev_a_table_read_on_past_its_fault_hands_on_is_judged_as_a_classic_trailer_s(string prev, string? eight, string wrong)
+    {
+        // The faulted table's trailer gives its /Prev as a real with no fractional part, or as a reference to object 8, which
+        // the newest table places and which holds the oldest table's offset: the chain goes on through it, and it is judged as
+        // the same value in a sound table's trailer, under Table 15, not as a cross-reference stream's (#324).
+        var (sound, _, _, _) = FaultedTableFiles.Revisions("sound", prev, eight: eight);
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("header", prev, eight: eight);
+
+        var whole = Validate(sound);
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefSectionMalformed).Location.Position.Should().Be(middle);
+        var finding = Single(report, PdfValidationRuleIds.FileTrailerValueWrong);
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "trailer", 2));
+        finding.Message.Should().Be($"The trailer of the cross-reference table at offset {middle} {wrong}");
+        finding.Message.Should().Be(Single(whole, PdfValidationRuleIds.FileTrailerValueWrong).Message);
+    }
+
     [Fact]
     public void A_prev_a_guard_cut_that_a_lost_stream_hands_on_leaves_the_older_sections_unchecked()
     {

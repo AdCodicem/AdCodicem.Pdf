@@ -115,7 +115,9 @@ internal sealed class XRefSectionRecord
     /// number, a token where a subsection or the trailer should start, or the end of the file before its trailer — within
     /// its <c>trailer</c> keyword too (#207). A row for any number may lie there, and the reader refuses every number to the
     /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
-    /// not followed, the chain goes on through the table that names it (#156, #210). Rows that run into a dictionary no
+    /// not followed, the chain goes on through the table that names it (#156, #210) — but for a table a <c>/Prev</c> names,
+    /// read on past its fault to its trailer, which refuses every number below that trailer's <c>/Size</c>, as every row a
+    /// valid table gives numbers (<see cref="NumbersRefused"/>, #324). Rows that run into a dictionary no
     /// trailer keyword introduces may have lost rows with the keyword, a damaged block ending where a subsection would
     /// start: what lies before that dictionary cannot be known either, though it is read as the trailer, the chain going on
     /// through its links (#322).
@@ -216,8 +218,10 @@ internal sealed class XRefSectionRecord
 
     /// <summary>
     /// Gets a value indicating whether the chain read the <c>/Prev</c> the dictionary of the section gives, a cross-reference
-    /// stream whose rows it could not read, to go on past it (#208): the one value of that dictionary the reader read, and
-    /// the one the validation rules judge, whether it names an offset the chain went on to or no offset at all.
+    /// stream whose rows it could not read, to go on past it (#208), or the <c>/Prev</c> of the trailer of a classic table
+    /// it read on to past a fault among the table's rows (#324): the one value of that dictionary the reader read — of that
+    /// trailer, the one it followed —, and the one the validation rules judge, whether it names an offset the chain went on
+    /// to or no offset at all.
     /// </summary>
     public bool PreviousHandedOn { get; set; }
 
@@ -227,7 +231,9 @@ internal sealed class XRefSectionRecord
     /// dictionary was read whole, whether the chain went on through its <c>/Prev</c> (#208) or it is a hybrid file's stream
     /// (#210); and those a classic table an <c>/XRefStm</c> names lost — the rest of the subsection its fault ended, or every
     /// number, where what follows the fault cannot be known (<see cref="SubsectionsUnknown"/>) —, the chain going on past it
-    /// through the table that names it (#156).
+    /// through the table that names it (#156); and every number below the <c>/Size</c> of the trailer of a classic table a
+    /// <c>/Prev</c> names, read on past a fault among its rows, the chain going on past it through that trailer's
+    /// <c>/Prev</c> — every number, where that <c>/Size</c> gives no count (#324).
     /// </summary>
     public bool NumbersRefused { get; set; }
 

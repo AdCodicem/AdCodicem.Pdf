@@ -16,8 +16,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// one that cannot be read for a fault of its own is this rule's too, whatever its trailer's (#325). A section one of the
 /// reader's limits cut is not
 /// malformed (ADR 34): <see cref="PdfValidationRuleIds.XRefCheckedInPart"/> says it was not checked whole. What the reader
-/// read of such a section — a row it refused before the cut, what it met past the rows reading on to the trailer — is the
-/// file's all the same.
+/// read of such a section — a row it refused before the cut, what it met past the rows reading on to the trailer, the fault
+/// a classic table cannot be read for, past which the reader read on to a trailer a limit cut (#324) — is the file's all
+/// the same.
 /// </remarks>
 internal sealed class SectionMalformedRule : IValidationRule
 {
@@ -33,8 +34,10 @@ internal sealed class SectionMalformedRule : IValidationRule
         foreach (var section in context.Structure.Sections)
         {
             // A section a limit stopped the reader reading is unknown past the cut, not malformed; what the reader read of
-            // it — rows before the cut, what lay past them on the way to the trailer — is the file's.
-            if (section.CutByLimit && section.State is not (XRefSectionState.Read or XRefSectionState.Relocated))
+            // it — rows before the cut, what lay past them on the way to the trailer — is the file's, and so is the fault a
+            // classic table cannot be read for, met before a limit cut the trailer it was read on to (#324).
+            if (section.CutByLimit && section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) &&
+                section.Kind != XRefSectionKind.Table)
             {
                 continue;
             }
