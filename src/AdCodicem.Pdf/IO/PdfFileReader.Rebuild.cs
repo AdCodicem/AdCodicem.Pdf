@@ -824,7 +824,7 @@ internal sealed partial class PdfFileReader
     private bool DefinitionHoldsNoValue(long at) =>
         _scanMemo is { } memo && memo.TryGetHeaderAt(at, out var header) && header.HoldsNoValue is { } known
             ? known
-            : HoldsNoValue(at, default, 0, pieceEndsData: false);
+            : HoldsNoValue(at, default, 0, pieceEndsData: false, objAt: -1);
 
     /// <summary>
     /// Determines whether <paramref name="value"/>, an object stream's dictionary or a value it holds, names an object the

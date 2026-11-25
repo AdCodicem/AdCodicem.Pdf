@@ -146,6 +146,7 @@ internal sealed partial class PdfFileReader
     /// <param name="piece">The bytes the scan holds, which may hold the header and what follows it.</param>
     /// <param name="pieceStart">Where <paramref name="piece"/> starts in the file.</param>
     /// <param name="pieceEndsData">Whether <paramref name="piece"/> runs to the end of the file.</param>
+    /// <param name="objAt">Where the header's <c>obj</c> keyword starts, as the scan found it.</param>
     private void IndexScannedHeader(
         long at,
         int number,
@@ -155,7 +156,8 @@ internal sealed partial class PdfFileReader
         bool? holdsNoValue = null,
         ReadOnlySpan<byte> piece = default,
         long pieceStart = 0,
-        bool pieceEndsData = false)
+        bool pieceEndsData = false,
+        long objAt = -1)
     {
         // The last definition wins: that is what an incrementally updated file means. Its entry records the generation its
         // header gives, whatever an earlier definition gave (#118). A number the index lacks takes room in it, which it may
@@ -167,7 +169,7 @@ internal sealed partial class PdfFileReader
             // But a definition that holds no value is no newer object: an update cut right after a header, or a header
             // nothing a load reads as a value follows, would have the rebuild serve null over the readable definition before
             // it (#351). A value read in part still wins: it is what the newest revision wrote.
-            var empty = holdsNoValue ?? HoldsNoValue(at, piece, pieceStart, pieceEndsData);
+            var empty = holdsNoValue ?? HoldsNoValue(at, piece, pieceStart, pieceEndsData, objAt);
             redefinitions.Add(number, empty);
 
             if (empty)
@@ -196,9 +198,9 @@ internal sealed partial class PdfFileReader
     /// hold the headers a scan of a stream's data as the bytes give it takes: lexing it whole for each would read it again
     /// for each header it holds.
     /// </remarks>
-    private bool HoldsNoValue(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
+    private bool HoldsNoValue(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData, long objAt)
     {
-        if (TellNoValueFromPiece(at, piece, pieceStart, pieceEndsData) is { } told)
+        if (TellNoValueFromPiece(at, piece, pieceStart, pieceEndsData, objAt) is { } told)
         {
             return told;
         }
@@ -212,8 +214,10 @@ internal sealed partial class PdfFileReader
     /// Tells whether the object whose header starts at <paramref name="at"/> holds no value from the bytes the scan holds
     /// (<see cref="HoldsNoValue"/>), or gives null where they do not reach as far as it reads, nor to the end of the file:
     /// what the scan for the memo notes, which reads nothing more for it (<see cref="ScannedHeader.HoldsNoValue"/>).
+    /// Where the scan found the header's <c>obj</c> at <paramref name="objAt"/>, the bytes are lexed from past it: the scan
+    /// asks this of every header it takes for the memo, and the header's tokens would be lexed again for each.
     /// </summary>
-    private bool? TellNoValueFromPiece(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
+    private bool? TellNoValueFromPiece(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData, long objAt)
     {
         var reach = (int)Math.Min(NoValueReach, _guard.Bound(PdfLimit.Object));
 
@@ -229,19 +233,33 @@ internal sealed partial class PdfFileReader
             return null;
         }
 
-        return TellNoValue(held[..Math.Min(held.Length, reach)], pieceEndsData && held.Length <= reach) ?? false;
+        var span = held[..Math.Min(held.Length, reach)];
+        var afterObj = objAt < 0 ? -1 : (int)Math.Min(objAt + ObjKeyword.Length - at, span.Length);
+        return TellNoValue(span, pieceEndsData && held.Length <= reach, afterObj) ?? false;
     }
 
     /// <summary>
     /// Tells whether the object whose header starts <paramref name="span"/> holds no value (<see cref="HoldsNoValue"/>), or
     /// gives null where the tokens that would tell run past it and <paramref name="toEnd"/> says the file goes on.
     /// </summary>
-    private static bool? TellNoValue(ReadOnlySpan<byte> span, bool toEnd)
+    /// <param name="span">The bytes from the header on.</param>
+    /// <param name="toEnd">Whether <paramref name="span"/> runs to the end of the file.</param>
+    /// <param name="afterObj">
+    /// Where in <paramref name="span"/> the header's <c>obj</c> keyword ends, as the scan found it, capped at its length;
+    /// -1 where the header's tokens are to be lexed.
+    /// </param>
+    private static bool? TellNoValue(ReadOnlySpan<byte> span, bool toEnd, int afterObj = -1)
     {
-        var lexer = new PdfLexer(span);
+        var lexer = new PdfLexer(span, Math.Max(afterObj, 0));
 
-        // The header the scan took: its number, its generation and obj, as the lexer reads them.
-        for (var token = 0; token < 3; token++)
+        // Past obj where the scan says where it ends: the header's tokens end no later, and are the two integers and obj
+        // the scan read them as. Otherwise its number, its generation and obj, as the lexer reads them.
+        if (afterObj >= 0 && !toEnd && afterObj >= span.Length)
+        {
+            return null;
+        }
+
+        for (var token = afterObj >= 0 ? 3 : 0; token < 3; token++)
         {
             var read = lexer.Read();
 
@@ -469,10 +487,11 @@ internal sealed partial class PdfFileReader
 
                 if (memo is null)
                 {
-                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData);
+                    IndexScannedHeader(
+                        at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData, objAt: windowStart + objAt);
                 }
                 else if (!memo.TryAddHeader(
-                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, TellNoValueFromPiece(at, span, windowStart, endsData)))
+                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, TellNoValueFromPiece(at, span, windowStart, endsData, windowStart + objAt)))
                 {
                     return reached;
                 }
