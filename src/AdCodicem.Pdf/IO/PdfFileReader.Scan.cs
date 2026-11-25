@@ -140,7 +140,8 @@ internal sealed partial class PdfFileReader
     /// <param name="reached">Receives the exception a document opened to throw asked for.</param>
     /// <param name="holdsNoValue">
     /// Whether the object holds no value, as a memo's replay knows it; null for the scan, which tells it from
-    /// <paramref name="piece"/> where it needs to (<see cref="HoldsNoValue"/>).
+    /// <paramref name="piece"/> where it needs to, and for a replayed header the memo's scan could not tell it of, whose
+    /// bytes are then read (<see cref="HoldsNoValue"/>).
     /// </param>
     /// <param name="piece">The bytes the scan holds, which may hold the header and what follows it.</param>
     /// <param name="pieceStart">Where <paramref name="piece"/> starts in the file.</param>
@@ -197,21 +198,38 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private bool HoldsNoValue(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
     {
-        var reach = (int)Math.Min(NoValueReach, _guard.Bound(PdfLimit.Object));
-
-        if (at >= pieceStart && at - pieceStart < piece.Length)
+        if (TellNoValueFromPiece(at, piece, pieceStart, pieceEndsData) is { } told)
         {
-            var held = piece[(int)(at - pieceStart)..];
-
-            if (held.Length >= reach || pieceEndsData)
-            {
-                return TellNoValue(held[..Math.Min(held.Length, reach)], pieceEndsData && held.Length <= reach) ?? false;
-            }
+            return told;
         }
 
-        var asked = (int)Math.Min(reach, _source.Length - at);
+        var asked = (int)Math.Min(Math.Min(NoValueReach, _guard.Bound(PdfLimit.Object)), _source.Length - at);
         using var window = _source.GetWindow(at, asked);
         return TellNoValue(window.Memory.Span, window.Length < asked || at + window.Length >= _source.Length) ?? false;
+    }
+
+    /// <summary>
+    /// Tells whether the object whose header starts at <paramref name="at"/> holds no value from the bytes the scan holds
+    /// (<see cref="HoldsNoValue"/>), or gives null where they do not reach as far as it reads, nor to the end of the file:
+    /// what the scan for the memo notes, which reads nothing more for it (<see cref="ScannedHeader.HoldsNoValue"/>).
+    /// </summary>
+    private bool? TellNoValueFromPiece(long at, ReadOnlySpan<byte> piece, long pieceStart, bool pieceEndsData)
+    {
+        var reach = (int)Math.Min(NoValueReach, _guard.Bound(PdfLimit.Object));
+
+        if (at < pieceStart || at - pieceStart >= piece.Length)
+        {
+            return null;
+        }
+
+        var held = piece[(int)(at - pieceStart)..];
+
+        if (held.Length < reach && !pieceEndsData)
+        {
+            return null;
+        }
+
+        return TellNoValue(held[..Math.Min(held.Length, reach)], pieceEndsData && held.Length <= reach) ?? false;
     }
 
     /// <summary>
@@ -450,7 +468,7 @@ internal sealed partial class PdfFileReader
                     IndexScannedHeader(at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData);
                 }
                 else if (!memo.TryAddHeader(
-                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, HoldsNoValue(at, span, windowStart, endsData)))
+                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, TellNoValueFromPiece(at, span, windowStart, endsData)))
                 {
                     return reached;
                 }

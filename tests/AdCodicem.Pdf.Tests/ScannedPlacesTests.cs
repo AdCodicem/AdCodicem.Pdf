@@ -859,7 +859,7 @@ public class ScannedPlacesTests
         else
         {
             memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
-            header.Should().Be(new ScannedHeader(at, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+            (header.Position, header.Number, header.Generation, header.Kind).Should().Be((at, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
             memo.TryGetHeaderAt(at + 1, out _).Should().BeFalse();
         }
     }
@@ -1381,6 +1381,39 @@ public class ScannedPlacesTests
         scanning.Should().BeGreaterThanOrEqualTo(replaying + file.Length, "the rebuild that takes the memo scans nothing");
         askingAfter.Should().BeGreaterThanOrEqualTo(file.Length, "the rebuild run first made no memo");
         Describe(madeAfter, file.Length).Should().Equal(Describe(replayed.Reader.GetScanMemo(), file.Length));
+    }
+
+    [Fact]
+    public void A_rebuild_that_replays_the_memo_keeps_the_definition_before_one_that_holds_no_value_as_one_that_scans()
+    {
+        // Object 3's last header, past the table, holds no value: the file ends after it. Reading object 4, whose row lies
+        // outside the file, rebuilds the index, which keeps the definition before it, whether it scans the file or replays
+        // the memo asked for first, whose scan notes the header as holding none, and the one the piece's end leaves it
+        // undecided for, and so reads no byte more for it (#351).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [3] = file.Object(3, "(three)") };
+        rows[4] = 999_999;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var last = file.Position;
+        file.Raw("3 5 obj\n");
+        var bytes = file.Bytes;
+
+        using var replayed = PdfDocument.Open(bytes);
+        var memo = replayed.Reader.GetScanMemo();
+        replayed.GetObject(new PdfObjectId(4));
+        using var scanned = PdfDocument.Open(bytes);
+        scanned.GetObject(new PdfObjectId(4));
+
+        memo.TryGetHeaderAt(last, out var header).Should().BeTrue();
+        header.HoldsNoValue.Should().BeTrue();
+        memo.TryGetHeaderAt(rows[3], out var three).Should().BeTrue();
+        three.HoldsNoValue.Should().BeFalse();
+        replayed.WasRepaired.Should().BeTrue();
+        replayed.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+        scanned.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+        replayed.Diagnostics.Should().Equal(scanned.Diagnostics);
+        replayed.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().EndWith("but for one that holds no value, which leaves the definition before it kept, as the later definition of object 3 does.");
     }
 
     [Fact]
@@ -2986,7 +3019,7 @@ public class ScannedPlacesTests
 
         (nine, document.WasRepaired, source.ShortReads).Should().Be((Piece - before, false, shortReads));
         memo.TryGetHeaderAt(nine, out var header).Should().BeTrue();
-        header.Should().Be(new ScannedHeader(nine, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+        (header.Position, header.Number, header.Generation, header.Kind).Should().Be((nine, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
     }
 
     [Fact]

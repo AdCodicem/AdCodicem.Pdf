@@ -9,6 +9,7 @@ namespace AdCodicem.Pdf.IO;
 /// <param name="Kind">How the scan took the header.</param>
 /// <param name="HoldsNoValue">
 /// Whether the object holds no value as a load reads it, as far as the first bytes from its header tell: a rebuild that
-/// replays the memo keeps the definition before such a one, as one that scans the file does (#351).
+/// replays the memo keeps the definition before such a one, as one that scans the file does (#351). Null where the scan's
+/// piece did not hold those bytes, which a replay then reads for a number defined again.
 /// </param>
-internal readonly record struct ScannedHeader(long Position, int Number, int Generation, ScannedPlaceKind Kind, bool HoldsNoValue = false);
+internal readonly record struct ScannedHeader(long Position, int Number, int Generation, ScannedPlaceKind Kind, bool? HoldsNoValue = false);
