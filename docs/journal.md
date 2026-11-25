@@ -7,6 +7,22 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-25 — Dependabot's security updates grouped, and its bypass of the approval ([#439], [#440])
+
+- **The question.** Dependabot pull requests queued for auto-merge never merged: the ruleset on `main` waits for a
+  code-owner approval (#439). npm security updates under `/docs/website` arrived one pull request each, as
+  version-update groups do not apply to security updates (#440).
+- **Settled with the maintainer**, on 2026-11-25: Dependabot goes on the ruleset's bypass list rather than the
+  approval being dropped for everyone; CodeQL stays required.
+- **What changed.** Every entry of `.github/dependabot.yml` has a second group, `applies-to: security-updates`, for
+  minor and patch updates; a major security update still arrives alone. Validated against the schema store's
+  Dependabot schema. `docs/releasing.md`'s settings table names the bypass; the setting itself is the maintainer's to
+  make, as no session can edit a ruleset.
+- **Left open.** GitHub's documentation lists Dependabot among the actors a ruleset can let bypass, but says neither
+  which actor a merge by auto-merge counts as (the workflow's token enabled it) nor whether a bypass skips the
+  required checks too. #439 stays open until a Dependabot pull request is seen merging on green checks alone, and a
+  red one not merging.
+
 ## 2026-11-25 — Dependabot auto-merge moved off `pull_request_target`
 
 - **The question.** From 2026-12-02, GitHub Actions blocks `pull_request_target` by default in public repositories, and
