@@ -1820,15 +1820,18 @@ public class CrossReferenceChainTests
     [InlineData("/Size 3", false)]
     [InlineData("/Size 4", false)]
     [InlineData("/Size 5", true)]
-    public void A_table_read_on_past_its_fault_whose_trailer_gives_no_count_refuses_every_number_to_the_older_rows(string size, bool counts)
+    [InlineData("/Size 0", true, "header first")]
+    public void A_table_read_on_past_its_fault_whose_trailer_gives_no_count_refuses_every_number_to_the_older_rows(
+        string size, bool counts, string fault = "header")
     {
         // The faulted table's trailer gives no /Size, a negative one, or a reference, where ISO 32000-1 makes it direct, to
         // object 8, which the newest table places and which holds 8: which numbers its rows past the fault held is not left to
         // what an object holds, and no older row stands for any number, object 9 among them, found by rebuilding the index.
         // Nor does a /Size the table's own rows contradict: its row for object 4, read before the fault, numbers an object at
         // or above a /Size of 0, 3 or 4, which counts no object then. A /Size of 5 counts the objects below it: the oldest
-        // table's rows above it stand, object 7's older revision with them (#324).
-        var (file, _, _, _) = FaultedTableFiles.Revisions("header", size: size, eight: "8");
+        // table's rows above it stand, object 7's older revision with them (#324). So does a /Size of 0 where the fault comes
+        // before any row, in the first subsection's header: no row contradicts it, and it refuses no number.
+        var (file, _, _, _) = FaultedTableFiles.Revisions(fault, size: size, eight: "8");
 
         using var document = PdfDocument.Open(file);
 
@@ -1840,6 +1843,27 @@ public class CrossReferenceChainTests
         Text(document, 7).Should().Be(counts ? "old seven" : "seven");
         Text(document, 9).Should().Be("nine");
         document.WasRepaired.Should().Be(!counts);
+    }
+
+    [Theory]
+    [InlineData("/Size 0", false)]
+    [InlineData("/Size 1", true)]
+    public void A_table_read_on_past_a_fault_before_any_row_refuses_object_zero_to_the_older_rows_only_below_a_size_that_counts_it(
+        string size, bool refused)
+    {
+        // The faulted table reads no row before its fault, in its first subsection's header, and its trailer's /Size is 0 or
+        // 1. The oldest table holds a row that is no row past its row for object 9, and is read in part, its report saying
+        // which of the rows it read stand. A /Size of 1 counts object 0 alone, which is refused to the older rows: the
+        // oldest table's row for it, the head of its free list, does not stand, which its report says. A /Size of 0 counts
+        // no object, and every row the oldest table read stands (#324).
+        var (file, oldest, _, _) = FaultedTableFiles.Revisions("header first", size: size, oldestRows: "10 1\n0000000000 00000 x \n");
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle(d => d.Position == oldest).Which;
+        report.Message.Contains("but for those whose numbers a newer section refused", StringComparison.Ordinal).Should().Be(refused);
+        Text(document, 4).Should().Be("old four");
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Theory]
@@ -1975,6 +1999,8 @@ public class CrossReferenceChainTests
     [InlineData("at once")]
     [InlineData("objects between")]
     [InlineData("corpus")]
+    [InlineData("head without f")]
+    [InlineData("head without f, info first")]
     public void A_table_whose_rows_misread_past_its_fault_run_over_its_trailer_keyword_is_read_on_from_that_fault_to_its_own_trailer(string shape)
     {
         // The middle table's row for object 5 is no row, and the head of the free list, which Acrobat PDFMaker writes as the
@@ -1982,7 +2008,11 @@ public class CrossReferenceChainTests
         // the misreading stops inside the table's own trailer. The reading on starts at the row that is no row and finds that
         // trailer, whose /Prev it hands on to the oldest table: not the trailer of the newest table, written right after it,
         // whose /Prev names the faulted table again, nor none, where the last revision's objects lie between the two (#324).
-        // The corpus document, which PDFMaker updated four times, has the row for its object 41 so damaged.
+        // The corpus document, which PDFMaker updated four times, has the row for its object 41 so damaged. A head of the free
+        // list written without its f reads as a header whose first row takes the keyword, the dictionary's opening and its
+        // first key: the misreading stops inside the trailer at a header that gives no count, or, where that first key is an
+        // /Info referring to object 2147483647 in generation 2, at one that numbers its rows past the last object number. The
+        // reading on starts at the row that is no row all the same, not at that header.
         var (file, oldest, middle, number, fault, trailer) = MisreadPastFault(shape);
 
         using var document = PdfDocument.Open(file);
@@ -2089,30 +2119,36 @@ public class CrossReferenceChainTests
         document.Trailer.GetRaw(PdfName.Get("A")).Should().BeNull();
     }
 
-    [Fact]
-    public void A_table_read_on_past_its_fault_that_lost_more_ranges_than_are_kept_apart_refuses_every_number()
+    [Theory]
+    [InlineData(0, "/Size 3", true)]
+    [InlineData(2, "/Size 0", false)]
+    public void A_table_read_on_past_its_fault_refuses_every_number_only_where_what_it_lost_makes_more_ranges_than_are_kept_apart(
+        int first, string size, bool every)
     {
         // The middle table gives 4,097 subsections of one row each, two numbers apart, every row ending in x, then a stray
         // token, and a trailer whose /Size 3 counts objects 0 to 2: the rows it lost make more ranges than the reader keeps
         // apart, and which numbers they held cannot be told. No older row stands for any number, object 8,192, whose
         // subsection the reader could not keep apart, among them: the oldest table's row for it is refused, and the object is
-        // found by rebuilding the index (#210, #324).
+        // found by rebuilding the index (#210, #324). From object 2, the table loses 4,096 ranges, as many as the reader keeps
+        // apart, and its /Size 0 counts no object, which adds no range to them: the oldest table's row for object 3, in none
+        // of them, stands.
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
         var old = file.Object(8192, "(old)");
         var oldest = file.Position;
-        file.Raw(Invariant($"xref\n8192 1\n{old:D10} 00000 n \ntrailer\n<< /Size 8193 >>\nstartxref\n{oldest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n3 1\n{three:D10} 00000 n \n8192 1\n{old:D10} 00000 n \ntrailer\n<< /Size 8193 >>\nstartxref\n{oldest}\n%%EOF\n"));
         var updated = file.Object(8192, "(updated)");
         var middle = file.Position;
         var rows = new StringBuilder("xref\n");
 
-        for (var number = 0; number <= 8192; number += 2)
+        for (var number = first; number <= 8192; number += 2)
         {
             rows.Append(CultureInfo.InvariantCulture, $"{number} 1\n0000000000 00000 x \n");
         }
 
-        file.Raw(rows.Append(CultureInfo.InvariantCulture, $"/Bad 1\ntrailer\n<< /Size 3 /Prev {oldest} >>\nstartxref\n{middle}\n%%EOF\n").ToString());
+        file.Raw(rows.Append(CultureInfo.InvariantCulture, $"/Bad 1\ntrailer\n<< {size} /Prev {oldest} >>\nstartxref\n{middle}\n%%EOF\n").ToString());
         var last = file.Position;
         file.Raw(Invariant(
             $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 8193 /Root 1 0 R /Prev {middle} >>\nstartxref\n{last}\n%%EOF\n"));
@@ -2120,10 +2156,12 @@ public class CrossReferenceChainTests
 
         using var document = PdfDocument.Open(file.Bytes);
 
-        document.Diagnostics.Should().ContainSingle().Which.Message.Should().EndWith(
-            "the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.");
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().EndWith(every
+            ? "the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
+            : "the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size, or in the rest of a subsection its faults ended, that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.");
         document.Reader.Structure.Sections.Should().HaveCount(3);
-        document.Reader.ChainIndex!.TryGet(8192, out _).Should().BeFalse();
+        document.Reader.ChainIndex!.TryGet(3, out _).Should().Be(!every);
+        document.Reader.ChainIndex.TryGet(8192, out _).Should().BeFalse();
         Text(document, 8192).Should().Be("updated");
         document.WasRepaired.Should().BeTrue();
     }
@@ -11438,10 +11476,10 @@ public class CrossReferenceChainTests
     /// <summary>
     /// Gives a file whose middle table holds a row that is no row, the rows misread past it running over the table's trailer
     /// keyword: one <see cref="FaultedTableFiles.Pdfmaker"/> writes, the newest table right after the faulted one or past the
-    /// last revision's objects; or the corpus document Acrobat PDFMaker updated four times, the row for its object 41 ending
-    /// in <c>x</c> rather than <c>n</c>. With the offset of the table the faulted table's own trailer names through
-    /// <c>/Prev</c>, that of the faulted table, the number and offset of its row that is no row, and the offset of its own
-    /// trailer, past that row and the head of the free list.
+    /// last revision's objects, the head of its free list written whole or without its <c>f</c>; or the corpus document
+    /// Acrobat PDFMaker updated four times, the row for its object 41 ending in <c>x</c> rather than <c>n</c>. With the offset
+    /// of the table the faulted table's own trailer names through <c>/Prev</c>, that of the faulted table, the number and
+    /// offset of its row that is no row, and the offset of its own trailer, past that row and the head of the free list.
     /// </summary>
     private static (byte[] File, long Oldest, long Middle, int Number, long Fault, long Trailer) MisreadPastFault(string shape)
     {
@@ -11453,9 +11491,10 @@ public class CrossReferenceChainTests
             return (document, 20724, 28449, 41, row, row + 40);
         }
 
-        var (file, oldest, middle, _) = FaultedTableFiles.Pdfmaker("head", objectsBetween: shape == "objects between");
+        var withoutF = shape.StartsWith("head without f", StringComparison.Ordinal);
+        var (file, oldest, middle, _) = FaultedTableFiles.Pdfmaker(withoutF ? shape : "head", objectsBetween: shape == "objects between");
         var fault = PdfTemplate.OffsetOf(file, " 00000 x") - 10;
-        return (file, oldest, middle, 5, fault, fault + 40);
+        return (file, oldest, middle, 5, fault, fault + (withoutF ? 37 : 40));
     }
 
     private static string Text(PdfDocument document, int number) =>
