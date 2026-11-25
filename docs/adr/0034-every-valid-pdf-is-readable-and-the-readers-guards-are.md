@@ -295,6 +295,15 @@ the cut, is judged, never followed. Its fault, not a guard, stopped its rows: th
 the table judges it, a reference not taken for one to a row a guard left unread, and its `/XRefStm`, which a whole read
 of such a table does not follow, is not judged.
 
+Amended on 2026-11-25, by the maintainer, while [#290](https://github.com/AdCodicem/AdCodicem.Pdf/issues/290) was fixed:
+the 2026-10-24 amendment reads a cross-reference stream whose data holds no row, beside a value a guard cut, as read
+whole, lacking rows, the chain going on. A hidden value of the wrong type or range — a string where `/Index` wants a
+count, a count that overflows the object numbers — makes the whole read find the section unreadable rather than
+incomplete. The verdict stands: data that holds no row lacks the rows whatever the value holds, the section is the
+file's fault either way, and no row is read either way, so the older sections are read and judged as a whole read
+reads them, and the guard is reached once the chain is read. Yielding the section to the guard wherever a value could
+make it unreadable — every value a guard cut can — would end the chain there and leave the older sections unread.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
