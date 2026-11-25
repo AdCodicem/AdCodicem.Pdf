@@ -322,6 +322,7 @@ internal sealed partial class PdfFileReader
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
                         $"it holds {DescribeToken(token)} at offset {at + token.Start}, where a subsection or the trailer should start");
+                    ReadOnPastFault(at + token.Start, window.Memory[token.Start..], section, candidate);
                     return XRefSectionState.Malformed;
                 }
 
@@ -340,6 +341,7 @@ internal sealed partial class PdfFileReader
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
                         $"the subsection header at offset {at + token.Start} does not give a first object number and a count of rows");
+                    ReadOnPastFault(at + token.Start, window.Memory[token.Start..], section, candidate);
                     return XRefSectionState.Malformed;
                 }
 
@@ -350,6 +352,7 @@ internal sealed partial class PdfFileReader
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
                         $"the subsection header at offset {at + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
+                    ReadOnPastFault(at + token.Start, window.Memory[token.Start..], section, candidate);
                     return XRefSectionState.Malformed;
                 }
 
@@ -362,9 +365,9 @@ internal sealed partial class PdfFileReader
                 {
                     // The index takes no more numbers: the rows left can only repeat numbers it holds, and are not read.
                     // The trailer past them still names the catalog, the encryption and the identity of the document.
-                    if (!candidate)
+                    if (!candidate && ReadTrailerPastRows(at + lexer.Position, section) is { } past)
                     {
-                        ReadTrailerPastRows(at + lexer.Position, section);
+                        JudgeLinksPastGuard(past, section);
                     }
 
                     return XRefSectionState.Read;
@@ -392,9 +395,13 @@ internal sealed partial class PdfFileReader
                         // From the start of the line the cut fell in, outside any comment: a line holds a row, a header, a
                         // comment or the trailer keyword, which the cut may have split. Not before the table's own keyword.
                         var line = span.LastIndexOfAny((byte)'\r', (byte)'\n');
-                        ReadTrailerPastRows(
+
+                        if (ReadTrailerPastRows(
                             Math.Max(at + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), at + "xref".Length),
-                            section);
+                            section) is { } past)
+                        {
+                            JudgeLinksPastGuard(past, section);
+                        }
                     }
                 }
                 else
@@ -431,11 +438,12 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Finds the trailer of a classic table past the rows the reader left unread from <paramref name="from"/> on — those
-    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, or those past an index
-    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> filled —, and merges it into the document's: the rows are not
-    /// indexed, but the trailer names the catalog, the encryption and the identity of the document. The chain goes no
-    /// further: an older section's rows would stand for the objects the rows left unread define, or find no room. What the
-    /// trailer names through <c>/Prev</c> and <c>/XRefStm</c> is judged all the same, without reading past the guard
+    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, those past an index
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> filled, or those past a fault among them (<see cref="ReadOnPastFault"/>)
+    /// —, merges it into the document's, and gives it: the rows are not indexed, but the trailer names the catalog, the
+    /// encryption and the identity of the document. Past a guard, the chain goes no further: an older section's rows would
+    /// stand for the objects the rows left unread define, or find no room, and what the trailer names through
+    /// <c>/Prev</c> and <c>/XRefStm</c> is judged all the same, without reading past the guard
     /// (<see cref="JudgeLinksPastGuard"/>, #264).
     /// </summary>
     /// <remarks>
@@ -444,31 +452,45 @@ internal sealed partial class PdfFileReader
     /// read of them, not memory for them. A comment is skipped, as the lexer skips it. Anything else that is no part of a
     /// table — a damaged row, a stray token — is the section's fault, and the search goes on past it to the trailer
     /// keyword, which a reader that read the rows would reach as well: the trailer names the encryption, which must not be
-    /// lost to damage the guard hid. <paramref name="from"/> starts a line, outside any comment.
+    /// lost to damage the guard hid. <paramref name="from"/> starts a line, or a token, outside any comment.
     /// </para>
     /// <para>
     /// The search ends at the trailer keyword, at a dictionary no keyword introduces, or at the end of the file; the last
     /// two are a missing trailer, as they are where no guard stopped the reader, unless something no table holds came
     /// first, which is then all the section is judged by. A dictionary the rows run into is read as the trailer, as where
-    /// no guard stopped the reader (#322). The file is read a megabyte at a time, each piece once and every
-    /// byte of it looked at before the next is read, however many comments or stray bytes it holds; what starts within a
-    /// piece's last bytes, which may run past its end, starts the next. The search is made once a document: the chain
-    /// ends at the section it is made for.
+    /// no guard stopped the reader (#322). The bytes <paramref name="held"/> gives, the rest of the table's own window,
+    /// are searched first, read already; then the file, from <see cref="XRefWindow"/> bytes, each piece eight times the
+    /// last up to a megabyte, each read once and every byte of it looked at before the next is read, however many comments
+    /// or stray bytes it holds; what starts within a piece's last bytes, which may run past its end, starts the next. A
+    /// search reads up to the trailer, and past it the rest of the piece it ends in: less than <see cref="XRefWindow"/>
+    /// bytes, or eight times what it read before. Past a guard, it is made once a document, the chain ending at the
+    /// section it is made for; past a fault, once a table, and two tables whose searches reach one trailer hand on one
+    /// <c>/Prev</c>, the second a loop, so that the searches of a chain reach over the file about twice at most.
     /// </para>
     /// </remarks>
-    private void ReadTrailerPastRows(long from, XRefSectionRecord section)
+    /// <param name="from">Where the search starts, in the file.</param>
+    /// <param name="section">The record of the table.</param>
+    /// <param name="held">The bytes from <paramref name="from"/> on that the caller holds already, or none.</param>
+    /// <returns>The trailer, merged; null where none was read.</returns>
+    private PdfDictionary? ReadTrailerPastRows(long from, XRefSectionRecord section, ReadOnlyMemory<byte> held = default)
     {
         var position = from;
         var stray = -1L;
         var found = -1L;
         var dictionary = -1L;
         var comment = false;
+        var piece = XRefWindow;
 
         while (position < _source.Length && found < 0 && dictionary < 0)
         {
             var start = position;
-            var length = (int)Math.Min(ScanChunkSize, _source.Length - start);
-            using var window = _source.GetWindow(start, length);
+
+            // The bytes the caller holds are looked at first, read already; then the file, each piece eight times the last
+            // up to a megabyte, so that a trailer a few rows on costs a read of those rows, not of a megabyte.
+            var length = held.IsEmpty ? (int)Math.Min(piece, _source.Length - start) : held.Length;
+            using var window = held.IsEmpty ? _source.GetWindow(start, length) : new PdfWindow(held, start, rented: null);
+            piece = held.IsEmpty ? Math.Min(piece * 8, ScanChunkSize) : piece;
+            held = default;
             var span = window.Memory.Span;
 
             // What starts within the window's last bytes may run past its end: it is looked at again from a window that
@@ -559,7 +581,7 @@ internal sealed partial class PdfFileReader
             }
 
             section.TrailerPosition = stray >= 0 ? stray : _source.Length;
-            return;
+            return null;
         }
 
         // A dictionary the rows run into with no keyword before it lacks the keyword, and is read as the trailer, as where the
@@ -585,6 +607,40 @@ internal sealed partial class PdfFileReader
         if (trailer is not null)
         {
             MergeSectionTrailer(trailer, section);
+        }
+
+        return trailer;
+    }
+
+    /// <summary>
+    /// Reads a classic table a <c>/Prev</c> names on past a fault among its rows — a row that is no row and what follows it,
+    /// a subsection header that gives no count, a stray token — to its trailer, which it merges into the document's
+    /// (<see cref="ReadTrailerPastRows"/>, #324): the trailer names the catalog, the encryption and the identity of the
+    /// document, and, through its <c>/Prev</c>, the older sections, which the chain reads and judges past the table
+    /// (<see cref="PreviousToHandOn"/>), no older section's row standing for a number below the trailer's <c>/Size</c>
+    /// (<see cref="RefuseBelowSize"/>). The table stays one that cannot be read, for its fault.
+    /// </summary>
+    /// <remarks>
+    /// A trailer <see cref="PdfReaderLimits.MaxTrailerLength"/> cuts is not followed: its <c>/Prev</c>, written whole before
+    /// the cut, is judged as past any guard that ends the chain at a table (<see cref="JudgeLinksPastGuard"/>, #328), an older
+    /// trailer standing for the keys the cut hid, and the fault met before the cut stays the file's. The table
+    /// <c>startxref</c> names is not read on, the whole index rebuilt for it; nor is a place a section may have been moved
+    /// to, a guess whose search each guess would make; nor a table an <c>/XRefStm</c> names, whose links the chain does not
+    /// follow (#263).
+    /// </remarks>
+    /// <param name="from">Where the token the fault stopped the reading at starts, in the file.</param>
+    /// <param name="held">The rest of the table's window from that token on, read already.</param>
+    /// <param name="section">The record of the table.</param>
+    /// <param name="candidate">Whether the table is read at a place a section may have been moved to.</param>
+    private void ReadOnPastFault(long from, ReadOnlyMemory<byte> held, XRefSectionRecord section, bool candidate)
+    {
+        if (candidate || section.NamedBy != "/Prev")
+        {
+            return;
+        }
+
+        if (ReadTrailerPastRows(from, section, held) is { } trailer && section.TrailerCutByLimit)
+        {
             JudgeLinksPastGuard(trailer, section);
         }
     }

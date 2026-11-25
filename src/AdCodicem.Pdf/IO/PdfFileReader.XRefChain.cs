@@ -26,7 +26,11 @@ internal sealed partial class PdfFileReader
     /// whose dictionary gives <c>/Type /XRef</c> and a <c>/Prev</c>, read whole, is lost for its rows alone: the chain goes
     /// on through that <c>/Prev</c>, and no older section's row stands for a number the stream declares, which is looked
     /// for by rebuilding the index too (#208) — but where <c>startxref</c> names it, the whole file is rebuilt, as for any
-    /// first section that cannot be read. A section read only in part — a row that is no row ends a subsection, a stream
+    /// first section that cannot be read. So does a classic table a <c>/Prev</c> names whose fault lies among its rows,
+    /// read on past it to its trailer, which is merged: the chain goes on through that trailer's <c>/Prev</c>, under the
+    /// checks any <c>/Prev</c> is read under, and no older section's row stands for a number below its <c>/Size</c> (#324);
+    /// one whose trailer a guard cut has its <c>/Prev</c> judged, as below.
+    /// A section read only in part — a row that is no row ends a subsection, a stream
     /// holds fewer rows than it declares, the end of the file cuts a table before its trailer once it read a row, a row is
     /// refused — is kept, the section <c>startxref</c> names among them: its rows are read and its trailer followed where it
     /// has one, it is reported once, the index is left incomplete, and no section read after it stands for a number whose
@@ -252,9 +256,10 @@ internal sealed partial class PdfFileReader
                     // A cross-reference stream whose dictionary was read, and whose rows cannot be, names the older sections
                     // through its /Prev as a whole read names them: the chain goes on through it, the section reported, its
                     // rows lost and the numbers it declares refused to the older sections' rows (#208), where it was named
-                    // or where it was found moved. It is not looked for elsewhere, and where it starts is reached: a /Prev
-                    // that names it again, at that offset or through the white space before it, ends the chain in a loop,
-                    // and an /XRefStm records its naming again.
+                    // or where it was found moved. So does a classic table read on past a fault among its rows to a
+                    // trailer no guard cut, every number below that trailer's /Size refused (#324). It is not looked for
+                    // elsewhere, and where it starts is reached: a /Prev that names it again, at that offset or through the
+                    // white space before it, ends the chain in a loop, and an /XRefStm records its naming again.
                     if (PreviousToHandOn(section) is { } dictionary)
                     {
                         RecordSectionReached(section, sectionsAt);
@@ -266,10 +271,11 @@ internal sealed partial class PdfFileReader
 
                     ReportLostSection(section, naming, offset, namedFrom);
 
-                    // A stream a guard's cut of a value its rows are read with keeps from being read gives its /Prev apart, its
-                    // dictionary read whole, judged as one a section whose rows a guard stopped gives, never read (#264, #329).
-                    // Where it starts is reached, as for a stream the chain goes on past (#208): a /Prev that names it again
-                    // loops.
+                    // A stream a guard's cut of a value its rows are read with keeps from being read gives its /Prev apart,
+                    // its dictionary read whole, judged as one a section whose rows a guard stopped gives, never read (#264,
+                    // #329); so does a classic table read on past a fault among its rows to a trailer a guard cut (#324).
+                    // Where it starts is reached, as for a stream the chain goes on past (#208): a /Prev that names it
+                    // again loops.
                     if (_previousPastGuard >= 0)
                     {
                         RecordSectionReached(section, sectionsAt);
@@ -1129,16 +1135,24 @@ internal sealed partial class PdfFileReader
         section.Kind == XRefSectionKind.Table || section.TypedXRef;
 
     /// <summary>
-    /// Gives the dictionary of a cross-reference stream the chain could not read that names an older section all the same:
-    /// one whose dictionary declares the numbers its rows give (<see cref="DeclaredByLostStream"/>) and gives a
-    /// <c>/Prev</c> (#208). Null for any other, and for a stream that names no older section.
+    /// Gives the dictionary that names, through its <c>/Prev</c>, an older section past a section the chain could not read:
+    /// that of a cross-reference stream whose dictionary declares the numbers its rows give
+    /// (<see cref="DeclaredByLostStream"/>, #208), or the trailer of a classic table read on past a fault among its rows
+    /// (<see cref="ReadOnPastFault"/>, #324), which no guard cut — a <c>/Prev</c> written before a guard's cut is judged,
+    /// never followed (#328). Null for any other, and for one that gives no <c>/Prev</c>.
     /// </summary>
     /// <remarks>
     /// Asked only of a section the chain named through <c>/Prev</c> and could not read: <c>startxref</c>'s is the whole
-    /// file's to rebuild, and a hybrid file's stream gives a <c>/Prev</c> no reader follows.
+    /// file's to rebuild, and a hybrid file's stream gives a <c>/Prev</c> no reader follows. A classic table that cannot be
+    /// read has a trailer only where it was read on past its fault.
     /// </remarks>
-    private static PdfDictionary? PreviousToHandOn(XRefSectionRecord section) =>
-        DeclaredByLostStream(section) is { } dictionary && dictionary.GetRaw(PdfName.Prev) is not null ? dictionary : null;
+    private static PdfDictionary? PreviousToHandOn(XRefSectionRecord section)
+    {
+        var dictionary = section.Kind == XRefSectionKind.Table
+            ? section is { TrailerCutByLimit: false, Trailer: { } trailer } ? trailer : null
+            : DeclaredByLostStream(section);
+        return dictionary?.GetRaw(PdfName.Prev) is not null ? dictionary : null;
+    }
 
     /// <summary>
     /// Gives the dictionary of a cross-reference stream the chain could not read, whose rows alone are lost: one that
@@ -1153,14 +1167,15 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Goes on past cross-reference stream <paramref name="section"/>, which the chain could not read, through the
-    /// <c>/Prev</c> its <paramref name="dictionary"/> gives (#208), and gives the offset that <c>/Prev</c> names, or -1 when
-    /// it names none.
+    /// <c>/Prev</c> its <paramref name="dictionary"/> gives (#208), or past a classic table read on past a fault among its
+    /// rows through its trailer's (#324), and gives the offset that <c>/Prev</c> names, or -1 when it names none.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The numbers the stream declares are refused to the older sections' rows first (<see cref="RefuseDeclared"/>): its
-    /// rows, lost, may give a newer revision of any of them, which an older row would stand for in silence, and the object
-    /// is looked for by rebuilding the index instead, which finds the last definition the file writes. Its <c>/Prev</c> is
+    /// The numbers the stream declares are refused to the older sections' rows first (<see cref="RefuseDeclared"/>), and
+    /// those below the table's trailer's <c>/Size</c> (<see cref="RefuseBelowSize"/>): its rows, lost, may give a newer
+    /// revision of any of them, which an older row would stand for in silence, and the object is looked for by rebuilding
+    /// the index instead, which finds the last definition the file writes. Its <c>/Prev</c> is
     /// read as a whole read reads it (<see cref="ReadSectionOffset"/>), and the section is then reported once, as one that is
     /// there and cannot be read, the index left incomplete: where the chain goes on through that <c>/Prev</c> — it names an
     /// offset, or leads to what a guard hides —, the report says so; where it is no offset, the report after it says so
@@ -1169,20 +1184,30 @@ internal sealed partial class PdfFileReader
     /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/>, and the search near an offset that holds no section.
     /// </para>
     /// <para>
-    /// The <c>/Prev</c> is all that is read of the dictionary: it is not merged into the document's trailer, whose keys the
-    /// sections read give, and no other of its values names a section.
+    /// The <c>/Prev</c> is all that is read of a stream's dictionary: it is not merged into the document's trailer, whose
+    /// keys the sections read give, and no other of its values names a section. A table's trailer was merged as it was
+    /// read; its <c>/XRefStm</c> is not followed, the numbers its stream would give, a valid file's below <c>/Size</c>,
+    /// refused with the table's.
     /// </para>
     /// </remarks>
     /// <param name="section">
-    /// The record of the stream, which the chain named at <paramref name="offset"/>, or found moved near it.
+    /// The record of the stream, or the table, which the chain named at <paramref name="offset"/>, or found moved near it.
     /// </param>
-    /// <param name="dictionary">The stream's dictionary, read whole.</param>
+    /// <param name="dictionary">The stream's dictionary, read whole, or the table's trailer.</param>
     /// <param name="naming">What named the stream: <c>/Prev</c>.</param>
     /// <param name="offset">The offset that named the stream, as written.</param>
     /// <param name="namedFrom">Where what named the stream is written.</param>
     private long HandOnPrevious(XRefSectionRecord section, PdfDictionary dictionary, string naming, long offset, long namedFrom)
     {
-        RefuseDeclared(dictionary);
+        if (section.Kind == XRefSectionKind.Table)
+        {
+            RefuseBelowSize(dictionary);
+        }
+        else
+        {
+            RefuseDeclared(dictionary);
+        }
+
         section.NumbersRefused = true;
         section.PreviousHandedOn = true;
         var previous = ReadSectionOffset(dictionary, PdfName.Prev, out var hidden, out var notAnOffset);
@@ -1257,6 +1282,33 @@ internal sealed partial class PdfFileReader
         finally
         {
             ArrayPool<(long First, long End)>.Shared.Return(declared);
+        }
+    }
+
+    /// <summary>
+    /// Refuses to the rows of every section the chain reads from here on, older revisions, every object number below the
+    /// <c>/Size</c> the trailer of a classic table gives, which the chain goes on past through that trailer's <c>/Prev</c>,
+    /// its rows past a fault unread (#324): any of them may have had a row there, as every row of a valid table numbers an
+    /// object below its <c>/Size</c>, a newer revision of the object than an older row gives. Every number, where the
+    /// <c>/Size</c> gives no count of objects — none, one written as a reference, which ISO 32000-1 makes direct (Table
+    /// 15), or one that is no integer of 0 or more.
+    /// </summary>
+    /// <remarks>
+    /// The subsection headers past the fault are not parsed for the numbers they give: they lie in damaged bytes, past the
+    /// rows a whole read would have checked.
+    /// </remarks>
+    private void RefuseBelowSize(PdfDictionary trailer)
+    {
+        var size = trailer.GetRaw(PdfName.Size);
+
+        if (size is PdfReference || size.AsInteger() is not { } count || count < 0)
+        {
+            RefuseEveryNumber();
+        }
+        else if (count > 0)
+        {
+            Span<(long First, long End)> below = [(0, count)];
+            RefuseRanges(below);
         }
     }
 
@@ -1403,7 +1455,9 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// <para>
     /// A section one of the reader's guards cut is already reported, under the guard's own code, which names the limit
-    /// that lifts it: what the reader met past the cut is not the file's fault (ADR 34).
+    /// that lifts it: what the reader met past the cut is not the file's fault (ADR 34). A classic table read on past a
+    /// fault among its rows to a trailer a guard cut is reported all the same: its fault, met before the cut, is the file's
+    /// (#324).
     /// </para>
     /// <para>
     /// An object whose dictionary gives a <c>/W</c> and a <c>/Type</c> that names another type holds no section, and the
@@ -1414,7 +1468,9 @@ internal sealed partial class PdfFileReader
     /// which no older section's row stands for: they are looked for by rebuilding the index, where no section read before it
     /// indexes them — every object, where the numbers it declares could not be kept apart. One the chain goes on past through
     /// its <c>/Prev</c> (<see cref="HandOnPrevious"/>) says so too, where that <c>/Prev</c> names an offset, or leads to what
-    /// a guard hides (#208); a hybrid file's stream leaves the chain to its table's (#210). So does a classic table an
+    /// a guard hides (#208); a hybrid file's stream leaves the chain to its table's (#210). So does a classic table read on
+    /// past a fault among its rows, past which the chain goes on through its trailer's <c>/Prev</c>, every number below that
+    /// trailer's <c>/Size</c> refused (<see cref="RefuseBelowSize"/>, #324). So does a classic table an
     /// <c>/XRefStm</c> names, whose lost rows were refused (<see cref="RefuseRowsLost"/>): the rest of the subsection its fault
     /// ended, or every number but those its rows read before the fault give (#156).
     /// </para>
@@ -1435,8 +1491,8 @@ internal sealed partial class PdfFileReader
     /// <param name="offset">The offset that named the section, as written.</param>
     /// <param name="namedFrom">Where what named the section is written.</param>
     /// <param name="goesOn">
-    /// Whether the chain goes on past the section through the <c>/Prev</c> its dictionary gives, which names an offset
-    /// (<see cref="HandOnPrevious"/>).
+    /// Whether the chain goes on past the section through the <c>/Prev</c> its dictionary, or its trailer, gives, which
+    /// names an offset (<see cref="HandOnPrevious"/>).
     /// </param>
     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom, bool goesOn = false)
     {
@@ -1452,7 +1508,13 @@ internal sealed partial class PdfFileReader
         {
             _cutByGuard = true;
             _structure.TrailersHiddenByGuard = true;
-            return;
+
+            // A classic table cannot be read for a fault of its own, which the reading met before any guard: one cut the
+            // trailer it was read on to past that fault (#324), which is the file's all the same.
+            if (section.Kind != XRefSectionKind.Table)
+            {
+                return;
+            }
         }
 
         _indexIncomplete = true;
@@ -1460,13 +1522,23 @@ internal sealed partial class PdfFileReader
         var fault = UnreadableFault(section);
 
         // A stream whose numbers were refused says what becomes of them, and one whose /Prev the chain goes on through says
-        // so (#208, #210). The rows read before the fault stand but for those the section refused and the numbers a newer
-        // section refused: none, where it refused every one before the chain came to the section; a stream whose numbers
-        // were refused keeps none anyway.
+        // so (#208, #210), as a table does past which it goes on through its trailer's (#324). The rows read before the
+        // fault stand but for those the section refused and the numbers a newer section refused: none, where it refused
+        // every one before the chain came to the section; a stream whose numbers were refused keeps none anyway.
         var kept = "The rows read before the fault, if any, were kept" + KeptButFor(section);
         string lost;
 
-        if (section.EveryNumberRefusedBefore && (!section.NumbersRefused || section.Kind == XRefSectionKind.Table))
+        if (section.PreviousHandedOn && section.Kind == XRefSectionKind.Table)
+        {
+            var stand = section.EveryNumberRefusedBefore
+                ? "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows"
+                : kept;
+            var rebuilt = _everyNumberRefused
+                ? "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows"
+                : "the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows";
+            lost = stand + (goesOn ? "; the chain goes on through its trailer's /Prev, and " : "; ") + rebuilt + ".";
+        }
+        else if (section.EveryNumberRefusedBefore && (!section.NumbersRefused || section.Kind == XRefSectionKind.Table))
         {
             lost = "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows; every object no section read before it indexes is looked for by rebuilding the index.";
         }

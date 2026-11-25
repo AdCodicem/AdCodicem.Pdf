@@ -1746,6 +1746,226 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("row", 0, "the row for object 5, at offset {five}, is not an offset, a generation and n or f")]
+    [InlineData("header", 0, "the subsection header at offset {five} does not give a first object number and a count of rows")]
+    [InlineData("header", 160, "the subsection header at offset {five} does not give a first object number and a count of rows")]
+    [InlineData("count", 0, "the subsection header at offset {five} numbers its rows past object 2147483647")]
+    [InlineData("stray", 0, "it holds a name at offset {five}, where a subsection or the trailer should start")]
+    public void A_table_a_prev_names_whose_fault_lies_among_its_rows_hands_its_trailer_s_prev_on_to_the_older_sections(
+        string fault, int sectionLength, string said)
+    {
+        // The middle table holds a row that is no row, a subsection header that gives no count or numbers its rows past the
+        // last object number, or a stray token among its rows. The chain stopped there, though the table's trailer lay a few
+        // bytes on: the oldest table went unread and unjudged, its trailer unmerged, and object 9, which only it indexes, cost
+        // a rebuild of the whole file (#324). The table is read on to its trailer, which is merged — its /ID, which the
+        // newest trailer lacks —, and the chain goes on through its /Prev: object 9, above the trailer's /Size 8, needs no
+        // rebuild. No older row stands for a number below it: object 7, whose row lies past the fault, and object 5, unless
+        // its row came before the fault, are found by rebuilding the index, the middle revision's rather than the oldest's. A
+        // MaxXRefSectionLength the trailer lies past, 200 bytes of comment on, and the fault before, is no guard reached: the
+        // search for the trailer reads no row.
+        var (sound, _, _, _) = FaultedTableFiles.Revisions("sound");
+        var (file, oldest, middle, newest) = FaultedTableFiles.Revisions(fault, gap: sectionLength == 0 ? 0 : 200);
+        var five = fault switch
+        {
+            "row" => PdfTemplate.OffsetOf(file, " 00000 x") - 10,
+            "header" => PdfTemplate.OffsetOf(file, "5 x\n"),
+            "count" => PdfTemplate.OffsetOf(file, "5 2147483647"),
+            _ => PdfTemplate.OffsetOf(file, "/Bad 1"),
+        };
+
+        using (var whole = PdfDocument.Open(sound))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.Reader.Structure.Sections.Should().HaveCount(3);
+            Text(whole, 5).Should().Be("five");
+            Text(whole, 7).Should().Be("seven");
+            Text(whole, 9).Should().Be("nine");
+            whole.WasRepaired.Should().BeFalse();
+        }
+
+        using var document = PdfDocument.Open(
+            file, sectionLength == 0 ? null : new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = sectionLength } });
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(middle);
+        report.Message.Should().Be(Invariant(
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: {said.Replace("{five}", five.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}. The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.Offset, section.State)).Should().Equal(
+            (newest, XRefSectionState.Read), (middle, XRefSectionState.Malformed), (oldest, XRefSectionState.Read));
+        sections[1].PreviousHandedOn.Should().BeTrue();
+        sections[1].NumbersRefused.Should().BeTrue();
+        sections[1].CutByLimit.Should().BeFalse();
+        sections[2].NamedFrom.Should().Be(middle);
+        document.Trailer.GetRaw(PdfName.ID).Should().BeOfType<PdfArray>();
+        Text(document, 4).Should().Be("four");
+        Text(document, 9).Should().Be("nine");
+        document.WasRepaired.Should().BeFalse("the oldest table's row for object 9, above the /Size, stands");
+        document.Reader.ChainIndex!.TryGet(5, out _).Should().Be(fault == "stray", "a row read before the fault stands");
+        document.Reader.ChainIndex.TryGet(7, out _).Should().BeFalse("no older row stands for a number below the trailer's /Size");
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().Be(fault != "stray");
+        Text(document, 7).Should().Be("seven");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("/Size 8 0 R", false)]
+    [InlineData("/Size -1", false)]
+    [InlineData("/Size 0", true)]
+    public void A_table_read_on_past_its_fault_whose_trailer_gives_no_count_refuses_every_number_to_the_older_rows(string size, bool counts)
+    {
+        // The faulted table's trailer gives no /Size, a negative one, or a reference, where ISO 32000-1 makes it direct, to
+        // object 8, which the newest table places and which holds 8: which numbers its rows past the fault held is not left to
+        // what an object holds, and no older row stands for any number, object 9 among them, found by rebuilding the index. A
+        // /Size of 0 counts no object, and refuses none: the oldest table's rows stand, object 7's older revision with them
+        // (#324).
+        var (file, _, _, _) = FaultedTableFiles.Revisions("header", size: size, eight: "8");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().EndWith(counts
+            ? "the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."
+            : "the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.");
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.Reader.ChainIndex!.TryGet(9, out _).Should().Be(counts);
+        Text(document, 7).Should().Be(counts ? "old seven" : "seven");
+        Text(document, 9).Should().Be("nine");
+        document.WasRepaired.Should().Be(!counts);
+    }
+
+    [Theory]
+    [InlineData("/Nowhere")]
+    [InlineData("-5")]
+    public void A_table_read_on_past_its_fault_whose_trailer_s_prev_is_no_offset_is_reported_once_and_ends_the_chain(string prev)
+    {
+        // The faulted table's trailer gives a /Prev that is no offset: the table is reported without saying the chain goes on,
+        // the /Prev reported after it, once, as a lost stream's is, and the chain ends there (#208, #324).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("stray", prev);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionMissing);
+        document.Diagnostics[0].Message.Should().EndWith(
+            "The rows read before the fault, if any, were kept; the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.");
+        document.Diagnostics[1].Message.Should().Be(Invariant(
+            $"The /Prev of the cross-reference section at offset {middle} is not an offset; the sections it names are looked for by rebuilding the index."));
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => section.NamedOffset).Should().Equal(sections[0].Offset, middle, -1);
+        sections[1].PreviousHandedOn.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_an_xrefstm_names_is_not_read_on_past_its_fault_to_its_trailer()
+    {
+        // The hybrid table's /XRefStm names a classic table whose row for object 7 is no row, then a stray token, then a trailer
+        // that gives an /ID no other trailer gives. A table an /XRefStm names stands in the stream's place, its links not
+        // followed, the chain going on through the table that names it: its trailer is not looked for past its fault, and the
+        // document's trailer takes no /ID from it (#263, #324).
+        var (file, table, _) = HybridFiles.PastALostStream("[10 1]", "junk junk junk\nmore\ntrailer\n<< /Size 9 /ID [<01> <02>] >>\n");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().Contain(d => d.Position == table && d.Code == PdfDiagnosticCodes.XRefSectionUnreadable);
+        document.Trailer.GetRaw(PdfName.ID).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("{self}", "where the chain has already reached a section it could not read")]
+    [InlineData("{newest}", "which the chain has already read")]
+    public void The_prev_a_table_read_on_past_its_fault_hands_on_ends_the_chain_in_a_loop_where_it_names_what_the_chain_reached(
+        string prev, string reached)
+    {
+        // The faulted table's trailer names, through /Prev, the table itself, which the chain reached and could not read, or
+        // the newest table, which it read: a loop, in the words a loop through a lost stream's /Prev is told in (#188, #324).
+        var newest = FaultedTableFiles.Revisions("row", "9999").Newest;
+        var (file, _, middle, at) = FaultedTableFiles.Revisions("row", prev == "{self}" ? prev : newest.ToString(CultureInfo.InvariantCulture));
+        var looped = prev == "{self}" ? middle : at;
+        looped.Should().Be(prev == "{self}" ? middle : newest, "the newest table lies where it lay with the table naming 9999");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefChainCycle]);
+        document.Diagnostics[1].Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {middle} names offset {looped}, {reached}."));
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void The_prev_tables_read_on_past_their_faults_hand_on_is_followed_under_the_section_count_guard()
+    {
+        // Three faulted tables in a row, read under MaxXRefSectionCount 2: the chain goes on past the first through its
+        // trailer's /Prev, and the guard ends it at the second, which is not read (#324).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("header", middles: 3);
+        var second = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
+
+        document.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitXRefSectionCount]);
+        document.Diagnostics[0].Position.Should().Be(middle);
+        document.Diagnostics[1].Position.Should().Be(second);
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        Text(document, 9).Should().Be("nine");
+    }
+
+    [Theory]
+    [InlineData("{previous}", false)]
+    [InlineData("{self}", true)]
+    public void A_table_read_on_past_its_fault_to_a_trailer_a_guard_cut_has_its_prev_judged_and_not_followed(string prev, bool loops)
+    {
+        // The faulted table's trailer runs past MaxTrailerLength, its /Prev written whole before the cut. Its fault, met before
+        // the guard, is the file's: the table is reported as one that cannot be read, and the validator says it is malformed
+        // and checked in part. Its /Prev is judged as one a cut trailer gives over rows read whole, never read (#328): an
+        // offset in the file the chain has not reached is the guard's, the oldest table left unread; one that names the
+        // table itself loops, as a whole read says (#324).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("header", prev, trailer: " /Pad (" + new string('p', 300) + ")");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 200 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        var expected = loops
+            ? new[] { PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefChainCycle }
+            : [PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionUnreadable];
+        document.Diagnostics.Select(d => d.Code).Should().StartWith(expected);
+        document.Diagnostics[1].Message.Should().EndWith(
+            "The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.");
+        var section = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        section.Offset.Should().Be(middle);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.TrailerCutByLimit.Should().BeTrue();
+        section.PreviousHandedOn.Should().BeFalse();
+        var report = new PdfValidator().Validate(document);
+        report.Findings.Where(f => f.Location.Position == middle).Select(f => f.RuleId).Should().Contain(
+            [PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefCheckedInPart]);
+
+        var throwing = () => PdfDocument.Open(file, options with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxTrailerLength));
+    }
+
+    [Fact]
+    public void A_table_whose_row_that_is_no_row_a_guard_cuts_after_is_read_in_part_and_its_prev_judged()
+    {
+        // The middle table's row for object 5 is no row, and MaxXRefSectionLength cuts the table within the line after it:
+        // the table is read in part, as far as the guard let it be, never one that cannot be read, its trailer found past the
+        // cut and its /Prev judged as past any guard that stopped rows (#264): the oldest table is the guard's, not read
+        // (#324 leaves it so).
+        var (file, _, middle, _) = FaultedTableFiles.Revisions("row", lead: 4);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 144 } });
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength, PdfDiagnosticCodes.XRefSectionUnreadable);
+        var section = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        section.Offset.Should().Be(middle);
+        section.State.Should().Be(XRefSectionState.Read);
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeTrue();
+        section.PreviousHandedOn.Should().BeFalse();
+        document.Trailer.GetRaw(PdfName.ID).Should().BeOfType<PdfArray>("the trailer past the cut is merged");
+    }
+
+    [Theory]
     [InlineData(0, "")]
     [InlineData(0, "junk\n")]
     [InlineData(1500, "")]
@@ -4749,15 +4969,17 @@ public class CrossReferenceChainTests
     {
         // The table the lost stream's /Prev names refuses its own row for object 3, generation 65536, then runs into a row that
         // is no row and a stray token: it cannot be read. Its rows read before the fault were said kept, the refused one with
-        // them: they were kept but for those it refused, and object 3 is read through a rebuild (#210).
+        // them: they were kept but for those it refused, and object 3 is read through a rebuild (#210). Read on past its fault
+        // to its trailer, the chain goes on through that trailer's /Prev to the oldest table, which the report says (#324).
         var (file, middle, _) = PartialFiles.PastALostStream("[10 1]", "3 3\n{three} 65536 n \n{four} 00000 n \njunk junk junk\nmore\ntrailer\n<< /Size 7 /Prev {oldest} >>\n");
         var row = PdfTemplate.OffsetOf(file, "junk junk junk");
 
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics[1].Message.Should().Be(Invariant(
-            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept but for those it refused; the objects only the rest indexes are looked for by rebuilding the index."));
-        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Malformed);
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept but for those it refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+        document.Reader.Structure.Sections[2].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Read);
         ShouldServeTheNewerRevisions(document, three: false, four: true);
     }
 
@@ -4782,14 +5004,16 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("/X", "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows; every object no section read before it indexes is looked for by rebuilding the index.", false, false)]
-    [InlineData("[3 2]", "The rows read before the fault, if any, were kept but for those whose numbers a newer section refused; the objects only the rest indexes are looked for by rebuilding the index.", false, false)]
-    [InlineData("[10 1]", "The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.", true, true)]
+    [InlineData("/X", "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows; the chain goes on through its trailer's /Prev, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.", false, false)]
+    [InlineData("[3 2]", "The rows read before the fault, if any, were kept but for those whose numbers a newer section refused; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", false, false)]
+    [InlineData("[10 1]", "The rows read before the fault, if any, were kept; the chain goes on through its trailer's /Prev, and the objects numbered below its trailer's /Size that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.", true, true)]
     public void A_table_that_cannot_be_read_past_a_lost_stream_says_which_of_the_rows_read_before_its_fault_stand(string index, string said, bool three, bool four)
     {
         // The table the lost stream's /Prev names runs from its rows for objects 3 and 4 into a row that is no row, then a stray
-        // token: it cannot be read, and ends the chain. Its rows read before the fault were said to be kept, though the lost
-        // stream refused every number, or theirs, and none of them stood (#208, #210).
+        // token: it cannot be read. Its rows read before the fault were said to be kept, though the lost stream refused every
+        // number, or theirs, and none of them stood (#208, #210). Read on past its fault to its trailer, the chain goes on
+        // through that trailer's /Prev to the oldest table, every number below its /Size 7 refused to the oldest's rows,
+        // which the report says (#324).
         var (file, middle, _) = PartialFiles.PastALostStream(index, "3 3\n{three} 00000 n \n{four} 00000 n \njunk junk junk\nmore\ntrailer\n<< /Size 7 /Prev {oldest} >>\n");
         var row = PdfTemplate.OffsetOf(file, "junk junk junk");
 
@@ -4798,7 +5022,8 @@ public class CrossReferenceChainTests
         document.Diagnostics[1].Position.Should().Be(middle);
         document.Diagnostics[1].Message.Should().Be(Invariant(
             $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. {said}"));
-        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[2].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Read);
         ShouldServeTheNewerRevisions(document, three, four);
     }
 
