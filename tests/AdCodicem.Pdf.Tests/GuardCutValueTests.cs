@@ -3539,6 +3539,107 @@ public class GuardCutValueTests
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
     }
 
+    [Fact]
+    public void A_deferred_length_the_chain_reads_again_after_a_rebuild_it_set_off_stays_the_guard_s()
+    {
+        // The cross-reference stream's /Length is object 9, which holds 12 0 R, and MaxObjectLength cuts object 12's header.
+        // Object 9's row lies inside a comment, so the chain's load of it rebuilds the index, and the rebuilt index keeps a
+        // later definition of object 10, so the rebuild's finish never reads the stream. 160 objects and a cache of 64 let
+        // object 12 go before the chain reads the /Length again: that read is still the chain's own, and stops at object 12's
+        // header, so the /Length is the guard's, not one the file wrote wrong (#292). Where the finish reads the stream
+        // itself, or nothing is cached, the rebuilt index charges the guard's length to the file (#431).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var older = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var fourteen = file.Position;
+        file.Raw(Invariant($"14 0 obj{new string(' ', 3000)}{older}\nendobj\n"));
+        var twelve = file.Position;
+        file.Raw(Invariant($"12 0{new string(' ', 3000)}obj\n5\nendobj\n"));
+
+        for (var number = 20; number < 100; number++)
+        {
+            file.Object(number, "(n)");
+        }
+
+        var comment = file.Position;
+        file.Raw("%" + string.Concat(Enumerable.Repeat("ab ", 1000)) + "\n");
+        file.Object(9, "12 0 R");
+        var streamRows = new Dictionary<int, (int, long, int)>
+        {
+            [1] = (1, rows[1], 0),
+            [2] = (1, rows[2], 0),
+            [3] = (1, rows[3], 0),
+            [9] = (1, comment + 1500, 0),
+            [12] = (1, twelve, 0),
+            [14] = (1, fourteen, 0),
+        };
+        file.CrossReferenceStream(10, 100, streamRows, "/Root 1 0 R /Prev 14 0 R /Length 9 0 R", length: false);
+        file.Object(10, "(x)");
+
+        for (var number = 100; number < 180; number++)
+        {
+            file.Object(number, "(n)");
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard with { ObjectCacheCapacity = 64 });
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics[2].Position.Should().Be(twelve);
+    }
+
+    [Fact]
+    public void An_object_the_chain_s_own_load_stopped_at_that_a_rebuild_finds_in_an_object_stream_is_read_and_judged_from_it()
+    {
+        // The older cross-reference stream's /Filter is object 6, whose row places 3,000 blanks MaxObjectLength cuts between
+        // its generation and what follows, with no obj: the chain's own load stops there and marks object 6 cut. Object 7's
+        // row lies inside a comment, so reading it, or validating, rebuilds the index, which finds object 6 in object stream
+        // 20 alone, the cut place holding no header the scan takes. Object 6 is then read whole from the stream, not as the
+        // guard's, and the validator judges the catalog's /Metadata, a dictionary where a stream is wanted (#292).
+        var file = new HandWrittenFile(version: "1.5");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Metadata 6 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var six = file.Position;
+        file.Raw("6 0" + new string(' ', 3000) + "(junk)\n");
+        var older = file.CrossReferenceStream(10, 11, new Dictionary<int, (int, long, int)> { [1] = (1, one, 0) }, "/Filter 6 0 R");
+        var comment = file.Position;
+        file.Raw("%" + string.Concat(Enumerable.Repeat("ab ", 1000)) + "\n");
+        file.Object(7, "(seven)");
+        file.ObjectStream(20, [(6, "<< /Type /Foo /Bar 1 >>")]);
+        var newest = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 4\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n6 2\n{six:D10} 00000 n \n{comment + 1500:D10} 00000 n \ntrailer\n<< /Size 21 /Root 1 0 R /Prev {older} >>\nstartxref\n{newest}\n%%EOF\n"));
+        const string metadata = "Object 1 0, a Catalog in the Arlington model, has /Metadata as a dictionary, where the model wants a stream.";
+
+        using (var document = PdfDocument.Open(file.Bytes, ObjectGuard))
+        {
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+            document.Reader.IsCutAtLimit(6).Should().BeTrue();
+
+            document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>();
+
+            document.WasRepaired.Should().BeTrue();
+            document.Reader.IsCutAtLimit(6).Should().BeFalse();
+            document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
+            new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong)
+                .Select(finding => finding.Message).Should().Equal(metadata);
+        }
+
+        using var validated = PdfDocument.Open(file.Bytes, ObjectGuard);
+        var report = new PdfValidator().Validate(validated);
+
+        validated.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong).Select(finding => finding.Message)
+            .Should().Equal(metadata);
+    }
+
     /// <summary>
     /// Gives a file whose cross-reference stream's <c>/Length</c> is object 9, which the chain reads once it is read, a
     /// stream whose own <c>/Length</c> is object 12, laid out as <paramref name="shape"/> says.
