@@ -2639,6 +2639,28 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("7 3 obj (seven) endobj\n9 3 obj (nine) endobj\n7 5 obj\n9 5 obj\n", "met 2 definitions of object numbers it had already found, of objects 7, 9.", "as 2 of them do, of objects 7, 9.")]
+    [InlineData("7 3 obj (seven) endobj\n7 5 obj\n7 6 obj\n", "met 2 definitions of object numbers it had already found, of object 7.", "as 2 of them do, of object 7.")]
+    [InlineData(
+        "10 0 obj 0 endobj 11 0 obj 0 endobj 12 0 obj 0 endobj 13 0 obj 0 endobj 14 0 obj 0 endobj 15 0 obj 0 endobj 16 0 obj 0 endobj 17 0 obj 0 endobj 18 0 obj 0 endobj 19 0 obj 0 endobj 20 0 obj 0 endobj\n" +
+        "10 1 obj\n11 1 obj\n12 1 obj\n13 1 obj\n14 1 obj\n15 1 obj\n16 1 obj\n17 1 obj\n18 1 obj\n19 1 obj\n20 1 obj\n",
+        "met 11 definitions of object numbers it had already found, among them those of objects 10, 11, 12, 13, 14, 15, 16, 17, 18, 19.",
+        "as 11 of them do, among them those of objects 10, 11, 12, 13, 14, 15, 16, 17, 18, 19.")]
+    public void The_report_of_definitions_met_again_names_those_that_hold_no_value(string objects, string met, string held)
+    {
+        // Definitions met again that hold no value, of two numbers, twice of one, or of more numbers than the report lists:
+        // the report counts and names them apart from the definitions met again, the first ten numbers listed (#351).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            objects + "trailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be(
+                "Rebuilding the index " + met + KeptRule[..^1] + ", but for one that holds no value, which leaves the definition before it kept, " + held);
+    }
+
+    [Theory]
     [InlineData("7 5 obj\n<< /Partial", true)]
     [InlineData("7 5 obj (five)", false)]
     public void A_definition_met_again_whose_value_is_read_in_part_or_whole_is_kept(string later, bool partial)
@@ -3716,9 +3738,10 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(5)]
-    public void Reports_the_data_a_deferred_length_gives_past_the_chain_s_endstream_once_the_searches_have_read_all_they_may(int sections)
+    [InlineData(1, "\n")]
+    [InlineData(5, "\n")]
+    [InlineData(5, "")]
+    public void Reports_the_data_a_deferred_length_gives_past_the_chain_s_endstream_once_the_searches_have_read_all_they_may(int sections, string endOfLine)
     {
         // Cross-reference streams written one after the other, with no endstream of their own, share 512 KB of data and the
         // endstream after it, which four zero bytes and a second endstream follow; each one's /Length names an object only
@@ -3726,7 +3749,7 @@ public class DocumentReaderTests
         // such searches read more than the four times the file the document's searches may (EndStreamSearchPasses). The
         // newest one's length, read once the chain is, gives the data up to the second endstream: what the chain did not read
         // is reported, as for one such stream alone, though the file may no longer be read to find where the first starts.
-        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 14);
+        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 14, endOfLine);
         using var document = PdfDocument.Open(file);
 
         document.WasRepaired.Should().BeFalse();
@@ -3741,14 +3764,17 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(5)]
-    public void A_deferred_length_counting_the_end_of_line_before_the_chain_s_endstream_says_nothing_once_the_searches_have_read_all_they_may(int sections)
+    [InlineData(1, "\n")]
+    [InlineData(5, "\n")]
+    [InlineData(5, "\r\n")]
+    [InlineData(5, "\r")]
+    public void A_deferred_length_counting_the_end_of_line_before_the_chain_s_endstream_says_nothing_once_the_searches_have_read_all_they_may(
+        int sections, string endOfLine)
     {
         // As above, but the newest length counts the end-of-line before the endstream the chain stopped at: the stream's own,
         // which says nothing. Once the searches had read all they may, where that keyword starts was asked of them, which
         // gave no answer, and the data's end was taken for it: the length was reported as giving data past it (#293).
-        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 1);
+        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: endOfLine.Length, endOfLine);
         using var document = PdfDocument.Open(file);
 
         (document.Reader.EndStreamSearchBytes >= PdfFileReader.EndStreamSearchPasses * file.Length).Should().Be(sections == 5);
@@ -4793,7 +4819,7 @@ public class DocumentReaderTests
     /// <c>endstream</c> follow. Each stream's <c>/Length</c> is the object the table places for it, 31 onward, which gives
     /// its data up to the first <c>endstream</c>; the newest one's gives <paramref name="newestExtra"/> bytes more.
     /// </summary>
-    private static byte[] SectionsSharingTheirData(int count, int padding, int newestExtra)
+    private static byte[] SectionsSharingTheirData(int count, int padding, int newestExtra, string endOfLine = "\n")
     {
         // Each length is written in ten digits: the offsets the first pass finds hold for the second, which writes them.
         var lengths = new long[count];
@@ -4829,7 +4855,7 @@ public class DocumentReaderTests
 
             file.Raw(new string('x', padding));
             var dataEnd = file.Position;
-            file.Raw("\nendstream\0\0\0\0\nendstream\nendobj\n");
+            file.Raw(endOfLine + "endstream\0\0\0\0\nendstream\nendobj\n");
             file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n"));
             bytes = file.Bytes;
 

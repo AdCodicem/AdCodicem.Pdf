@@ -336,7 +336,7 @@ internal sealed partial class PdfFileReader
             {
                 // The source failed the reading: what it recorded is kept, as before the place was tried.
                 _xref.KeepTentative();
-                KeepRowsNotTaken();
+                KeepRowsNotTaken(indexMark);
                 throw;
             }
             finally
@@ -359,7 +359,7 @@ internal sealed partial class PdfFileReader
                             StartsItsLine(window.Span, start - lead, lead, candidate, passedOver: null)))))
             {
                 _xref.KeepTentative();
-                KeepRowsNotTaken();
+                KeepRowsNotTaken(indexMark);
                 section.RelocateTo(attempt);
                 section.Unconfirmed = check is PlaceCheck.Raw or PlaceCheck.PastMemo;
                 _diagnostics.Repair(
@@ -759,7 +759,7 @@ internal sealed partial class PdfFileReader
         _xref.StartTentative();
         _refusedOrder = [];
         _rowsNotTakenTentative = [];
-        return new(_refusedOrder, _indexIncomplete, _cutByGuard);
+        return new(_refusedOrder, _rowsNotTakenTentative, _indexIncomplete, _cutByGuard);
     }
 
     /// <summary>
@@ -772,7 +772,7 @@ internal sealed partial class PdfFileReader
     private void RollBackIndex(IndexMark mark)
     {
         _xref.DropTentative();
-        _rowsNotTakenCount -= _rowsNotTakenTentative?.Count ?? 0;
+        _rowsNotTakenCount -= mark.RowsNotTaken.Count;
         _rowsNotTakenTentative = null;
 
         foreach (var number in mark.Refused)
@@ -787,28 +787,24 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Keeps where the rows the reading of a place the search took did not take place objects (<see cref="_rowsNotTaken"/>):
-    /// the place is a section of the file's, and so are its rows.
+    /// Keeps where the rows the reading of a place the search took did not take place objects (<see cref="_rowsNotTaken"/>),
+    /// which <paramref name="mark"/> holds: the place is a section of the file's, and so are its rows.
     /// </summary>
-    private void KeepRowsNotTaken()
+    private void KeepRowsNotTaken(IndexMark mark)
     {
-        if (_rowsNotTakenTentative is not { } tentative)
-        {
-            return;
-        }
-
         _rowsNotTakenTentative = null;
 
-        foreach (var at in tentative)
+        foreach (var at in mark.RowsNotTaken)
         {
             (_rowsNotTaken ??= new()).Add(at);
         }
     }
 
     /// <summary>
-    /// What the reading of a place refused, whether the index was incomplete before it, and whether a guard had cut the chain.
+    /// What the reading of a place refused, where the rows it did not take place objects, whether the index was incomplete
+    /// before it, and whether a guard had cut the chain.
     /// </summary>
-    private readonly record struct IndexMark(List<int> Refused, bool Incomplete, bool CutByGuard);
+    private readonly record struct IndexMark(List<int> Refused, List<long> RowsNotTaken, bool Incomplete, bool CutByGuard);
 
     /// <summary>What the scan's memo says of a place the search near an offset found (<see cref="CheckPlace"/>).</summary>
     private enum PlaceCheck

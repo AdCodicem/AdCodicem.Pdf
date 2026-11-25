@@ -1416,6 +1416,40 @@ public class ScannedPlacesTests
             .Which.Message.Should().EndWith("but for one that holds no value, which leaves the definition before it kept, as the later definition of object 3 does.");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_definition_with_no_value_the_end_of_the_scan_s_piece_parts_from_what_follows_it_is_told_from_the_file(bool memoFirst)
+    {
+        // Object 3's last header starts 20 bytes before the scan's first piece ends, short of the 64 bytes the scan reads to
+        // tell whether its object holds a value: the rebuild's scan reads them from the file, and the scan for the memo notes
+        // the answer unknown, which a rebuild that replays the memo reads for the number defined again. Either way, the
+        // definition before it is kept (#351).
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [3] = file.Object(3, "(three)") };
+        PadWithComments(file, Piece - 20);
+        var last = file.Position;
+        file.Raw("3 5 obj\nendobj\n");
+        rows[4] = 999_999;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        if (memoFirst)
+        {
+            document.Reader.GetScanMemo().TryGetHeaderAt(last, out var header).Should().BeTrue();
+            header.HoldsNoValue.Should().BeNull();
+        }
+
+        document.GetObject(new PdfObjectId(4));
+
+        last.Should().Be(Piece - 20);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().EndWith("as the later definition of object 3 does.");
+    }
+
     [Fact]
     public void A_rebuild_with_the_memo_or_without_takes_the_headers_the_memo_s_scan_takes_past_where_a_length_taken_from_the_bytes_ends_a_stream_s_data()
     {

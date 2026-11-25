@@ -265,10 +265,10 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private long EndStreamAfter(long position)
     {
+        // The chain took the data from within the file, up to a keyword the file holds: the read starts inside it.
         Span<byte> bytes = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 2];
-        var held = position < 0 || position >= _source.Length ? 0 : _source.Read(position, bytes[..(int)Math.Min(bytes.Length, _source.Length - position)]);
-        var head = bytes[..held];
-        var endOfLine = head.StartsWith("\r\n"u8) ? 2 : head.Length > 0 && head[0] is (byte)'\r' or (byte)'\n' ? 1 : 0;
+        var head = bytes[.._source.Read(position, bytes[..(int)Math.Clamp(_source.Length - position, 0, bytes.Length)])];
+        var endOfLine = head.StartsWith("\r\n"u8) ? 2 : head.StartsWith("\n"u8) || head.StartsWith("\r"u8) ? 1 : 0;
 
         if (head[endOfLine..].StartsWith(StreamEnds.EndStreamKeyword))
         {
