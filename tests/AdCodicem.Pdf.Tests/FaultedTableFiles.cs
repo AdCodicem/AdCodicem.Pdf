@@ -27,7 +27,8 @@ internal static class FaultedTableFiles
     /// object 5, ends in <c>x</c>, the third read as a subsection header and an <c>f</c>; "row then count", as "row", but the
     /// third row <c>2147483647 00002 f</c>, read as a header that numbers its rows past the last object number; "header", the
     /// row for object 4, then the header <c>5 x</c> and the row for object 5; "count", the row for object 4, then the header
-    /// <c>5 2147483647</c> and the row for object 5; "stray", the rows for objects 4 and 5, then <c>/Bad 1</c>.
+    /// <c>5 2147483647</c> and the row for object 5; "stray", the rows for objects 4 and 5, then <c>/Bad 1</c>; "header
+    /// first", the header <c>4 x</c>, then the rows for objects 4 and 5, so that no row is read before the fault.
     /// </param>
     /// <param name="prev">
     /// What each middle table's <c>/Prev</c> is written as, <c>{previous}</c> and <c>{self}</c> standing for the offset of
@@ -44,6 +45,7 @@ internal static class FaultedTableFiles
     /// oldest table's offset; none when null.
     /// </param>
     /// <param name="size">The <c>/Size</c> entry of each middle table's trailer, or none.</param>
+    /// <param name="oldestRows">What the oldest table gives past its row for object 9, before its trailer.</param>
     public static (byte[] File, long Oldest, long Middle, long Newest) Revisions(
         string fault,
         string? prev = null,
@@ -54,7 +56,8 @@ internal static class FaultedTableFiles
         int gap = 0,
         int shift = 0,
         string? eight = null,
-        string size = "/Size 8")
+        string size = "/Size 8",
+        string oldestRows = "")
     {
         var file = new HandWrittenFile();
         var oldFour = file.Object(4, "(old four)");
@@ -63,7 +66,7 @@ internal static class FaultedTableFiles
         var nine = file.Object(9, "(nine)");
         var oldest = file.Position;
         file.Raw(Invariant(
-            $"xref\n0 1\n0000000000 65535 f \n4 2\n{Row(oldFour)}{Row(oldFive)}7 1\n{Row(oldSeven)}9 1\n{Row(nine + shift)}trailer\n<< /Size 10 >>\nstartxref\n{oldest}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f \n4 2\n{Row(oldFour)}{Row(oldFive)}7 1\n{Row(oldSeven)}9 1\n{Row(nine + shift)}{oldestRows}trailer\n<< /Size 10 >>\nstartxref\n{oldest}\n%%EOF\n"));
         var previous = oldest;
         var free = lead == 0 ? string.Empty : Invariant($"0 {lead}\n") + string.Concat(Enumerable.Repeat("0000000000 00000 f \n", lead));
         var comment = gap == 0 ? string.Empty : "%" + new string('-', gap - 2) + "\n";
@@ -82,6 +85,7 @@ internal static class FaultedTableFiles
                 "header" => Invariant($"4 1\n{four}5 x\n{Row(five)}"),
                 "count" => Invariant($"4 1\n{four}5 2147483647\n{Row(five)}"),
                 "stray" => Invariant($"4 2\n{four}{Row(five)}/Bad 1\n"),
+                "header first" => Invariant($"4 x\n{four}{Row(five)}"),
                 _ => throw new ArgumentOutOfRangeException(nameof(fault), fault, null),
             };
             var named = (prev ?? "{previous}")
@@ -123,7 +127,9 @@ internal static class FaultedTableFiles
     /// <param name="rest">
     /// The rest of the middle table: "head", a row for object 5 that ends in <c>x</c>, then the head of the free list as the
     /// last row, written just before the trailer keyword as Acrobat PDFMaker writes it, and a trailer that gives
-    /// <c>/Size 7</c>, <c>/Prev</c> the oldest table and an <c>/ID</c>; "lost", a sound row for object 5 and the head of the
+    /// <c>/Size 7</c>, <c>/Prev</c> the oldest table and an <c>/ID</c>; "head without f", as "head", the head of the free
+    /// list written without its <c>f</c>; "head without f, info first", as "head without f", the trailer's first key an
+    /// <c>/Info</c> that refers to object 2147483647, generation 2; "lost", a sound row for object 5 and the head of the
     /// free list, then <c>/Bad 1</c>, and no trailer; "dictionary", a row for object 5 that ends in <c>x</c>, then a line
     /// <c>0000000000 00002</c>, which reads as a subsection header, a dictionary <c>&lt;&lt; /A 1 &gt;&gt;</c>, which its
     /// first row starts with, and <c>/Bad 1</c>, and no trailer.
@@ -151,6 +157,9 @@ internal static class FaultedTableFiles
         file.Raw("xref\n4 3\n" + Row(four) + rest switch
         {
             "head" => Invariant($"{five:D10} 00000 x \n0000000000 65535 f \ntrailer\n<< /Size 7 /Prev {oldest} /ID [<0102> <0304>] >>\n"),
+            "head without f" => Invariant($"{five:D10} 00000 x \n0000000000 65535\ntrailer\n<< /Size 7 /Prev {oldest} /ID [<0102> <0304>] >>\n"),
+            "head without f, info first" => Invariant(
+                $"{five:D10} 00000 x \n0000000000 65535\ntrailer\n<< /Info 2147483647 2 R /Size 7 /Prev {oldest} /ID [<0102> <0304>] >>\n"),
             "lost" => Row(five) + "0000000000 65535 f \n/Bad 1\n",
             "dictionary" => Invariant($"{five:D10} 00000 x \n0000000000 00002\n<< /A 1 >>\n/Bad 1\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(rest), rest, null),
