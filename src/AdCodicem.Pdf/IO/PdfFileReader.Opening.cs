@@ -258,17 +258,18 @@ internal sealed partial class PdfFileReader
     /// lead to, or <paramref name="position"/> itself when none follows them.
     /// </summary>
     /// <remarks>
-    /// The chain took the data up to the keyword, the end-of-line before it left out (<see cref="StreamEndSearch.Length"/>):
-    /// a keyword that follows that end-of-line, or follows <paramref name="position"/> at once, is read where it lies, so
-    /// that where it starts does not hang on what the document's searches for <c>endstream</c> may still read. Spent, they
-    /// would give no answer, and a length that counts the end-of-line would be taken for one past the keyword (#293).
+    /// The chain took the data up to the keyword, the line feed before it left out — a carriage return before it is the
+    /// data's, a row's last byte or the end-of-line's as the length says (#220) —: a keyword that follows that line feed,
+    /// or follows <paramref name="position"/> at once, is read where it lies, so that where it starts does not hang on what
+    /// the document's searches for <c>endstream</c> may still read. Spent, they would give no answer, and a length that
+    /// counts the end-of-line would be taken for one past the keyword (#293).
     /// </remarks>
     private long EndStreamAfter(long position)
     {
         // The chain took the data from within the file, up to a keyword the file holds: the read starts inside it.
-        Span<byte> bytes = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 2];
+        Span<byte> bytes = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 1];
         var head = bytes[.._source.Read(position, bytes[..(int)Math.Clamp(_source.Length - position, 0, bytes.Length)])];
-        var endOfLine = head.StartsWith("\r\n"u8) ? 2 : head.StartsWith("\n"u8) || head.StartsWith("\r"u8) ? 1 : 0;
+        var endOfLine = head.StartsWith("\n"u8) ? 1 : 0;
 
         if (head[endOfLine..].StartsWith(StreamEnds.EndStreamKeyword))
         {
