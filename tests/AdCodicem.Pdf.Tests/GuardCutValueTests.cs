@@ -2197,6 +2197,35 @@ public class GuardCutValueTests
         new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(wholeRules);
     }
 
+    [Fact]
+    public void A_superseded_row_of_a_table_found_near_where_its_prev_names_it_proves_the_endstream_before_it()
+    {
+        // As above, but the update's /Prev names the older table two bytes into its xref keyword: the table is found near
+        // there, in a reading the search keeps, and the place its row of object 6 gives, which the merged index drops, proves
+        // the endstream of stream 4 its own as where the table is named right (#287).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>"),
+            [5] = file.Object(5, new string(' ', 2000) + "5"),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\nBT ET\nendstream"),
+            [6] = file.Object(6, "(old six)"),
+        };
+        var first = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var six = file.Object(6, "(new six)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {first + 2} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        stream.Data.CutByGuard.Should().BeFalse();
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+    }
+
     [Theory]
     [InlineData(8, true)]
     [InlineData(12, false)]
