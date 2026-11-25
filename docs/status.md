@@ -68,7 +68,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
+- **Tests**: 10,627 unit on [#427]'s branch at `8e75b8e`, without the remote documents, 10,603 passed and 24 skipped;
+  the 69 timing and memory tests and the 359 of `HostileInputTests` alone; `Remote corpus` run 138 green on its code.
+  Before it, 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
   and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 133 green over all 242 on its code. Before
   it, 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote documents fetched, 12,956 passed
   and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 131 green
@@ -108,11 +110,13 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#407]'s branch at `5fb2ae2`, counted from the unit suite's report by Codecov's rule, 96.40 % of the
-  patch: 134 of its 139 coverable lines whole; the other five, two missed and three partial, are the defensive arms of
-  the reasons a rebuild loses an object — a served definition no load finds, and a stream the rebuilt index holds as no
-  object — which no input takes, as the mutation step's second opinion confirmed. Before it, on [#404]'s branch at
-  `9950958`, counted from the unit suite's report by Codecov's rule, 99.57 % of the
+- **Coverage**: on [#427]'s branch at `8e75b8e`, as Codecov counts it, 98.64 % of the patch; its three partial lines, in
+  `PdfFileReader.XRefStreams.cs`, are arms no input takes: `MayStartHeader`'s empty span, and the `?.` and `??` of
+  `DeclaredBesideCut`. Before it, on [#407]'s branch at `5fb2ae2`, counted from the unit suite's report by Codecov's
+  rule, 96.40 % of the patch: 134 of its 139 coverable lines whole; the other five, two missed and three partial, are
+  the defensive arms of the reasons a rebuild loses an object — a served definition no load finds, and a stream the
+  rebuilt index holds as no object — which no input takes, as the mutation step's second opinion confirmed. Before it,
+  on [#404]'s branch at `9950958`, counted from the unit suite's report by Codecov's rule, 99.57 % of the
   patch: 231 of its 232 coverable lines whole; the other, partial, is the retake's defensive check of a length that reads
   as nothing, which no input takes, its every caller giving it a reference. Before it, on [#400]'s branch at `681cba0`,
   counted the same way, 98.64 % of the patch: 217 of its 220 coverable lines whole; the other three, two missed and
