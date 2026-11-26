@@ -5803,12 +5803,15 @@ public class HostileInputTests
     [Theory]
     [InlineData("rows inside it")]
     [InlineData("past the guard")]
+    [InlineData("a header past the first window")]
+    [InlineData("a name at the guard's window")]
     public void Loads_at_a_place_whose_cut_header_a_load_read_before_read_their_first_window_and_little_more(string shape)
     {
         // Rows place two hundred objects at one header that a run of comment lines precedes, rows inside that run, or the run
-        // past MaxObjectLength 32 KB. The first load reads the header as far as its refusal or its guard; what it learned
-        // answers every load after it once its first window is read, which, with the search near the place, is all each reads
-        // (#387).
+        // past MaxObjectLength 32 KB, or 20 KB of it, then the header or a name that rules one out. The first load, of an object
+        // the header does not name, reads it as far as its refusal, its guard, the number it gives or what rules a header out;
+        // what it learned answers every load after it once its first window is read, which, with the search near the place,
+        // is all each reads (#387).
         const int Objects = 200;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -5819,7 +5822,7 @@ public class HostileInputTests
         var at = file.Position;
         var run = new StringBuilder();
 
-        for (var k = 0; k < 400; k++)
+        for (var k = 0; k < (shape.StartsWith("rows", StringComparison.Ordinal) || shape.StartsWith("past", StringComparison.Ordinal) ? 400 : 80); k++)
         {
             if (shape == "rows inside it" && k % 3 == 0)
             {
@@ -5829,7 +5832,7 @@ public class HostileInputTests
             run.Append("\n%").Append('y', 250);
         }
 
-        file.Raw(run + "\n3 0 obj null\nendobj\n");
+        file.Raw(run + (shape == "a name at the guard's window" ? "\n/Name null\nendobj\n" : "\n3 0 obj null\nendobj\n"));
 
         for (var k = 0; k < Objects; k++)
         {
@@ -5838,7 +5841,9 @@ public class HostileInputTests
 
         var size = 3 + Objects + 400;
         file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
-        var options = shape == "past the guard" ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } } : null;
+        var options = shape is "past the guard" or "a name at the guard's window"
+            ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+            : null;
         using var source = new StrictCountingSource(file.Bytes);
         using var document = PdfDocument.Open(source, options, ownsSource: false);
         var opened = source.BytesRead;
