@@ -705,6 +705,78 @@ public class WindowEdgeTests
         document.GetObject(new PdfObjectId(ObjectNumber)).Should().BeOfType<PdfStream>();
     }
 
+    [Theory]
+    [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue, 0, 0, "whole")]
+    [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 0, "cut")]
+    [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, -1, 0, "cut")]
+    [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 8 * 1024, "guard")]
+    [InlineData("[", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 0, "cut")]
+    [InlineData("<< /Length 3 >>", PdfFileReader.MaxPlacedHeadersInValue, -1, 0, "whole")]
+    [InlineData("<< /Length 3 >>", PdfFileReader.MaxPlacedHeadersInValue + 1, -1, 0, "kept")]
+    public void A_value_left_open_past_more_headers_a_table_places_than_the_bound_ends_at_the_first(
+        string opening, int lines, int rowShift, int guard, string outcome)
+    {
+        // Object 5 opens a string, an array or a dictionary, then holds lines of 200 bytes, each "% N 0 obj" and filler,
+        // whose headers the table places, or places a byte early, then closes what it opened, and ends with a stream keyword
+        // after a dictionary. Past MaxPlacedHeadersInValue rows inside it, an open value's data ends at the first, which is
+        // reported, and a whole one is kept as read, its stream keyword unseen; up to the bound, the window grows and reads
+        // it whole; and the largest window MaxObjectLength allows reaches the guard first, which is reported (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        file.Raw("5 0 obj\n" + opening);
+
+        for (var k = 0; k < lines; k++)
+        {
+            file.Raw("\n% ");
+            rows[100 + k] = file.Position + rowShift;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            file.Raw(header + new string('x', 200 - header.Length));
+        }
+
+        var dictionary = opening.StartsWith('<');
+        file.Raw((opening switch { "(" => ")", "[" => "]", _ => "\nstream\nabc\nendstream" }) + "\nendobj\n");
+        file.Table(100 + lines, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {100 + lines} /Root 1 0 R"));
+        var limits = PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = guard > 0 ? limits with { MaxObjectLength = guard } : limits });
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+        var reports = document.Diagnostics.Select(entry => entry.Code + ": " + entry.Message).ToList();
+
+        switch (outcome)
+        {
+            case "whole":
+                (dictionary ? read is PdfStream : read is PdfString { Length: > 200 * PdfFileReader.MaxPlacedHeadersInValue }).Should().BeTrue();
+                reports.Should().BeEmpty();
+                break;
+
+            case "cut":
+                (opening == "(" ? read.AsText() : read.AsArray()?.Count.ToString(CultureInfo.InvariantCulture)).Should().Be(
+                    opening == "(" ? (rowShift < 0 ? "\n%" : "\n% ") : "0");
+                reports.Should().Equal(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"syntax.truncated-object: An object header the index places, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} the object ran past, came inside {(opening == "[" ? "an array, which was never closed" : $"a literal string, which takes the {(rowShift < 0 ? 3 : 4)} bytes from where it opens to that end")}."));
+                document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeTrue();
+                break;
+
+            case "kept":
+                read.Should().BeOfType<PdfDictionary>();
+                reports.Should().BeEmpty();
+                document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeFalse();
+                break;
+
+            default:
+                document.Reader.IsCutAtLimit(ObjectNumber).Should().BeTrue();
+                reports.Should().ContainSingle().Which.Should().StartWith(PdfDiagnosticCodes.LimitObject);
+                break;
+        }
+    }
+
     [Theory(Timeout = 60_000)]
     [InlineData(true)]
     [InlineData(false)]

@@ -30,6 +30,28 @@ namespace AdCodicem.Pdf.IO;
 internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 {
     internal const int InitialObjectWindow = 8 * 1024;
+
+    /// <summary>
+    /// How many rows an index places inside a value a load leaves open the value may run past before its data is read as
+    /// ending at the first of them (#387): rows past the end of the header's <c>obj</c>, the object's own aside, each in a
+    /// comment or a string the value holds, or where no header starts — a header its parse meets ends the value already.
+    /// </summary>
+    /// <remarks>
+    /// A load whose parse runs to the edge of its window still open asks how many such rows the window holds. Past this
+    /// many, the object is parsed again as if the file ended at the first: what was cut short there is reported under
+    /// <see cref="PdfDiagnosticCodes.SyntaxTruncatedObject"/>, which names the header, and the object's <c>endobj</c> is
+    /// missing. Short of it, the window grows no further than the row that would pass the bound, where there is one, so that
+    /// a load reads about as many bytes as that many rows span. A whole value only <c>endobj</c> or <c>stream</c> is looked for
+    /// after is kept as read where more rows than this lie past it, as where a header lexes past it
+    /// (<see cref="WindowHoldsPlacedHeader"/>). Without the bound, each object a run of comment or string lines places read
+    /// every line after its own, and a rebuild or a validation, which load every object, took time in the square of the
+    /// lines. At the largest window <see cref="PdfReaderLimits.MaxObjectLength"/> allows, the bound is not asked, and the
+    /// guard is reached and reported. Not a guard a valid file reaches: the rows of a valid file's index each place a header
+    /// written between objects, none inside another object's value. A value that quotes no more headers than this, as a
+    /// script or a note may in a file whose index is rebuilt, is read whole.
+    /// </remarks>
+    internal const int MaxPlacedHeadersInValue = 64;
+
     internal const int XRefWindow = 64 * 1024;
 
     /// <summary>What the codes of the faults of the object syntax start with.</summary>

@@ -476,7 +476,8 @@ public class HostileInputTests
         // taken without a search; or where one object placed inside every stream's data, near its end, let each keep nearly
         // all of it. Each length is counted once for each object and place its data starts at, whatever the indexes place:
         // past what such streams may keep whole, the data ends at a header placed inside it while what it keeps fits a
-        // second allowance, or reads empty, and says so (#280).
+        // second allowance, or reads empty, and says so (#280). Headers nested in strings are written short enough that each
+        // dictionary closes within the window its load starts with, which reads it whole whatever rows it holds (#387).
         const int Streams = 200;
         const int Filler = 1024 * 1024;
         var first = 10;
@@ -486,9 +487,9 @@ public class HostileInputTests
         var file = shape switch
         {
             "rows past the file, so that a rebuild places the streams" => OverlappingRebuilt(Streams, Filler),
-            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler),
-            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1),
-            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100),
+            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler, lengthDigits: 7),
+            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1, lengthDigits: 7),
+            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100, lengthDigits: 7),
             "headers on one comment line before one body" => HeadersOnOneCommentLine(Streams, Filler),
             _ when guarded => NestedInStrings(Streams, Filler, lengthObject: "5" + new string(' ', 20_000)),
             _ => OverlappingLengthened(Streams, Filler, out first, out junk),
@@ -5491,14 +5492,29 @@ public class HostileInputTests
     [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " (abc", "\"abc\\n% \"", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", CommentLine)]
     public void Objects_whose_headers_a_run_of_comment_lines_holds_are_read_without_reading_the_lines_after_each(
         CommentHeadersPlacedBy shape, string body, string read, string gap = " ")
     {
         // Lines "% N 0 obj ..." whose headers the index places: each object's load read every line after it for what follows
         // its value, its window grown eight times over, and opening, which loads every object a rebuild places, or
         // validating, which loads every object, took time in the square of the lines. A whole value is kept as read where
-        // the window holds the next line's header, however much white space parts its tokens, and a row past the value that
-        // starts no header does not keep it from counting (#362).
+        // the window holds the next line's header, however much white space or comment parts its tokens, and a row past the
+        // value that starts no header does not keep it from counting (#362). A value left open — missing, a dictionary, an
+        // array or a string that runs on — ends at the first row past more than the bound inside it (#387).
         const int Lines = 1_000;
 
         var small = ReadHeaderLines(shape, body, read, gap, Lines);
@@ -5585,6 +5601,9 @@ public class HostileInputTests
 
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
+
+    /// <summary>What parts the tokens of a header written with a comment line between them.</summary>
+    private const string CommentLine = "\n% x\n";
 
     /// <summary>What places the headers a run of lines holds.</summary>
     public enum CommentHeadersPlacedBy
@@ -7633,8 +7652,10 @@ public class HostileInputTests
     /// <paramref name="filler"/> bytes, less <paramref name="shortBy"/>, or names object 999, which holds
     /// <paramref name="lengthObject"/>. With <paramref name="placedFromEnd"/>, object 9, which the index places, starts that
     /// many bytes before that <c>endstream</c>, inside every stream's data. The trailer holds <paramref name="entries"/> besides.
+    /// A direct length is written with <paramref name="lengthDigits"/> digits.
     /// </summary>
-    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "")
+    internal static byte[] NestedInStrings(
+        int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "", int lengthDigits = 10)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -7652,7 +7673,7 @@ public class HostileInputTests
             rows[10 + k] = origin + text.Length;
             text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
             lengthAt[k] = text.Length;
-            text.Append(lengthObject is null ? "0000000000" : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
+            text.Append(lengthObject is null ? new string('0', lengthDigits) : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
         }
 
         starts[^1] = text.Length;
@@ -7677,7 +7698,7 @@ public class HostileInputTests
 
         for (var k = 0; lengthObject is null && k < streams; k++)
         {
-            var digits = (end - starts[k] - shortBy).ToString("D10", CultureInfo.InvariantCulture);
+            var digits = (end - starts[k] - shortBy).ToString("D" + lengthDigits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
             for (var d = 0; d < digits.Length; d++)
             {

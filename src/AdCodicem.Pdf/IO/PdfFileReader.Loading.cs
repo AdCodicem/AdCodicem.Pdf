@@ -266,7 +266,8 @@ internal sealed partial class PdfFileReader
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
     /// the guard is reported in place of what the cut made the parser notice. One whose value the window holds whole, only what
     /// follows it past the edge, is not read again where the window holds a header an index places past it
-    /// (<see cref="WindowHoldsPlacedHeader"/>).
+    /// (<see cref="WindowHoldsPlacedHeader"/>); one whose value runs past more rows an index places than
+    /// <see cref="MaxPlacedHeadersInValue"/> says ends at the first.
     /// </remarks>
     /// <param name="offset">Where the object starts in the file.</param>
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
@@ -339,6 +340,9 @@ internal sealed partial class PdfFileReader
         var mark = _pending.GetMark();
         var lead = atRow && offset > 0 ? ByteBeforeRow : 0;
 
+        // Where the object's data is read as ending, at a header an index places inside its value; -1 for the file's end.
+        var dataEnd = -1L;
+
         try
         {
             while (true)
@@ -359,10 +363,12 @@ internal sealed partial class PdfFileReader
                 }
 
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is. The
-                // largest the guard allows drops a token its edge parts (#262, #279).
-                var cut = bytes.Length == windowSize && offset + bytes.Length < _source.Length;
+                // largest the guard allows drops a token its edge parts (#262, #279). One that ends at a header an index places
+                // inside the value ends the data there (MaxPlacedHeadersInValue).
+                var cut = dataEnd < 0 && bytes.Length == windowSize && offset + bytes.Length < _source.Length;
                 var parser = new PdfObjectParser(
-                    bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow);
+                    bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow,
+                    endsAtPlacedHeader: dataEnd >= 0);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -409,6 +415,36 @@ internal sealed partial class PdfFileReader
                 // lines (#362). At the largest window the guard allows, the guard is reached and reported, as without the rule.
                 var truncated = parser.IsTruncated && cut &&
                     (windowSize >= maxWindow || !WindowHoldsPlacedHeader(foundNumber, offset, bytes.Span, parser.WholeValueEnd));
+
+                // A value left open past more rows than MaxPlacedHeadersInValue ends at the first, and one whole before them is
+                // kept as read: each object a run of lines places would otherwise read every line after it (#387).
+                if (truncated && windowSize < maxWindow && number != DirectObject)
+                {
+                    var whole = parser.WholeValueEnd >= 0;
+                    var passed = CountPlacedRows(foundNumber, offset + (whole ? parser.WholeValueEnd : parser.HeaderEnd), out var firstRow, out var boundRow);
+
+                    if (passed > MaxPlacedHeadersInValue && boundRow - offset < bytes.Length)
+                    {
+                        if (whole)
+                        {
+                            truncated = false;
+                        }
+                        else
+                        {
+                            _pending.RollBackToRetry(mark);
+                            dataEnd = firstRow;
+                            windowSize = (int)(firstRow - offset);
+                            continue;
+                        }
+                    }
+                    else if (passed > MaxPlacedHeadersInValue)
+                    {
+                        // The window grows to hold the row past the bound, and no further: the bytes a load reads follow the rows.
+                        _pending.RollBackToRetry(mark);
+                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), boundRow - offset + 1);
+                        continue;
+                    }
+                }
 
                 if (truncated)
                 {
@@ -539,6 +575,46 @@ internal sealed partial class PdfFileReader
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Counts the rows an index places from <paramref name="from"/> on, in the file — of the chain's index, and of the
+    /// rebuilt one after a rebuild that followed the chain, each index's entry of object <paramref name="number"/> stepped
+    /// over —, up to one past <see cref="MaxPlacedHeadersInValue"/>, and gives where the first lies and where the last
+    /// counted does; -1 for each where none is.
+    /// </summary>
+    private int CountPlacedRows(int number, long from, out long first, out long last)
+    {
+        var index = SearchIndex;
+        var rebuilt = _repaired && !ReferenceEquals(index, _xref) ? _xref : null;
+        var own = OwnOffset(index, number);
+        var ownRebuilt = rebuilt is null ? long.MinValue : OwnOffset(rebuilt, number);
+        first = last = -1;
+        var count = 0;
+
+        // Offsets the indexes give count from the header; positions in the file, from its start.
+        for (var at = from - _headerOffset - 1; count <= MaxPlacedHeadersInValue;)
+        {
+            var row = Math.Min(index.FirstOffsetAfter(at), rebuilt?.FirstOffsetAfter(at) ?? long.MaxValue);
+
+            if (row == long.MaxValue)
+            {
+                break;
+            }
+
+            at = row;
+
+            if (row == own || row == ownRebuilt)
+            {
+                continue;
+            }
+
+            last = row + _headerOffset;
+            first = first < 0 ? last : first;
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>Gives the offset <paramref name="index"/>'s entry of object <paramref name="number"/> places it at, where it places it.</summary>
