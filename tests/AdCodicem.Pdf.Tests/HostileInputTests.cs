@@ -5665,14 +5665,16 @@ public class HostileInputTests
     [InlineData("leading signs, 3 0 obj", false)]
     [InlineData("comment lines past the guard, 3 0 obj", false)]
     [InlineData("comment lines holding rows, 3 0 obj", false)]
+    [InlineData("comment lines, a name", false)]
+    [InlineData("comment lines, 0 0 obj", false)]
     public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(string shape, bool validate)
     {
         // Rows that place a thousand objects at one header whose tokens, or what comes before its number, run on for lines,
         // which a trailer padded past MaxTrailerLength keeps through the rebuild: each object's load read the header in
         // windows grown until they held its obj, to find it names object 3, and loading or validating every object took time
         // in the square of the file. A header whose number the window holds whole and names another object is not the one
-        // asked for, and what a grown window read at a place, the number or the guard's cut, is kept for the loads after it
-        // (#387).
+        // asked for, and what loads learn of a header a window cut at a place — its number, the guard's cut, or that no header
+        // is there — serves the loads after them (#387).
         var small = Read(250, 200);
         var large = Read(1_000, 800);
 
@@ -5710,6 +5712,8 @@ public class HostileInputTests
             file.Raw(shape switch
             {
                 "3 0, comment lines, obj" => "3 0" + run + "\nobj null\nendobj\n",
+                "comment lines, a name" => run + "\n/Name null\nendobj\n",
+                "comment lines, 0 0 obj" => run + "\n0 0 obj null\nendobj\n",
                 "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj null\nendobj\n",
                 _ => run + "\n3 0 obj null\nendobj\n",
             });

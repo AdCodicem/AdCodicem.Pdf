@@ -395,6 +395,12 @@ internal sealed partial class PdfFileReader
                     // that is not an object header is not the object.
                     if (!parser.IsTruncated || !cut)
                     {
+                        // Read past a cut, the place is known to hold no header within these bytes.
+                        if (headerCut)
+                        {
+                            NoteNoHeader(offset, bytes.Length);
+                        }
+
                         return false;
                     }
 
@@ -638,17 +644,31 @@ internal sealed partial class PdfFileReader
         long? number = token.Kind == PdfTokenKind.Integer && token.End < bytes.Length ? token.Integer : null;
         var cuts = _headerCuts ??= new(SeededComparer.Instance);
         cuts.TryGetValue(offset, out var known);
-        cuts[offset] = new HeaderCut(
-            number ?? known.Number,
-            number is null ? known.NumberEnd : token.End,
-            whole ? known.CutPast : Math.Max(known.CutPast, bytes.Length));
+        cuts[offset] = known with
+        {
+            Number = number ?? known.Number,
+            NumberEnd = number is null ? known.NumberEnd : (int)token.End,
+            CutPast = whole ? known.CutPast : Math.Max(known.CutPast, bytes.Length),
+        };
         return number;
+    }
+
+    /// <summary>
+    /// Notes in <see cref="_headerCuts"/> that the <paramref name="length"/> bytes from <paramref name="offset"/>, read past a
+    /// window that cut the header there, hold no header: a token they hold whole rules one out, or the file ends in them.
+    /// </summary>
+    private void NoteNoHeader(long offset, int length)
+    {
+        var cuts = _headerCuts ??= new(SeededComparer.Instance);
+        cuts.TryGetValue(offset, out var known);
+        cuts[offset] = known with { NoneWithin = known.NoneWithin == 0 ? length : Math.Min(known.NoneWithin, length) };
     }
 
     /// <summary>
     /// Answers a load of object <paramref name="number"/> at <paramref name="offset"/> from what loads learned of the header a
     /// window's edge cut there (<paramref name="known"/>), as reading it again from a first window of
-    /// <paramref name="firstWindow"/> bytes would answer: false where its first integer, whole within the largest window
+    /// <paramref name="firstWindow"/> bytes would answer: false where a window no larger than the largest
+    /// <paramref name="maxWindow"/> was found to hold no header there, where its first integer, whole within that window
     /// <paramref name="maxWindow"/>, names another object, or where more rows than <see cref="MaxPlacedHeadersInValue"/>
     /// follow the place within the window the reading would refuse it in — the first, or the one grown to hold the row past
     /// the bound —, short of that largest one and known to cut the header, the rows as the indexes place them now; the guard
@@ -660,7 +680,8 @@ internal sealed partial class PdfFileReader
     {
         foundNumber = 0;
 
-        if (known.NumberEnd > 0 && known.NumberEnd < maxWindow && known.Number != number)
+        if ((known.NoneWithin > 0 && known.NoneWithin <= maxWindow) ||
+            (known.NumberEnd > 0 && known.NumberEnd < maxWindow && known.Number != number))
         {
             return false;
         }
@@ -691,7 +712,8 @@ internal sealed partial class PdfFileReader
     /// <param name="Number">The integer the header starts with, past white space and comments, where a window held it whole.</param>
     /// <param name="NumberEnd">Where that integer ends; 0 where no window held it whole.</param>
     /// <param name="CutPast">The longest window that cut the header's tokens.</param>
-    private readonly record struct HeaderCut(long Number, int NumberEnd, int CutPast);
+    /// <param name="NoneWithin">The shortest window, read past one that cut it, found to hold no header; 0 where none was.</param>
+    private readonly record struct HeaderCut(long Number, int NumberEnd, int CutPast, int NoneWithin);
 
     /// <summary>
     /// Counts the rows an index places from <paramref name="from"/> on, in the file — of the chain's index, and of the
