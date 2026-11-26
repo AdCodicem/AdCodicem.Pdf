@@ -2084,6 +2084,7 @@ public class ReaderLimitsTests
     [InlineData("a word that holds obj five bytes short of the end of the first mebibyte of the data", "Missing")]
     [InlineData("a word that ends in obj glued to an endstream that ends the first mebibyte of the data", "Missing")]
     [InlineData("a header past a first read the source gives short", "Missing")]
+    [InlineData("a header in a comment line past an endstream the data quotes", "Missing")]
     public async Task Data_a_rebuild_s_scan_reads_as_intact_past_the_read_guard_is_searched_for_a_header_up_to_its_endstream_or_the_end_of_the_file(
         string data, string presence)
     {
@@ -2096,7 +2097,8 @@ public class ReaderLimitsTests
         // its endstream or the end of the file: where it holds one, whether the file holds object 99 is unknown; where it holds
         // none, or no data at all, object 99 is missing. An obj keyword counts where a header precedes it, the byte before it
         // ending a token, and no regular character follows it, whichever window holds it, and only up to the endstream; a
-        // read the source gives short of what was asked ends the search, as the end of the data.
+        // read the source gives short of what was asked ends the search, as the end of the data. Past that endstream the scan
+        // reads tokens as it does without the guard, which takes object 77 exactly where the index is marked (#389).
         const int Spelled = 24;
         const int Mebibyte = 1024 * 1024;
         const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\nendstream\nendobj\n";
@@ -2131,6 +2133,7 @@ public class ReaderLimitsTests
             "a word that ends in obj glued to an endstream that ends the first mebibyte of the data" =>
                 new string('t', Mebibyte - 4) + "obj" + Ends[1..],
             "a header past a first read the source gives short" => new string('t', 5000) + "\n77 0 obj\n" + Ends,
+            "a header in a comment line past an endstream the data quotes" => "quoted endstream\n% 77 0 obj\n(seventy-seven)\nendobj\n" + Ends,
             _ => string.Empty,
         });
 
@@ -2144,6 +2147,14 @@ public class ReaderLimitsTests
         document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().BeTrue();
         document.Reader.RebuildReadsBoundedAt.Should().Be(presence == "Unindexed" ? dataStart : -1);
         document.Reader.GetPresence(99).Should().Be(Enum.Parse<ObjectPresence>(presence));
+
+        // The source that gives one read short ends the data only for that read, which the scan without the guard never asks.
+        if (!shortRead)
+        {
+            using var unbounded = PdfDocument.Open(
+                Encoding.Latin1.GetBytes(text.ToString()), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = 64 } });
+            unbounded.Reader.GetPresence(77).Should().Be(presence == "Unindexed" ? ObjectPresence.Defined : ObjectPresence.Missing);
+        }
     }
 
     [Theory]
