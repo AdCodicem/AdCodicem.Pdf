@@ -362,6 +362,23 @@ internal sealed partial class PdfFileReader
                     lead = 0;
                 }
 
+                // A header read here before through a grown window: whole, it names another object than the one asked for or
+                // the one asked for; cut by a guard no larger than this one, it is cut again.
+                if (number != AnyObject && _headerNumbers is { } known && known.TryGetValue(offset, out var header))
+                {
+                    if (header.Number == (int)HeaderPastGuard && maxWindow <= header.Bound)
+                    {
+                        ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
+                        foundNumber = (int)HeaderPastGuard;
+                        return false;
+                    }
+
+                    if (header.Number >= 0 && header.Number != number)
+                    {
+                        return false;
+                    }
+                }
+
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is. The
                 // largest the guard allows drops a token its edge parts (#262, #279). One that ends at a header an index places
                 // inside the value ends the data there (MaxPlacedHeadersInValue).
@@ -386,6 +403,14 @@ internal sealed partial class PdfFileReader
 
                     _pending.RollBackToRetry(mark);
 
+                    // A header whose number the window holds whole names its object however its tokens go on: one that names
+                    // another than the object asked for is not it, under any guard, and a window grown for it would read on
+                    // for nothing, once for each row that places another object there.
+                    if (number != AnyObject && NamesAnotherObject(bytes.Span, number))
+                    {
+                        return false;
+                    }
+
                     if (windowSize >= maxWindow)
                     {
                         // The guard cut the header itself, under which no value was read: a caller that asked for a number
@@ -393,14 +418,7 @@ internal sealed partial class PdfFileReader
                         // asked for any object reads no number there.
                         ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
                         foundNumber = number == AnyObject ? 0 : (int)HeaderPastGuard;
-                        return false;
-                    }
-
-                    // A header whose number the window holds whole names its object however its tokens go on: one that names
-                    // another than the object asked for is not it, and a window grown for it would read on for nothing, once
-                    // for each row that places another object there.
-                    if (number != AnyObject && NamesAnotherObject(bytes.Span, number))
-                    {
+                        KeepHeaderNumber(offset, windowSize, initialWindow, (int)HeaderPastGuard, maxWindow);
                         return false;
                     }
 
@@ -423,11 +441,13 @@ internal sealed partial class PdfFileReader
                 }
                 else if (number != AnyObject && found.Number != number)
                 {
+                    KeepHeaderNumber(offset, windowSize, initialWindow, found.Number, maxWindow);
                     return false;
                 }
                 else
                 {
                     foundNumber = found.Number;
+                    KeepHeaderNumber(offset, windowSize, initialWindow, found.Number, maxWindow);
                 }
 
                 var lengthFault = parser.LengthFault;
@@ -599,6 +619,19 @@ internal sealed partial class PdfFileReader
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Keeps what a load read of the header at <paramref name="offset"/>, under a guard whose largest window is
+    /// <paramref name="bound"/>, where reading it took a window grown past <paramref name="initialWindow"/>
+    /// (<see cref="_headerNumbers"/>).
+    /// </summary>
+    private void KeepHeaderNumber(long offset, int windowSize, int initialWindow, int number, int bound)
+    {
+        if (windowSize > initialWindow)
+        {
+            (_headerNumbers ??= new(SeededComparer.Instance))[offset] = (number, bound);
+        }
     }
 
     /// <summary>

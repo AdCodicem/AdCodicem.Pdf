@@ -5656,14 +5656,22 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(bool validate)
+    [InlineData("3 0, comment lines, obj", false)]
+    [InlineData("3 0, comment lines, obj", true)]
+    [InlineData("comment lines, 3 0 obj", false)]
+    [InlineData("comment lines, 3 0 obj", true)]
+    [InlineData("white space, 3 0 obj", false)]
+    [InlineData("leading zeros, 3 0 obj", false)]
+    [InlineData("leading signs, 3 0 obj", false)]
+    [InlineData("comment lines past the guard, 3 0 obj", false)]
+    public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(string shape, bool validate)
     {
-        // Rows that place a thousand objects at one header, "3 0", lines of comment, then obj, which a trailer padded past
-        // MaxTrailerLength keeps through the rebuild: each object's load read the header in windows grown until they held its
-        // obj, to find it names object 3, and loading or validating every object took time in the square of the file. A
-        // header whose number the window holds whole and names another object is not the one asked for (#387).
+        // Rows that place a thousand objects at one header whose tokens, or what comes before its number, run on for lines,
+        // which a trailer padded past MaxTrailerLength keeps through the rebuild: each object's load read the header in
+        // windows grown until they held its obj, to find it names object 3, and loading or validating every object took time
+        // in the square of the file. A header whose number the window holds whole and names another object is not the one
+        // asked for, and what a grown window read at a place, the number or the guard's cut, is kept for the loads after it
+        // (#387).
         var small = Read(250, 200);
         var large = Read(1_000, 800);
 
@@ -5678,14 +5686,25 @@ public class HostileInputTests
                 [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
             };
             var at = file.Position;
-            file.Raw("3 0");
+            var run = new StringBuilder();
 
             for (var k = 0; k < lines; k++)
             {
-                file.Raw("\n%" + new string('y', 250));
+                run.Append(shape switch
+                {
+                    "white space, 3 0 obj" => new string(' ', 251),
+                    "leading zeros, 3 0 obj" => new string('0', 251),
+                    "leading signs, 3 0 obj" => new string('+', 251),
+                    _ => "\n%" + new string('y', 250),
+                });
             }
 
-            file.Raw("\nobj null\nendobj\n");
+            file.Raw(shape switch
+            {
+                "3 0, comment lines, obj" => "3 0" + run + "\nobj null\nendobj\n",
+                "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj null\nendobj\n",
+                _ => run + "\n3 0 obj null\nendobj\n",
+            });
 
             for (var k = 0; k < objects; k++)
             {
@@ -5693,8 +5712,11 @@ public class HostileInputTests
             }
 
             file.Table(3 + objects, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {3 + objects} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+            var options = shape.Contains("past the guard", StringComparison.Ordinal)
+                ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+                : null;
             using var source = new StrictCountingSource(file.Bytes);
-            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            using var document = PdfDocument.Open(source, options, ownsSource: false);
 
             if (validate)
             {

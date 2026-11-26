@@ -818,6 +818,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private HashSet<int>? _cutAtStop;
 
     /// <summary>
+    /// What a load read of the header at each place, by the place, where reading it took a window grown past the first: the
+    /// number a header read whole gives, or <see cref="HeaderPastGuard"/> where the guard cut it, with the largest window the
+    /// guard allowed then. A load of another object there is refused once its first window is read, and one the same guard
+    /// cut again is told so, rather than grown over the same header again, once for each row that places an object there
+    /// (#387). Null while there is none.
+    /// </summary>
+    private Dictionary<long, (int Number, int Bound)>? _headerNumbers;
+
+    /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
     /// members have none to follow them, and are never in it.
     /// </summary>
@@ -2337,6 +2346,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         Release(_unproduced);
         Release(_cutAtLimit);
         _cutAtStop = null;
+        _headerNumbers = null;
         _endObjMissing.Clear();
         _endObjMissing.TrimExcess();
         _streamLengthFaults.Clear();
