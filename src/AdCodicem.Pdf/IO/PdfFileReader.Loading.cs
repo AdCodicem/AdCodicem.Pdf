@@ -187,14 +187,7 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Parses object <paramref name="number"/> at an exact offset, growing the window while the object runs
-    /// past its end. Returns false when nothing with that number is there.
-    /// </summary>
-    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseObjectAt(number, offset, out value, out _, recordedAt);
-
-    /// <summary>
-    /// Parses object <paramref name="number"/> at an exact offset, as <see cref="TryParseObjectAt(int, long, out PdfObject, long)"/>
-    /// does, and gives the generation its header gives.
+    /// past its end, and gives the generation its header gives. Returns false when nothing with that number is there.
     /// </summary>
     private bool TryParseObjectAt(int number, long offset, out PdfObject value, out int generation, long recordedAt = RecordedAnywhere) =>
         TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out generation, out _, out _, out _, out _, recordedAt: recordedAt);
