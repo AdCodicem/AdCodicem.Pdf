@@ -84,7 +84,7 @@ image of a page lost its tail —, pass a list of your own:
 ```csharp
 using AdCodicem.Pdf.Objects;
 
-if (document.GetObject(new PdfObjectId(12)) is PdfStream stream)
+if (document.GetObject(12) is PdfStream stream)
 {
     var reports = new PdfDiagnostics();
     var data = stream.Decode(reports);
