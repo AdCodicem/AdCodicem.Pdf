@@ -983,6 +983,90 @@ public class WindowEdgeTests
         }
     }
 
+    [Fact]
+    public void A_header_the_bound_s_rows_part_reads_whole_again_once_the_cache_let_it_go()
+    {
+        // Object 5's header, "5 0", 64 comment lines each holding a row, then 80 KB of comment lines, then obj: a window of
+        // 64 KB still cuts it. Read, let go by a cache of 64 objects, and read again from what the first reading learned, it
+        // reads whole: as many rows as the bound part it, and no more (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        // The objects that fill the cache lie before object 5, so that no row past its header is theirs.
+        for (var number = 200; number < 300; number++)
+        {
+            rows[number] = file.Object(number, "1");
+        }
+
+        rows[ObjectNumber] = file.Position;
+        file.Raw("5 0");
+
+        for (var k = 0; k < PdfFileReader.MaxPlacedHeadersInValue; k++)
+        {
+            file.Raw("\n% ");
+            rows[100 + k] = file.Position;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            file.Raw(header + new string('x', 150 - header.Length));
+        }
+
+        file.Raw(string.Concat(Enumerable.Repeat("\n%" + new string('z', 250), 320)) + "\nobj (five)\nendobj\n");
+        file.Table(300, rows, "/Size 300 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+
+        document.GetObject(new PdfObjectId(ObjectNumber)).AsText().Should().Be("five");
+
+        for (var number = 200; number < 300; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(ObjectNumber)).AsText().Should().Be("five");
+    }
+
+    [Fact]
+    public void A_header_at_the_row_past_the_bound_that_fills_the_room_after_it_ends_the_value()
+    {
+        // Object 5 opens an array that lost its closing, 64 comment lines inside it each holding a row and an element, then the
+        // header of object 300, which the table places, 63 bytes wide and the byte after it, the row 63 bytes short of the
+        // window a load starts with. The window grows by the room a header takes past that row, and reads the header, which
+        // ends the array: 64 rows lie inside it, which the bound reads past (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var objectAt = file.Position;
+        rows[ObjectNumber] = objectAt;
+        var text = new StringBuilder("5 0 obj\n[ 1 2 3");
+
+        for (var k = 0; k < PdfFileReader.MaxPlacedHeadersInValue; k++)
+        {
+            text.Append("\n% ");
+            rows[100 + k] = objectAt + text.Length;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            text.Append(header).Append('x', 100 - header.Length).Append("\n7");
+        }
+
+        const string Wide = "300" + "                            " + "0" + "                            " + "obj";
+        var rowAt = PdfFileReader.InitialObjectWindow - 63;
+        text.Append(' ', rowAt - 1 - text.Length).Append('\n');
+        rows[300] = objectAt + text.Length;
+        text.Append(Wide).Append(" (next)\nendobj\n");
+        file.Raw(text.ToString());
+        file.Padding(8, 20_000);
+        file.Table(301, rows, "/Size 301 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        Wide.Length.Should().Be(63);
+        (rows[300] - objectAt).Should().Be(PdfFileReader.InitialObjectWindow - 63);
+        document.GetObject(new PdfObjectId(ObjectNumber)).AsArray().Required().Count.Should().Be(3 + PdfFileReader.MaxPlacedHeadersInValue);
+    }
+
     [Theory]
     [InlineData("rows before the value", "missing")]
     [InlineData("the object's own row inside the value", "whole")]
