@@ -987,7 +987,7 @@ internal sealed partial class PdfFileReader
         var value = GetObject(id);
 
         // A null a guard against re-entry gave says nothing of the object: it could not be read from here.
-        presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(id.Number);
+        presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetReferencePresence(id);
 
         // What the object holds, or the one a chain of references from it leads to, is the guard's when a guard cut it or
         // left it out of the index: a value the cut left, null or an integer it left whole, is none the file gave (#224).

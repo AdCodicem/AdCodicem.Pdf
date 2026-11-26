@@ -330,7 +330,8 @@ internal sealed partial class PdfFileReader
         new HashSet<(PdfLimit Limit, long Position)>(_limitsReached, SeededComparer.Instance),
         new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
         new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
-        _objectStreamReports.Copy());
+        _objectStreamReports.Copy(),
+        new HashSet<PdfObjectId>(_otherGenerationsReported));
 
     /// <summary>
     /// Brings <paramref name="mark"/> to where the document's reports stand now, for a mark nothing was withdrawn past
@@ -347,6 +348,7 @@ internal sealed partial class PdfFileReader
         mark.MemberLimits.UnionWith(_memberLimitsReached);
         mark.NeedingThemselves.UnionWith(_objectStreamsNeedingThemselves);
         mark.ObjectStreams.TakeIn(_objectStreamReports);
+        mark.OtherGenerations.UnionWith(_otherGenerationsReported);
         return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports() };
     }
 
@@ -364,6 +366,7 @@ internal sealed partial class PdfFileReader
         Restore(_memberLimitsReached, mark.MemberLimits);
         Restore(_objectStreamsNeedingThemselves, mark.NeedingThemselves);
         _objectStreamReports.RestoreFrom(mark.ObjectStreams);
+        Restore(_otherGenerationsReported, mark.OtherGenerations);
     }
 
     /// <summary>Brings <paramref name="set"/> back to what <paramref name="copy"/> holds.</summary>
@@ -1297,7 +1300,7 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
-    /// length, an object stream's fault —, so that what was reported since can be withdrawn and reported again.
+    /// length, an object stream's fault, a reference to another generation —, so that what was reported since can be withdrawn and reported again.
     /// </summary>
     /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
     /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>
@@ -1307,6 +1310,7 @@ internal sealed partial class PdfFileReader
     /// <param name="MemberLimits">The object stream members whose cut was reported.</param>
     /// <param name="NeedingThemselves">The object streams reported as needing an object they hold.</param>
     /// <param name="ObjectStreams">What the object streams' reports said.</param>
+    /// <param name="OtherGenerations">The references reported as naming a generation their object does not carry.</param>
     private sealed record ReportsMark(
         PdfDiagnosticsMark Diagnostics,
         HashSet<long> LengthFaults,
@@ -1315,7 +1319,8 @@ internal sealed partial class PdfFileReader
         HashSet<(PdfLimit Limit, long Position)> Limits,
         HashSet<(long DataStart, int Number)> MemberLimits,
         HashSet<int> NeedingThemselves,
-        ObjectStreamReports ObjectStreams);
+        ObjectStreamReports ObjectStreams,
+        HashSet<PdfObjectId> OtherGenerations);
 
     /// <summary>
     /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept

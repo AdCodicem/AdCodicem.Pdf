@@ -364,7 +364,8 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>
     /// Returns the object the index holds under <paramref name="number"/>, whatever generation it carries, reading it if it is
-    /// not already in memory: the object <see cref="ObjectNumbers"/> lists, as no reference names it.
+    /// not already in memory: the object <see cref="ObjectNumbers"/> lists, read by its number alone rather than as a
+    /// reference names it.
     /// </summary>
     /// <remarks>
     /// Nothing is compared and nothing reported of a generation: a number the index holds no object under reads as null, as a

@@ -101,7 +101,13 @@ internal sealed partial class PdfFileReader
         if (loaded is { } value)
         {
             _unproduced.Remove(id.Number);
-            _carriedGenerations[id.Number] = generation;
+
+            // A free entry defines nothing, and carries no generation.
+            if (entry.Kind != XRefEntryKind.Free)
+            {
+                _carriedGenerations[id.Number] = generation;
+            }
+
             return value;
         }
 

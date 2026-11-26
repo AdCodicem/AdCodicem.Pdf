@@ -4419,14 +4419,17 @@ public class DocumentReaderTests
     [InlineData("row")]
     [InlineData("shifted")]
     [InlineData("rebuilt")]
-    public void A_catalog_found_by_its_type_is_named_as_its_entry_names_it(string layout)
+    [InlineData("row of another generation")]
+    public void A_catalog_found_by_its_type_is_named_under_the_generation_it_carries(string layout)
     {
         // #118: the trailer's /Root names nothing, and the reader finds the catalog, written 1 1 obj, among the objects the
-        // index holds — through a row of 1, through a row of 0 a few bytes off, which the catalog's own load relocates, or
-        // in a rebuilt index. It once put 1 0 R in the trailer, so that a report named the catalog both 1 1 and 1 0.
+        // index holds — through a row of 1, through a row of 0 a few bytes off, which the catalog's own load relocates, in
+        // a rebuilt index, or through a row of 2 at its header. It once put 1 0 R in the trailer, so that a report named the
+        // catalog both 1 1 and 1 0; the row's generation would name an object the file does not define (#185).
         using var document = PdfDocument.Open(CatalogWrittenUnderGeneration1(layout));
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
         document.WasRepaired.Should().Be(layout == "rebuilt");
         document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1, 1));
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
@@ -4434,8 +4437,8 @@ public class DocumentReaderTests
 
     /// <summary>
     /// The sound document with its catalog written <c>1 1 obj</c> and a trailer whose <c>/Root</c> names nothing: the
-    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or
-    /// <c>startxref</c> names nothing and the index is rebuilt (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
+    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or 2 at its header
+    /// (<c>row of another generation</c>), or <c>startxref</c> names nothing and the index is rebuilt (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
     /// catalog's entries.
     /// </summary>
     internal static byte[] CatalogWrittenUnderGeneration1(string layout, string catalog = "/Type /Catalog /Pages 2 0 R")
@@ -4444,7 +4447,7 @@ public class DocumentReaderTests
             .Replace("1 0 obj", "1 1 obj", StringComparison.Ordinal)
             .Replace("/Type /Catalog /Pages 2 0 R", catalog, StringComparison.Ordinal)
             .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal)
-            .Replace("{row:1}", layout == "shifted" ? "{row:1:0:4}" : "{row:1:1}", StringComparison.Ordinal);
+            .Replace("{row:1}", layout switch { "shifted" => "{row:1:0:4}", "row of another generation" => "{row:1:2}", _ => "{row:1:1}" }, StringComparison.Ordinal);
 
         return PdfTemplate.Build(layout == "rebuilt" ? template.Replace("startxref\n{xref:1}", "startxref\n999999", StringComparison.Ordinal) : template);
     }

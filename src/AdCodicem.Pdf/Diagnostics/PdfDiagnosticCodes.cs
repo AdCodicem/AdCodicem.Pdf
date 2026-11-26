@@ -356,8 +356,10 @@ public static class PdfDiagnosticCodes
     /// its number and its generation together, and a reference to an object the file does not define is null (7.3.10).
     /// The generation is compared on every read of a reference, what the reader keeps of the object included; the entry's
     /// generation plays no part, a disagreement of the entry with the header being the validator's
-    /// (<see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/>). Each distinct reference — number and
-    /// generation — is reported once; the object itself is read once, by its number, whatever generations name it.
+    /// (<see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/>). Raised as a warning, with no position: each
+    /// distinct reference — number and generation — is reported once, on its first read, while the record has room; once it
+    /// is full, each read of such a reference is counted with what it drops. The object itself is read once, by its number,
+    /// whatever generations name it.
     /// </summary>
     public const string ObjectGenerationMismatch = "object.generation-mismatch";
 

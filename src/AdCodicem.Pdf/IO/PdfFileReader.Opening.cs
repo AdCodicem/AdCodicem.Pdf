@@ -135,7 +135,7 @@ internal sealed partial class PdfFileReader
 
             if (resolved.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
-                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
+                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetReferencePresence(deferred.Length);
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",

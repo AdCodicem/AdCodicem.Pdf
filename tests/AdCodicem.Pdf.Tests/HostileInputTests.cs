@@ -1708,7 +1708,7 @@ public class HostileInputTests
         document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle()
             .Which.Message.Should().Be(string.Create(
                 CultureInfo.InvariantCulture,
-                $"A reference names object 8 under generation {asked.Other.Generation}, which the file defines under generation {asked.Own.Generation} only: the reference names an object the file does not define, and reads as null."));
+                $"A reference names object 8 under generation {asked.Other.Generation}, but the object numbered 8 carries generation {asked.Own.Generation}: the reference names an object the file does not define, and reads as null."));
     }
 
     [Fact]
@@ -1729,6 +1729,74 @@ public class HostileInputTests
         document.Catalog!.GetRaw(PdfName.Get("Extra")).Should().BeOfType<PdfReference>().Which.Resolve().AsText().Should().Be("eight");
         document.GetObject(new PdfObjectId(8, 10000)).Should().BeSameAs(PdfNull.Instance);
         document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(1);
+    }
+
+    [Fact]
+    public void References_under_more_generations_than_the_record_holds_are_noted_no_further_than_it()
+    {
+        // An array names object 5 under 1,500 generations it does not carry, each read twice. Each was noted for the life of
+        // the document, a set that grew with what a file names, past what the record of diagnostics keeps; it is noted only
+        // while the record has room, and once full the record counts what it drops (#185).
+        const int Generations = 1_500;
+        var references = new StringBuilder("[");
+
+        for (var generation = 1; generation <= Generations; generation++)
+        {
+            references.Append("5 ").Append(generation).Append(" R ");
+        }
+
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "(five)")
+            .WithObject(6, references.Append(']').ToString())
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file);
+        var all = document.GetObject(6).AsArray().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var index = 0; index < all.Count; index++)
+            {
+                all.Resolved(index).Should().BeSameAs(PdfNull.Instance);
+            }
+        }
+
+        document.Diagnostics.Count.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
+        document.Reader.OtherGenerationsReported.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.SuppressedCount.Should().Be(2 * (Generations - document.Diagnostics.Capacity));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_length_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(bool rowAway)
+    {
+        // Stream 3's /Length names object 7 under generation 1, written 7 0 obj; its row places it at its header, or 2 KB away
+        // in the padding, where loading the stream sets off a rebuild the load finishes after it. The length names an object
+        // the file lacks, and the reference is reported, once, whatever the rebuild withdrew of what was reported while it ran
+        // (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 1 R >>\nstream\nhello\nendstream"),
+        };
+        var padding = file.Padding(8, 4_000);
+        rows[8] = padding;
+        rows[7] = file.Object(7, "5");
+        rows[7] = rowAway ? padding + 2_000 : rows[7];
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(3).AsStream().Required().Data.Length.Should().Be(5);
+
+        document.WasRepaired.Should().Be(rowAway);
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 7 1, which the file lacks");
     }
 
     /// <summary>Gives <paramref name="bytes"/> with the classic table's row of object <paramref name="number"/> giving <paramref name="generation"/>.</summary>
