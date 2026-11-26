@@ -39,11 +39,10 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 - **The issues.** Closes [#185]. Filed under M02: [#455] (batch 41), [#456] (batch 40).
 - **Checks.** The batch check at `ab02627`: 13,674 unit tests, with 235 of the 242 remote documents, 13,671 passed
   and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 802
-  reads; the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145's acceptance
-  tests green, its referee checks running; the site. Patch coverage, counted locally as Codecov counts it, 175 of 176
-  lines whole: the partial one is `TakeCatalog`'s generation of 0, which no input takes, a catalog the search took
-  having been read, and its generation noted, first. Benchmarks against `main`, alternating: time within noise;
-  allocation up 8 % reading every page of 1,000, 11.5 % validating them.
+  reads; the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145 green; the
+  site. Patch coverage 99.43 %, 175 of 176 lines whole: the partial one is `TakeCatalog`'s generation of 0, which no
+  input takes, a catalog the search took having been read, and its generation noted, first. Benchmarks against
+  `main`, alternating: time within noise; allocation up 8 % reading every page of 1,000, 11.5 % validating them.
 - **For callers.** `GetObject(PdfObjectId)` reads as null an identifier whose generation is not the object's, reported;
   `GetObject(int)` reads by number. No committed or fetched document reads otherwise.
 
