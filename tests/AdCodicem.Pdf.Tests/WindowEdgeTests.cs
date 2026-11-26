@@ -1067,6 +1067,84 @@ public class WindowEdgeTests
         document.GetObject(new PdfObjectId(ObjectNumber)).AsArray().Required().Count.Should().Be(3 + PdfFileReader.MaxPlacedHeadersInValue);
     }
 
+    [Fact]
+    public void A_row_the_chain_left_inside_the_value_of_an_object_a_rebuild_moved_is_not_one_the_bound_counts()
+    {
+        // The table places object 5 inside its own value, at a comment line 4 KB past its header, where no header lies: the
+        // load there finds none, and the rebuild places 5 at its header. The array it opens holds 64 comment lines, each with
+        // a row and an element, the table's stale row of 5 among them, then the header of object 300, which ends it: the
+        // stale row is the object's own, which the bound steps over as it does its own row in the rebuilt index (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var objectAt = file.Position;
+        var text = new StringBuilder("5 0 obj\n[ 1 2 3");
+
+        for (var k = 0; k < PdfFileReader.MaxPlacedHeadersInValue; k++)
+        {
+            text.Append("\n% ");
+            rows[100 + k] = objectAt + text.Length;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            text.Append(header).Append('x', 200 - header.Length).Append("\n7");
+
+            if (k == 20)
+            {
+                text.Append("\n% ");
+                rows[ObjectNumber] = objectAt + text.Length;
+                text.Append('z', 100);
+            }
+        }
+
+        text.Append('\n');
+        rows[300] = objectAt + text.Length;
+        text.Append("300 0 obj (next)\nendobj\n");
+        file.Raw(text.ToString());
+        file.Padding(8, 20_000);
+        file.Table(301, rows, "/Size 301 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(ObjectNumber)).AsArray().Required().Count.Should().Be(3 + PdfFileReader.MaxPlacedHeadersInValue);
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Rows_only_the_rebuilt_index_places_inside_a_value_count_toward_the_bound()
+    {
+        // Object 5 opens a string that never closes, past 70 objects the table does not list; the table places object 3 at
+        // bytes that hold none, whose load rebuilds the index, which finds the 70. Read then, object 5's data ends at the first
+        // of them, more than the bound lying inside its value, though the table, the chain's index, places none there (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[ObjectNumber] = file.Position;
+        var text = new StringBuilder("5 0 obj\n[ 1 2 3 (");
+
+        for (var k = 0; k < PdfFileReader.MaxPlacedHeadersInValue + 6; k++)
+        {
+            text.Append(string.Create(CultureInfo.InvariantCulture, $"\n{100 + k} 0 obj\n<< /A 1 >>\nendobj"));
+        }
+
+        file.Raw(text.Append('\n').ToString());
+        rows[3] = file.Position + 5;
+        file.Raw("garbage garbage\n");
+        file.Padding(8, 20_000);
+        file.Table(200, rows, "/Size 200 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        var read = document.GetObject(new PdfObjectId(ObjectNumber)).AsArray().Required();
+        read.Count.Should().Be(4);
+        read[3].AsText().Should().Be("\n");
+        document.GetObject(new PdfObjectId(120)).Should().BeOfType<PdfDictionary>();
+    }
+
     [Theory]
     [InlineData("rows before the value", "missing")]
     [InlineData("the object's own row inside the value", "whole")]
