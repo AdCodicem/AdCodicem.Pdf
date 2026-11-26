@@ -342,6 +342,8 @@ internal sealed partial class PdfFileReader
 
         // Where the object's data is read as ending, at a header an index places inside its value; -1 for the file's end.
         var dataEnd = -1L;
+        var firstWindow = true;
+        var headerCut = false;
 
         try
         {
@@ -362,20 +364,15 @@ internal sealed partial class PdfFileReader
                     lead = 0;
                 }
 
-                // A header read here before through a grown window: whole, it names another object than the one asked for or
-                // the one asked for; cut by a guard no larger than this one, it is cut again.
-                if (number != AnyObject && _headerNumbers is { } known && known.TryGetValue(offset, out var header))
+                // A header a window's edge cut here before is answered as reading it again would answer, without growing.
+                if (firstWindow)
                 {
-                    if (header.Number == (int)HeaderPastGuard && maxWindow <= header.Bound)
-                    {
-                        ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
-                        foundNumber = (int)HeaderPastGuard;
-                        return false;
-                    }
+                    firstWindow = false;
 
-                    if (header.Number >= 0 && header.Number != number)
+                    if (number > 0 && _headerCuts is { } cuts && cuts.TryGetValue(offset, out var known) &&
+                        AnswersFromCut(known, offset, number, limit, maxWindow, out foundNumber) is { } answer)
                     {
-                        return false;
+                        return answer;
                     }
                 }
 
@@ -402,11 +399,13 @@ internal sealed partial class PdfFileReader
                     }
 
                     _pending.RollBackToRetry(mark);
+                    headerCut = true;
+                    var named = NoteHeaderCut(offset, bytes.Span);
 
                     // A header whose number the window holds whole names its object however its tokens go on: one that names
                     // another than the object asked for is not it, under any guard, and a window grown for it would read on
                     // for nothing, once for each row that places another object there.
-                    if (number != AnyObject && NamesAnotherObject(bytes.Span, number))
+                    if (number > 0 && named is { } first && first != number)
                     {
                         return false;
                     }
@@ -418,7 +417,6 @@ internal sealed partial class PdfFileReader
                         // asked for any object reads no number there.
                         ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
                         foundNumber = number == AnyObject ? 0 : (int)HeaderPastGuard;
-                        KeepHeaderNumber(offset, windowSize, initialWindow, (int)HeaderPastGuard, maxWindow);
                         return false;
                     }
 
@@ -441,13 +439,21 @@ internal sealed partial class PdfFileReader
                 }
                 else if (number != AnyObject && found.Number != number)
                 {
-                    KeepHeaderNumber(offset, windowSize, initialWindow, found.Number, maxWindow);
+                    if (headerCut)
+                    {
+                        NoteHeaderCut(offset, bytes.Span, whole: true);
+                    }
+
                     return false;
                 }
                 else
                 {
                     foundNumber = found.Number;
-                    KeepHeaderNumber(offset, windowSize, initialWindow, found.Number, maxWindow);
+
+                    if (headerCut)
+                    {
+                        NoteHeaderCut(offset, bytes.Span, whole: true);
+                    }
                 }
 
                 var lengthFault = parser.LengthFault;
@@ -622,27 +628,63 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Keeps what a load read of the header at <paramref name="offset"/>, under a guard whose largest window is
-    /// <paramref name="bound"/>, where reading it took a window grown past <paramref name="initialWindow"/>
-    /// (<see cref="_headerNumbers"/>).
+    /// Notes in <see cref="_headerCuts"/> what <paramref name="bytes"/>, read from <paramref name="offset"/>, tell of the header
+    /// there: that it runs past them, its tokens cut, unless <paramref name="whole"/>; and the integer they start with, past
+    /// white space and comments, where their edge does not cut it, which it gives.
     /// </summary>
-    private void KeepHeaderNumber(long offset, int windowSize, int initialWindow, int number, int bound)
+    private long? NoteHeaderCut(long offset, ReadOnlySpan<byte> bytes, bool whole = false)
     {
-        if (windowSize > initialWindow)
-        {
-            (_headerNumbers ??= new(SeededComparer.Instance))[offset] = (number, bound);
-        }
+        var token = new PdfLexer(bytes).Read();
+        long? number = token.Kind == PdfTokenKind.Integer && token.End < bytes.Length ? token.Integer : null;
+        var cuts = _headerCuts ??= new(SeededComparer.Instance);
+        cuts.TryGetValue(offset, out var known);
+        cuts[offset] = new HeaderCut(
+            number ?? known.Number,
+            number is null ? known.NumberEnd : token.End,
+            whole ? known.CutPast : Math.Max(known.CutPast, bytes.Length));
+        return number;
     }
 
     /// <summary>
-    /// Determines whether <paramref name="bytes"/> start, past white space and comments, with an integer their edge does not
-    /// cut that is not <paramref name="number"/>: the number of a header that names another object, if a header it is.
+    /// Answers a load of object <paramref name="number"/> at <paramref name="offset"/> from what loads learned of the header a
+    /// window's edge cut there (<paramref name="known"/>), as reading it again would answer: false where its first integer,
+    /// whole within the largest window <paramref name="maxWindow"/>, names another object, or where more rows than
+    /// <see cref="MaxPlacedHeadersInValue"/> follow the place before a window short of that largest one that still cuts the
+    /// header, as the reading would find them now; the guard of <paramref name="limit"/> reached, and false, where that
+    /// largest window cuts the header; and null, for the load to read it, where what was learned does not tell.
     /// </summary>
-    private static bool NamesAnotherObject(ReadOnlySpan<byte> bytes, int number)
+    private bool? AnswersFromCut(HeaderCut known, long offset, int number, PdfLimit limit, int maxWindow, out int foundNumber)
     {
-        var token = new PdfLexer(bytes).Read();
-        return token.Kind == PdfTokenKind.Integer && token.End < bytes.Length && token.Integer != number;
+        foundNumber = 0;
+
+        if (known.NumberEnd > 0 && known.NumberEnd < maxWindow && known.Number != number)
+        {
+            return false;
+        }
+
+        if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue &&
+            partedAt - offset + 1 < maxWindow && partedAt - offset < known.CutPast)
+        {
+            return false;
+        }
+
+        if (known.CutPast >= maxWindow)
+        {
+            ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
+            foundNumber = (int)HeaderPastGuard;
+            return false;
+        }
+
+        return null;
     }
+
+    /// <summary>
+    /// What loads learned of a header a window's edge cut at a place (<see cref="_headerCuts"/>), from the place on.
+    /// </summary>
+    /// <param name="Number">The integer the header starts with, past white space and comments, where a window held it whole.</param>
+    /// <param name="NumberEnd">Where that integer ends; 0 where no window held it whole.</param>
+    /// <param name="CutPast">The longest window that cut the header's tokens.</param>
+    private readonly record struct HeaderCut(long Number, int NumberEnd, int CutPast);
 
     /// <summary>
     /// Counts the rows an index places from <paramref name="from"/> on, in the file — of the chain's index, and of the

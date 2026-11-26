@@ -5664,6 +5664,7 @@ public class HostileInputTests
     [InlineData("leading zeros, 3 0 obj", false)]
     [InlineData("leading signs, 3 0 obj", false)]
     [InlineData("comment lines past the guard, 3 0 obj", false)]
+    [InlineData("comment lines holding rows, 3 0 obj", false)]
     public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(string shape, bool validate)
     {
         // Rows that place a thousand objects at one header whose tokens, or what comes before its number, run on for lines,
@@ -5690,6 +5691,13 @@ public class HostileInputTests
 
             for (var k = 0; k < lines; k++)
             {
+                if (shape == "comment lines holding rows, 3 0 obj" && k % 3 == 0)
+                {
+                    // A row past the place on every third line, for an object of its own: more of them part the header than the
+                    // bound allows.
+                    rows[3 + objects + (k / 3)] = at + run.Length + 2;
+                }
+
                 run.Append(shape switch
                 {
                     "white space, 3 0 obj" => new string(' ', 251),
@@ -5711,7 +5719,8 @@ public class HostileInputTests
                 rows[3 + k] = at;
             }
 
-            file.Table(3 + objects, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {3 + objects} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+            var size = 3 + objects + lines;
+            file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
             var options = shape.Contains("past the guard", StringComparison.Ordinal)
                 ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
                 : null;
@@ -5731,6 +5740,52 @@ public class HostileInputTests
             }
 
             return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("9 0, comment lines past the guard, obj")]
+    [InlineData("comment lines past the guard, 9 0 obj")]
+    [InlineData("9 0, comment lines, obj")]
+    public void Objects_placed_at_one_header_a_window_cuts_read_alike_whatever_order_they_are_read_in(string shape)
+    {
+        // Rows place objects 4 to 9 at one header a window's edge cuts, under MaxObjectLength 32 KB, which it runs past or
+        // not. What a load learns of that header serves the loads after it, and must answer each as reading the header again
+        // would: the objects, and the codes and places reported, are the same whether object 9, whose header it is, is read
+        // first or last (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var lines = string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), shape.Contains("past the guard", StringComparison.Ordinal) ? 200 : 40));
+        file.Raw(shape.StartsWith("9 0", StringComparison.Ordinal) ? "9 0" + lines + "\nobj (nine)\nendobj\n" : lines + "\n9 0 obj (nine)\nendobj\n");
+
+        for (var number = 4; number <= 9; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } };
+
+        Read([9, 4, 5, 6, 7, 8]).Should().Equal(Read([4, 5, 6, 7, 8, 9]));
+
+        List<string> Read(int[] order)
+        {
+            using var document = PdfDocument.Open(file.Bytes, options);
+            var seen = new List<string>();
+
+            foreach (var number in order)
+            {
+                seen.Add(string.Create(CultureInfo.InvariantCulture, $"{number}: {document.GetObject(new PdfObjectId(number))}"));
+            }
+
+            // A guard reached at one place is reported once, naming the object whose load reached it first.
+            seen.AddRange(document.Diagnostics.Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Code} at {entry.Position}")));
+            return [.. seen.Order(StringComparer.Ordinal)];
         }
     }
 

@@ -47,7 +47,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// for after is kept as read where more rows than this lie past it, as where a header lexes past it
     /// (<see cref="WindowHoldsPlacedHeader"/>); and a header whose tokens more rows than this part, counted from the byte
     /// past the place, is none there, the load reading no object at the place — one whose number the window holds whole
-    /// and names another object than the one asked for is not read on at all. Without the bound, each object a run of comment or string lines
+    /// and names another object than the one asked for is not read on at all. What loads learn of a header a window's edge
+    /// cut answers the loads after them at the same place (<see cref="_headerCuts"/>). Without the bound, each object a run of comment or string lines
     /// places read every line after its own, and a rebuild or a validation, which load every object, took time in the
     /// square of the lines. The rule asks only the window that runs to its edge still open: a value that closes inside the
     /// window it is first read through is read whole, whatever rows it holds. At the largest window
@@ -818,13 +819,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private HashSet<int>? _cutAtStop;
 
     /// <summary>
-    /// What a load read of the header at each place, by the place, where reading it took a window grown past the first: the
-    /// number a header read whole gives, or <see cref="HeaderPastGuard"/> where the guard cut it, with the largest window the
-    /// guard allowed then. A load of another object there is refused once its first window is read, and one the same guard
-    /// cut again is told so, rather than grown over the same header again, once for each row that places an object there
-    /// (#387). Null while there is none.
+    /// What loads learned of a header a window's edge cut at a place, by the place (<see cref="HeaderCut"/>): a load there
+    /// answers from it what reading the header again would, once its first window is read, rather than grow its window over
+    /// the same header again, once for each row that places an object there (#387). Null while there is none.
     /// </summary>
-    private Dictionary<long, (int Number, int Bound)>? _headerNumbers;
+    private Dictionary<long, HeaderCut>? _headerCuts;
 
     /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
@@ -2346,7 +2345,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         Release(_unproduced);
         Release(_cutAtLimit);
         _cutAtStop = null;
-        _headerNumbers = null;
+        _headerCuts = null;
         _endObjMissing.Clear();
         _endObjMissing.TrimExcess();
         _streamLengthFaults.Clear();
