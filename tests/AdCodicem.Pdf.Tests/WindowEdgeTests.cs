@@ -1146,6 +1146,41 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue, "")]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue + 1, "xref.section-missing")]
+    public void A_section_s_header_the_bound_s_rows_part_is_read_the_row_at_its_place_aside(int past, string reported)
+    {
+        // The table places object 10 at the cross-reference stream its /Prev names, whose header a comment longer than the
+        // window a section is read with parts, and objects 11 on at rows inside that comment: the row at the place itself is
+        // not one of those parting the header, so the bound's rows read it, one more makes it none (#387). A trailer guard
+        // larger than that window lets the count, not the guard, answer.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var sectionAt = file.CrossReferenceStream(
+            10,
+            11,
+            new() { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0) },
+            "/Root 1 0 R",
+            header: "10 0 %" + new string('x', 70_000) + "\nobj");
+        rows[10] = sectionAt;
+
+        for (var k = 1; k <= past; k++)
+        {
+            rows[10 + k] = sectionAt + (100 * k);
+        }
+
+        file.Table(11 + past, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {11 + past} /Root 1 0 R /Prev {sectionAt}"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        string.Join(";", document.Diagnostics.Select(d => d.Code)).Should().Be(reported);
+    }
+
+    [Theory]
     [InlineData("rows before the value", "missing")]
     [InlineData("the object's own row inside the value", "whole")]
     [InlineData("a header the parse meets at the row past the bound", "ended")]
