@@ -780,6 +780,95 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue, true)]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue + 1, false)]
+    public void A_value_open_past_its_first_window_with_the_bound_s_rows_inside_it_is_read_whole(int lines, bool whole)
+    {
+        // Object 5's string holds lines of 100 bytes, each with a header the table places, all within the window a load starts
+        // with, then 4 KB of filler past it before it closes. As many rows as the bound are read past, the window growing; one
+        // more ends the string at the first (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        file.Raw("5 0 obj\n(");
+
+        for (var k = 0; k < lines; k++)
+        {
+            file.Raw("\n% ");
+            rows[100 + k] = file.Position;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            file.Raw(header + new string('x', 100 - header.Length));
+        }
+
+        file.Raw(new string('x', 4096) + ")\nendobj\n");
+        file.Table(100 + lines, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {100 + lines} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber)).Should().BeOfType<PdfString>().Subject;
+
+        (read.Length > 4096).Should().Be(whole);
+    }
+
+    [Theory]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue, "five")]
+    [InlineData(PdfFileReader.MaxPlacedHeadersInValue + 6, null)]
+    public void A_header_more_rows_than_the_bound_part_is_none_at_its_place(int lines, string? read)
+    {
+        // Object 5's header, "5 0", lines of comment each holding a header the table places, then obj: past the window a load
+        // starts with, within the next. As many rows as the bound part a header read whole; more part none (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        file.Raw("5 0");
+
+        for (var k = 0; k < lines; k++)
+        {
+            file.Raw("\n% ");
+            rows[100 + k] = file.Position;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            file.Raw(header + new string('x', 150 - header.Length));
+        }
+
+        file.Raw("\nobj (five)\nendobj\n");
+        file.Table(100 + lines, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {100 + lines} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(ObjectNumber)).AsText().Should().Be(read);
+    }
+
+    [Fact]
+    public void A_cut_header_whose_whole_number_names_another_object_is_refused_under_the_guard_without_reaching_it()
+    {
+        // Object 4's row places it at object 9's header, whose number its first window holds whole and whose obj lies past
+        // MaxObjectLength 32 KB; object 4's own header lies 100 bytes before. The load refuses the header for its number,
+        // reaching no guard, and the search near the row finds object 4 (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        file.Object(4, "(four)");
+        file.Raw(new string(' ', 80) + "\n");
+        rows[4] = file.Position;
+        file.Raw("9 0" + string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), 160)) + "\nobj (nine)\nendobj\n");
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } });
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("four");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
     [InlineData("rows before the value", "missing")]
     [InlineData("the object's own row inside the value", "whole")]
     [InlineData("a header the parse meets at the row past the bound", "ended")]

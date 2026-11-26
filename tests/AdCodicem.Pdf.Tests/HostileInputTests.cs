@@ -5711,11 +5711,11 @@ public class HostileInputTests
 
             file.Raw(shape switch
             {
-                "3 0, comment lines, obj" => "3 0" + run + "\nobj null\nendobj\n",
+                "3 0, comment lines, obj" => "3 0" + run + "\nobj (three)\nendobj\n",
                 "comment lines, a name" => run + "\n/Name null\nendobj\n",
                 "comment lines, 0 0 obj" => run + "\n0 0 obj null\nendobj\n",
-                "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj null\nendobj\n",
-                _ => run + "\n3 0 obj null\nendobj\n",
+                "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj (three)\nendobj\n",
+                _ => run + "\n3 0 obj (three)\nendobj\n",
             });
 
             for (var k = 0; k < objects; k++)
@@ -5743,6 +5743,12 @@ public class HostileInputTests
                 }
             }
 
+            // The header's own object reads where its row places it: the rows of the other objects at its place part nothing.
+            if (shape is not ("comment lines past the guard, 3 0 obj" or "comment lines holding rows, 3 0 obj" or "comment lines, a name" or "comment lines, 0 0 obj"))
+            {
+                document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+            }
+
             return source.BytesRead;
         }
     }
@@ -5751,6 +5757,7 @@ public class HostileInputTests
     [InlineData("9 0, comment lines past the guard, obj")]
     [InlineData("comment lines past the guard, 9 0 obj")]
     [InlineData("9 0, comment lines, obj")]
+    [InlineData("comment lines within the guard, 9 0 obj")]
     public void Objects_placed_at_one_header_a_window_cuts_read_alike_whatever_order_they_are_read_in(string shape)
     {
         // Rows place objects 4 to 9 at one header a window's edge cuts, under MaxObjectLength 32 KB, which it runs past or
@@ -5764,7 +5771,7 @@ public class HostileInputTests
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
         };
         var at = file.Position;
-        var lines = string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), shape.Contains("past the guard", StringComparison.Ordinal) ? 200 : 40));
+        var lines = string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), shape.Contains("past the guard", StringComparison.Ordinal) ? 200 : shape.Contains("within", StringComparison.Ordinal) ? 80 : 40));
         file.Raw(shape.StartsWith("9 0", StringComparison.Ordinal) ? "9 0" + lines + "\nobj (nine)\nendobj\n" : lines + "\n9 0 obj (nine)\nendobj\n");
 
         for (var number = 4; number <= 9; number++)
