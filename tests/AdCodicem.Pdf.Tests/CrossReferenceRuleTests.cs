@@ -4423,7 +4423,7 @@ public class CrossReferenceRuleTests
 
         if (readFirst)
         {
-            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+            document.GetObject(4).Should().BeOfType<PdfStream>();
         }
 
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong);

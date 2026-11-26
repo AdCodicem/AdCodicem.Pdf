@@ -87,9 +87,11 @@ internal sealed partial class PdfFileReader
 
     private PdfObject LoadFromEntry(PdfObjectId id, XRefEntry entry)
     {
+        // An object stream holds its objects at generation 0 (ISO 32000-1, 7.5.7).
+        var generation = 0;
         var loaded = entry.Kind switch
         {
-            XRefEntryKind.Regular => LoadRegularObject(id, entry),
+            XRefEntryKind.Regular => LoadRegularObject(id, entry, out generation),
             XRefEntryKind.Compressed => LoadCompressedObject(id, entry),
             _ => PdfNull.Instance,
         };
@@ -99,6 +101,7 @@ internal sealed partial class PdfFileReader
         if (loaded is { } value)
         {
             _unproduced.Remove(id.Number);
+            _carriedGenerations[id.Number] = generation;
             return value;
         }
 
@@ -115,9 +118,10 @@ internal sealed partial class PdfFileReader
     /// loading, and a fuzzed file drove the two into each other until the stack ran out — a file killing
     /// the process is the exact outcome the reader exists to prevent.
     /// </remarks>
-    private PdfObject? LoadRegularObject(PdfObjectId id, XRefEntry entry)
+    private PdfObject? LoadRegularObject(PdfObjectId id, XRefEntry entry, out int generation)
     {
         var offset = PositionOf(entry);
+        generation = 0;
 
         // What a stop of the chain's own load marked is the opening's: this load reads the object as any load does, and what
         // it reads decides whether the object is cut (#292).
@@ -133,7 +137,7 @@ internal sealed partial class PdfFileReader
                     CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
 
-        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation, out _, out var stopped))
+        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out generation, out _, out var stopped))
         {
             if (nearby < 0)
             {
@@ -170,7 +174,7 @@ internal sealed partial class PdfFileReader
 
         return _xref.TryGet(id.Number, out var rebuilt) &&
                rebuilt.Kind == XRefEntryKind.Regular &&
-               TryParseObjectAt(id.Number, PositionOf(rebuilt), out var afterRebuild)
+               TryParseObjectAt(id.Number, PositionOf(rebuilt), out var afterRebuild, out generation)
             ? afterRebuild
             : null;
     }
@@ -180,7 +184,14 @@ internal sealed partial class PdfFileReader
     /// past its end. Returns false when nothing with that number is there.
     /// </summary>
     private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, out _, recordedAt: recordedAt);
+        TryParseObjectAt(number, offset, out value, out _, recordedAt);
+
+    /// <summary>
+    /// Parses object <paramref name="number"/> at an exact offset, as <see cref="TryParseObjectAt(int, long, out PdfObject, long)"/>
+    /// does, and gives the generation its header gives.
+    /// </summary>
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value, out int generation, long recordedAt = RecordedAnywhere) =>
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out generation, out _, out _, out _, out _, recordedAt: recordedAt);
 
     /// <summary>
     /// Parses object <paramref name="number"/> where <paramref name="entry"/> places it, as a load looks for it: at the offset
@@ -210,7 +221,7 @@ internal sealed partial class PdfFileReader
     /// <param name="recordedAt">Where the object's header must start for what the reading notes by its number to be noted.</param>
     /// <param name="value">The object read.</param>
     /// <param name="nearby">Where the header the search near the offset chose starts; -1 where it was read at the offset.</param>
-    /// <param name="generation">The generation the header the search chose gives.</param>
+    /// <param name="generation">The generation the header of the object read gives; 0 where none was read.</param>
     /// <param name="headerAt">
     /// Where the header of the object read starts, past the white space and comments before it: the place a load takes the
     /// entry to give, which a row a few bytes early does not.
@@ -223,9 +234,19 @@ internal sealed partial class PdfFileReader
         nearby = -1;
 
         if (TryParseNumberedAt(
-            offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
+            offset,
+            number,
+            PdfLimit.Object,
+            out value,
+            out var found,
+            out generation,
+            out headerAt,
+            out _,
+            out _,
+            out _,
+            recordedAt: recordedAt,
+            atRow: !entry.FoundByReader))
         {
-            generation = 0;
             stopped = false;
             return true;
         }
@@ -244,11 +265,11 @@ internal sealed partial class PdfFileReader
         {
             nearby = header;
             headerAt = header;
-            return TryParseObjectAt(number, header, out value, recordedAt);
+            return TryParseObjectAt(number, header, out value, out generation, recordedAt);
         }
 
         headerAt = offset;
-        return found == HeaderCutsNumber && TryParseObjectAt(number, offset, out value, recordedAt);
+        return found == HeaderCutsNumber && TryParseObjectAt(number, offset, out value, out generation, recordedAt);
     }
 
     /// <summary>
@@ -278,6 +299,7 @@ internal sealed partial class PdfFileReader
     /// <paramref name="atRow"/> and the row cuts a number, where nothing is read; <see cref="HeaderPastGuard"/> where the
     /// guard cut the header at the offset of an object asked for by its number.
     /// </param>
+    /// <param name="foundGeneration">The generation the header of the object read gives; 0 for a direct object.</param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
     /// <param name="digitsAt">
     /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
@@ -314,6 +336,7 @@ internal sealed partial class PdfFileReader
         PdfLimit limit,
         out PdfObject value,
         out int foundNumber,
+        out int foundGeneration,
         out long headerAt,
         out long digitsAt,
         out bool syntaxFault,
@@ -325,6 +348,7 @@ internal sealed partial class PdfFileReader
     {
         value = PdfNull.Instance;
         foundNumber = 0;
+        foundGeneration = 0;
         headerAt = offset;
         digitsAt = offset;
         syntaxFault = false;
@@ -455,6 +479,7 @@ internal sealed partial class PdfFileReader
                 else
                 {
                     foundNumber = found.Number;
+                    foundGeneration = found.Generation;
 
                     if (headerCut)
                     {
@@ -2101,7 +2126,7 @@ internal sealed partial class PdfFileReader
             // The stream's own load reaching a guard — its dictionary, its /Length — is kept as its decoding's is, so that each
             // object asked of it throws again without loading it again (#397).
             keeping = DecodingStep.Load;
-            loaded = GetObject(new PdfObjectId(number));
+            loaded = GetIndexedObject(number);
             keeping = DecodingStep.None;
 
             // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that

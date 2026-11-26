@@ -44,6 +44,47 @@ public class ObjectRuleTests
             "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 5 0 under /Annots[0].");
     }
 
+    [Theory]
+    [InlineData("/Annots [1 1 R]", "Object 3 refers to object 1 1 under /Annots[0], which the file lacks: it defines object 1 under generation 0 only, and the reference reads as null.")]
+    [InlineData("/Annots [2 1 R 2 1 R 2 3 R]", "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 2 1 under /Annots[0], which the file defines under generation 0 only.")]
+    [InlineData("/Annots [9 0 R 2 1 R]", "Object 3 holds 2 references to objects the file lacks, which read as null; the first refers to object 9 0 under /Annots[0].")]
+    public void A_reference_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(string annots, string message)
+    {
+        // An object is named by its number and its generation together (ISO 32000-1, 7.3.10): the catalog and the page tree's
+        // root are written under generation 0, and a reference naming either under another names an object the file does not
+        // define, which reads as null. The message names the generation the file defines it under (#185).
+        Single(Validate(PdfTemplate.SoundWith("/Resources << >>", "/Resources << >> " + annots)), PdfValidationRuleIds.ObjectReferenceMissing)
+            .Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], which the file defines under generation 0 only.", true)]
+    [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: it defines object 5 under generation 0 only, and the reference reads as null.", true)]
+    [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: it defines object 5 under generation 0 only, and the reference reads as null.", false)]
+    public void An_object_named_under_another_generation_is_walked_only_through_a_reference_naming_its_own(string entries, string message, bool walked)
+    {
+        // Object 5, written under generation 0, refers to object 99, which the file lacks, and lacks its endobj. The catalog
+        // names it under generation 1 before it is read, with its own generation while it waits or once it is read — object 6
+        // naming it, read first —, or only under 1: the walk counts each reference under 1 at the catalog, and reads object 5,
+        // and judges it, only where a reference names it as it is written (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Object(6, "<< /C 5 0 R >>"),
+        };
+        rows[5] = file.Position;
+        file.Raw("5 0 obj\n<< /M 99 0 R >>\n6 1 obj (six) endobj\n");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var report = Validate(file.Bytes);
+
+        var missing = report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).ToList();
+        missing.Should().Contain(finding => finding.Location.Object == new PdfObjectId(1)).Which.Message.Should().Be(message);
+        missing.Any(finding => finding.Location.Object == new PdfObjectId(5)).Should().Be(walked);
+        report.Findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing).Should().Be(walked);
+    }
+
     [Fact]
     public void A_reference_to_a_free_entry_names_an_object_the_file_lacks()
     {

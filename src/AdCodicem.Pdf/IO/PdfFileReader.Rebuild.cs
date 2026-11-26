@@ -135,6 +135,7 @@ internal sealed partial class PdfFileReader
         _walkLoads = null;
         _cache.Clear();
         _cacheOrder.Clear();
+        _carriedGenerations.Clear();
         ForgetCutReads();
         _objectStreams.Clear();
         _objectStreamsHiddenByGuard.Clear();
@@ -709,7 +710,7 @@ internal sealed partial class PdfFileReader
                 continue;
             }
 
-            if (NamesUnindexed(((PdfStream)GetObject(new PdfObjectId(stream.Number))).Dictionary, depth: 0))
+            if (NamesUnindexed(((PdfStream)GetIndexedObject(stream.Number)).Dictionary, depth: 0))
             {
                 (deferred ??= new(SeededComparer.Instance)).Add(stream.Number);
                 continue;
@@ -880,7 +881,7 @@ internal sealed partial class PdfFileReader
     {
         try
         {
-            var loaded = GetObject(new PdfObjectId(number));
+            var loaded = GetIndexedObject(number);
 
             if (loaded is not PdfStream stream)
             {
@@ -919,7 +920,7 @@ internal sealed partial class PdfFileReader
 
         try
         {
-            var stream = (PdfStream)GetObject(new PdfObjectId(number));
+            var stream = (PdfStream)GetIndexedObject(number);
             contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out var hidden);
 
             if (contents is null && hidden)
@@ -963,6 +964,7 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
+        _carriedGenerations.Remove(number);
         _cutCache.RemoveAll(number);
 
         // No load is in flight as the expansion replaces a definition, and what the last read noted of its cut reads was let
@@ -994,6 +996,7 @@ internal sealed partial class PdfFileReader
         ForgetThrows();
         _cache.Clear();
         _cacheOrder.Clear();
+        _carriedGenerations.Clear();
         _walkLoads = null;
         ForgetCutReads();
         _objectStreams.Clear();
@@ -1214,14 +1217,14 @@ internal sealed partial class PdfFileReader
 
     /// <summary>Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>.</summary>
     private bool IsCatalogCandidate(int number) =>
-        GetObject(new PdfObjectId(number)).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+        GetIndexedObject(number).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
 
     /// <summary>Makes object <paramref name="number"/>, a catalog the search found, the trailer's <c>/Root</c>.</summary>
     private void TakeCatalog(int number)
     {
-        // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way gives the
-        // header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
-        var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
+        // The reference names the catalog under the generation it carries, read once the catalog is: a header of 1 1 makes
+        // 1 1 R, not 1 0 R, whatever generation its entry gives (#118, #185).
+        var generation = _carriedGenerations.TryGetValue(number, out var carried) ? carried : 0;
         Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
         _catalogFoundAs = number;
 

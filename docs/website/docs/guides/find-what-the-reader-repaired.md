@@ -136,7 +136,7 @@ using AdCodicem.Pdf.Objects;
 
 foreach (var number in document.ObjectNumbers)
 {
-    _ = document.GetObject(new PdfObjectId(number));   // may rebuild the index
+    _ = document.GetObject(number);   // may rebuild the index
 }
 
 var info = document.Trailer.GetDictionary(PdfName.Info);   // the rebuilt trailer's, if a rebuild ran

@@ -1604,8 +1604,9 @@ public class HostileInputTests
     [Fact]
     public void An_object_referenced_under_many_generations_is_read_once()
     {
-        // The index holds one entry per object number, so every generation of a number is the same object: it is
-        // parsed once and kept once, however many generations a file references it under.
+        // The index holds one entry per object number, and the object is parsed once and kept once, however many generations
+        // a file references it under: a reference under a generation other than its header's names an object the file does
+        // not define, and reads as null, each reported once (#185).
         const int Integers = 10_000;
         const int Generations = 1_000;
         var array = new StringBuilder("[");
@@ -1640,10 +1641,104 @@ public class HostileInputTests
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        same.Should().Be(Generations);
+        same.Should().Be(1);
         allocated.Should().BeLessThan(4L * 1024 * 1024, "the array is parsed once, not once per generation");
         first.AsArray().Required().Count.Should().Be(Integers);
-        document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(first);
+        document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(Generations - 1);
+    }
+
+    [Theory]
+    [InlineData("a direct object, named under a higher generation", false)]
+    [InlineData("a direct object, named under a higher generation", true)]
+    [InlineData("a direct object written under generation 2, named under 0", false)]
+    [InlineData("a direct object written under generation 2, named under 0", true)]
+    [InlineData("a member of an object stream, named under 3", false)]
+    [InlineData("a member of an object stream, named under 3", true)]
+    [InlineData("an object 5 bytes past its row, named under 4", false)]
+    [InlineData("an object 5 bytes past its row, named under 4", true)]
+    public void A_reference_under_a_generation_its_object_does_not_carry_reads_as_null_in_either_order(string shape, bool otherFirst)
+    {
+        // An object is named by its number and its generation together, and a reference to an object the file does not define
+        // is null (ISO 32000-1, 7.3.10): one naming a generation other than the object's header gives, or than 0 for an object
+        // an object stream holds, read it all the same, unreported. Asked first or once the object is kept by its number, the
+        // reference reads as null, reported once; the generation the object carries reads it (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        byte[] bytes;
+        (PdfObjectId Other, PdfObjectId Own) asked;
+
+        switch (shape)
+        {
+            case "a member of an object stream, named under 3":
+                var ten = file.ObjectStream(10, [(8, "(eight)")]);
+                file.CrossReferenceStream(11, 12, new() { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [8] = (2, 10, 0), [10] = (1, ten, 0) }, "/Root 1 0 R");
+                bytes = file.Bytes;
+                asked = (new PdfObjectId(8, 3), new PdfObjectId(8));
+                break;
+            case "an object 5 bytes past its row, named under 4":
+                rows[8] = file.Position - 5;
+                file.Object(8, "(eight)");
+                file.Table(9, rows, "/Size 9 /Root 1 0 R");
+                bytes = file.Bytes;
+                asked = (new PdfObjectId(8, 4), new PdfObjectId(8));
+                break;
+            default:
+                var written = shape.StartsWith("a direct object written under generation 2", StringComparison.Ordinal) ? 2 : 0;
+                rows[8] = file.Object(8, "(eight)", written);
+                file.Table(9, rows, "/Size 9 /Root 1 0 R");
+                bytes = written == 0 ? file.Bytes : WithRowGeneration(file.Bytes, 8, written);
+                asked = written == 0 ? (new PdfObjectId(8, 1), new PdfObjectId(8)) : (new PdfObjectId(8), new PdfObjectId(8, 2));
+                break;
+        }
+
+        using var document = PdfDocument.Open(bytes);
+        var first = otherFirst ? asked.Other : asked.Own;
+        var second = otherFirst ? asked.Own : asked.Other;
+        var reads = new[] { document.GetObject(first), document.GetObject(second), document.GetObject(asked.Other) };
+
+        (otherFirst ? reads[1] : reads[0]).AsText().Should().Be("eight");
+        (otherFirst ? reads[0] : reads[1]).Should().BeSameAs(PdfNull.Instance);
+        reads[2].Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(8).AsText().Should().Be("eight");
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle()
+            .Which.Message.Should().Be(string.Create(
+                CultureInfo.InvariantCulture,
+                $"A reference names object 8 under generation {asked.Other.Generation}, which the file defines under generation {asked.Own.Generation} only: the reference names an object the file does not define, and reads as null."));
+    }
+
+    [Fact]
+    public void An_entry_whose_generation_disagrees_with_the_header_reads_the_object_the_references_and_the_header_name()
+    {
+        // As in iPRES t03-010: the row of object 8 gives generation 10000, its header and the references 0. The generation a
+        // reference is told from is the header's, and the entry's plays no part (ADR 45, #185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 8 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [8] = file.Object(8, "(eight)"),
+        };
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var document = PdfDocument.Open(WithRowGeneration(file.Bytes, 8, 10000));
+
+        document.Catalog!.GetRaw(PdfName.Get("Extra")).Should().BeOfType<PdfReference>().Which.Resolve().AsText().Should().Be("eight");
+        document.GetObject(new PdfObjectId(8, 10000)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(1);
+    }
+
+    /// <summary>Gives <paramref name="bytes"/> with the classic table's row of object <paramref name="number"/> giving <paramref name="generation"/>.</summary>
+    private static byte[] WithRowGeneration(byte[] bytes, int number, int generation)
+    {
+        var text = Encoding.Latin1.GetString(bytes);
+        var table = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+        var row = text.IndexOf('\n', text.IndexOf('\n', table) + 1) + 1 + (number * 20);
+        return Encoding.Latin1.GetBytes(
+            text[..(row + 11)] + generation.ToString("D5", CultureInfo.InvariantCulture) + text[(row + 16)..]);
     }
 
     [Fact]

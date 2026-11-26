@@ -546,7 +546,7 @@ internal sealed class ObjectStreamDependencies
     /// </remarks>
     private static PdfObject Read(PdfDocument document, PdfObjectId id, XRefEntry entry) =>
         (document.Reader.ChainIndex is null ? null : document.Reader.ReadWhereChainPlaces(id.Number, entry)) ??
-        document.GetObject(id);
+        document.Reader.GetIndexedObject(id.Number);
 
     /// <summary>
     /// Determines whether the index the reader reads with now places object <paramref name="number"/> as the chain's does:
@@ -2452,7 +2452,7 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         private PdfObject Fetch(int number, XRefEntry entry) =>
             entry.Kind == XRefEntryKind.Compressed
-                ? document.GetObject(new PdfObjectId(number))
+                ? document.Reader.GetIndexedObject(number)
                 : Read(document, new PdfObjectId(number, entry.Generation), entry);
 
         /// <summary>Keeps what object <paramref name="number"/>, which is not kept yet, gives the walks.</summary>

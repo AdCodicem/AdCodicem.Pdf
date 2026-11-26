@@ -62,6 +62,21 @@ internal sealed class ObjectGraph
     private readonly Stack<Pending> _work = new();
     private readonly HashSet<int> _visited = new(SeededComparer.Instance);
     private readonly HashSet<int> _missing = new(SeededComparer.Instance);
+
+    /// <summary>The objects claimed and not read yet, by number.</summary>
+    private readonly HashSet<int> _claimed = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The references met to an object claimed and not read yet, after the one that claimed it, by number: the object that
+    /// holds each, its role, and the generation it names, which is told from the one the object carries once it is read.
+    /// </summary>
+    private readonly Dictionary<int, List<(int Owner, Role Role, int Generation)>> _waiting = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The objects read only through references that name a generation they do not carry, which read as null: none of
+    /// them is walked until a reference naming the generation it carries is met.
+    /// </summary>
+    private readonly HashSet<int> _unwalked = new(SeededComparer.Instance);
     private readonly SortedDictionary<int, int> _missingReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
@@ -113,6 +128,18 @@ internal sealed class ObjectGraph
         {
             var number = pending.Id.Number;
             var value = _reader.GetObject(pending.Id);
+            _claimed.Remove(number);
+            _waiting.Remove(number, out var waiting);
+
+            // A reference that names a generation the object does not carry reads as null, and names an object the file
+            // lacks (7.3.10): the one that claimed it, and each met while it waited. The object is walked through the first
+            // that names the generation it carries, if one does.
+            if (_reader.TryGetCarriedGeneration(number, out var carried) &&
+                !TellGenerations(ref pending, ref value, carried, waiting))
+            {
+                _unwalked.Add(number);
+                continue;
+            }
 
             // Null for an object the index holds in use is a literal null, or one the reader could not produce, which the
             // cross-reference rules report: there is nothing in it to walk. One the file lacks was told when it was met,
@@ -270,6 +297,7 @@ internal sealed class ObjectGraph
 
         if (!_visited.Add(number))
         {
+            ClaimAgain(reference, owner, role);
             return;
         }
 
@@ -284,6 +312,86 @@ internal sealed class ObjectGraph
         }
 
         _work.Push(new Pending(reference.Id, owner, role));
+        _claimed.Add(number);
+    }
+
+    /// <summary>
+    /// Meets <paramref name="reference"/> again, to an object a reference claimed before: one still to read waits with it,
+    /// for its generation to be told once the object is read; one read is told now, the reference that names a generation
+    /// it does not carry counted as one to an object the file lacks — and resolved, as resolving it asks for it —, and one
+    /// that names the generation it carries leading the walk to it, where only references naming another led to it before.
+    /// </summary>
+    private void ClaimAgain(PdfReference reference, int owner, Role role)
+    {
+        var number = reference.Id.Number;
+
+        if (_claimed.Contains(number))
+        {
+            if (!_waiting.TryGetValue(number, out var waiting))
+            {
+                waiting = [];
+                _waiting.Add(number, waiting);
+            }
+
+            waiting.Add((owner, role, reference.Id.Generation));
+            return;
+        }
+
+        if (!_reader.TryGetCarriedGeneration(number, out var carried))
+        {
+            return;
+        }
+
+        if (carried != reference.Id.Generation)
+        {
+            _ = _reader.GetObject(reference.Id);
+            CountMissing(role, owner);
+        }
+        else if (_unwalked.Remove(number))
+        {
+            _work.Push(new Pending(reference.Id, owner, role));
+            _claimed.Add(number);
+        }
+    }
+
+    /// <summary>
+    /// Tells the references to object <paramref name="pending"/> names, which carries <paramref name="carried"/>: the one that
+    /// claimed it and those <paramref name="waiting"/> met after it. Each that names another generation is counted as one to an
+    /// object the file lacks, resolved as resolving it asks for it; where the claim's is one of them and a later reference names
+    /// the generation the object carries, the walk takes that one's place and value. False where none names it.
+    /// </summary>
+    private bool TellGenerations(ref Pending pending, ref PdfObject value, int carried, List<(int Owner, Role Role, int Generation)>? waiting)
+    {
+        var named = pending.Id.Generation == carried;
+
+        if (!named)
+        {
+            CountMissing(pending.Role, pending.Owner);
+        }
+
+        if (waiting is null)
+        {
+            return named;
+        }
+
+        foreach (var (owner, role, generation) in waiting)
+        {
+            var id = new PdfObjectId(pending.Id.Number, generation);
+
+            if (generation != carried)
+            {
+                _ = _reader.GetObject(id);
+                CountMissing(role, owner);
+            }
+            else if (!named)
+            {
+                named = true;
+                pending = new Pending(id, owner, role);
+                value = _reader.GetObject(id);
+            }
+        }
+
+        return named;
     }
 
     private void CountMissing(Role role, int owner)
@@ -335,13 +443,18 @@ internal sealed class ObjectGraph
             var first = new StringBuilder();
             var found = TryFindMissing(value, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
             var holder = Holder(owner);
+            var carried = -1;
+            var defined = found && NamesAnotherGeneration(target, out carried)
+                ? Invariant($", which the file defines under generation {carried} only")
+                : string.Empty;
 
             MissingReferences.Keep(new ProbeFinding(
                 LocationOf(owner),
                 (count, found) switch
                 {
+                    (1, true) when defined.Length > 0 => Invariant($"{holder} refers to object {target.Number} {target.Generation} under {Path(first)}, which the file lacks: it defines object {target.Number} under generation {carried} only, and the reference reads as null."),
                     (1, true) => Invariant($"{holder} refers to object {target.Number} {target.Generation} under {Path(first)}, which the file lacks: the reference reads as null."),
-                    (_, true) => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}."),
+                    (_, true) => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}{defined}."),
                     (1, false) => $"{holder} refers to an object the file lacks: the reference reads as null.",
                     _ => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null."),
                 }));
@@ -382,7 +495,8 @@ internal sealed class ObjectGraph
 
         foreach (var number in visited)
         {
-            if (_reader.IsEndObjMissing(number, out var position) && MissingEndObj.Take())
+            // An object only references to another generation of its number led to is not reachable: they read as null.
+            if (!_unwalked.Contains(number) && _reader.IsEndObjMissing(number, out var position) && MissingEndObj.Take())
             {
                 var id = IdOf(number);
                 MissingEndObj.Keep(new ProbeFinding(
@@ -477,7 +591,8 @@ internal sealed class ObjectGraph
     /// </summary>
     private bool IsMissing(PdfObject value, Role role, out PdfObjectId target)
     {
-        if (value is PdfReference reference && (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number))
+        if (value is PdfReference reference && (role & Role.Uncounted) == 0 &&
+            (_missing.Contains(reference.Id.Number) || NamesAnotherGeneration(reference.Id, out _)))
         {
             target = reference.Id;
             return true;
@@ -564,7 +679,14 @@ internal sealed class ObjectGraph
     }
 
     private PdfObject ValueOf(int owner) =>
-        owner == 0 ? _document.Trailer : _reader.GetObject(IdOf(owner));
+        owner == 0 ? _document.Trailer : _reader.GetIndexedObject(owner);
+
+    /// <summary>
+    /// Determines whether <paramref name="id"/> names a generation other than <paramref name="carried"/>, the one the object
+    /// of its number carries, read by the walk.
+    /// </summary>
+    private bool NamesAnotherGeneration(PdfObjectId id, out int carried) =>
+        _reader.TryGetCarriedGeneration(id.Number, out carried) && carried != id.Generation;
 
     /// <summary>
     /// Names object <paramref name="number"/> with the generation the reader's index gives it: its row's, or, once a

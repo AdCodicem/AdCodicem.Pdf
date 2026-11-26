@@ -1589,6 +1589,8 @@ public class DocumentReaderTests
             Disposed(() => document.IsEncrypted);
             Disposed(() => document.GetObject(new PdfObjectId(3)));
             Disposed(() => document.GetObject(new PdfObjectId(2)));
+            Disposed(() => document.GetObject(3));
+            Disposed(() => document.GetObject(2));
             Disposed(() => numbers.MoveNext());
             Disposed(() => contents.Resolve());
             Disposed(() => packed.Resolve());
@@ -2640,7 +2642,7 @@ public class DocumentReaderTests
             "7 3 obj << /Real true /Missing 98 0 R >> endobj\n" + new string(' ', 48) + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.GetObject(7).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(3);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
@@ -2687,7 +2689,7 @@ public class DocumentReaderTests
             "7 3 obj << /Real true >> endobj\n7 5 obj " + pair + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(value);
+        document.GetObject(7).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(value);
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(5);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
@@ -2706,7 +2708,7 @@ public class DocumentReaderTests
             "7 3 obj << /Real true >> endobj\n" + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        var seven = document.GetObject(new PdfObjectId(7));
+        var seven = document.GetObject(7);
 
         if (partial)
         {
@@ -2771,7 +2773,7 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(3);
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.GetObject(7).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
     }
 
     [Theory]
@@ -2845,7 +2847,7 @@ public class DocumentReaderTests
             "7 3 obj (three) endobj\n7 5 obj\nendobj\n7 6 obj (six) endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("six");
+        document.GetObject(7).Should().BeOfType<PdfString>().Which.ToText().Should().Be("six");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
             .Which.Message.Should().Be(
                 "Rebuilding the index met 2 definitions of object numbers it had already found, of object 7." + KeptOverNoValue);
@@ -4329,7 +4331,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects));
 
         document.WasRepaired.Should().BeTrue();
-        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.GetObject(2).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
         document.Reader.Index.TryGet(2, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(65535, "the rebuilt entry records the generation its header gives (#118)");
     }
@@ -4393,9 +4395,20 @@ public class DocumentReaderTests
             .Replace("{row:3}", string.Create(CultureInfo.InvariantCulture, $"{{row:3:{row}:4}}"), StringComparison.Ordinal);
         using var document = PdfDocument.Open(PdfTemplate.Build(template));
 
-        document.GetObject(new PdfObjectId(3, asked)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        // Asked under a generation other than the header's, the reference names an object the file does not define (#185).
+        var read = document.GetObject(new PdfObjectId(3, asked));
+
+        if (asked == 1)
+        {
+            read.AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+        else
+        {
+            read.Should().BeSameAs(PdfNull.Instance);
+        }
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(asked == 1 ? 0 : 1);
         document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(1);
         document.Reader.ChainIndex!.TryGet(3, out var written).Should().BeTrue();
