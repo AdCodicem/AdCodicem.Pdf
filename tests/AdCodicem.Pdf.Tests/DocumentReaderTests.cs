@@ -3129,8 +3129,8 @@ public class DocumentReaderTests
     [InlineData("4 0 obj\n42\n", "4 0 xbj\n42\n", "The stream's /Length names object 4 0, which could not be read; its data ends after 42 bytes.")]
     public void Reports_a_deferred_length_that_gives_no_length_once_the_chain_is_read(string written, string replacement, string message)
     {
-        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes; object 4's header
-        // is misspelled, which no search near its entry nor any rebuild then finds — the rebuild its load sets off parses
+        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes, or object 4 under a
+        // generation it does not carry (#185); object 4's header is misspelled, which no search near its entry nor any rebuild then finds — the rebuild its load sets off parses
         // the stream again, and the parser reports the length first: the stream is reported once. Each replacement keeps
         // every offset.
         var file = Encoding.Latin1.GetBytes(
@@ -3140,6 +3140,20 @@ public class DocumentReaderTests
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().Be(message);
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_under_a_generation_its_object_does_not_carry_names_what_the_file_lacks_whatever_a_guard_cut()
+    {
+        // The cross-reference stream's /Length names object 4 under generation 1; object 4 is written 4 0 obj, 3,000 spaces
+        // after its value, which MaxObjectLength, lowered to 1 KB, cuts. A length a guard cut is the guard's, unreported; this
+        // one names an object the file does not define, whatever the guard did to object 4 (#185).
+        var file = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength(lengthTail: 3000)).Replace("/Length 4 0 R", "/Length 4 1 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().StartWith("The /Length of cross-reference stream 5 names object 4 1, which the file lacks;");
     }
 
     [Theory]
@@ -4440,8 +4454,7 @@ public class DocumentReaderTests
     /// The sound document with its catalog written <c>1 1 obj</c> and a trailer whose <c>/Root</c> names nothing: the
     /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or 2 at its
     /// header (<c>row of another generation</c>), or <c>startxref</c> names nothing and the index is rebuilt
-    /// (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
-    /// catalog's entries.
+    /// (<c>rebuilt</c>). <paramref name="catalog"/> replaces the catalog's entries.
     /// </summary>
     internal static byte[] CatalogWrittenUnderGeneration1(string layout, string catalog = "/Type /Catalog /Pages 2 0 R")
     {

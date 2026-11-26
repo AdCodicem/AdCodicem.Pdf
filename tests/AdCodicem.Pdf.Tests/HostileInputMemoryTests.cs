@@ -299,6 +299,44 @@ public class HostileInputMemoryTests
     }
 
     [Fact]
+    public void References_from_many_holders_to_many_objects_waiting_to_be_read_cost_the_walk_what_they_cost_once_they_are_read()
+    {
+        // The catalog names 800 objects, then 800 holders, each naming every one of the 800: read last claimed first, the
+        // holders are walked while the 800 objects wait. A count was kept for each holder and object, as many as the
+        // references; past ObjectGraph.MaxWaitingCounts counts, an object is read at the next reference to it, and the walk
+        // allocates about what it allocates with the holders named last, the objects read first (#185).
+        const int Objects = 800;
+        var objects = string.Join(' ', Enumerable.Range(10, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var holders = string.Join(' ', Enumerable.Range(1_000, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+
+        var waiting = Allocated("/W [" + objects + "] /H [" + holders + "]");
+        var read = Allocated("/H [" + holders + "] /W [" + objects + "]");
+
+        waiting.Should().BeLessThan(read + (6 * 1024 * 1024), $"objects read first, the walk allocated {read:N0} bytes");
+
+        long Allocated(string entries)
+        {
+            var builder = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+            for (var k = 0; k < Objects; k++)
+            {
+                builder.WithObject(10 + k, "(object)").WithObject(1_000 + k, "[" + objects + "]");
+            }
+
+            using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+            document.Reader.SettleIndex();
+            var pages = Validation.PageTreeWalk.Run(document);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            Validation.ObjectGraph.Run(document, pages).MissingReferences.Total.Should().Be(0);
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+    }
+
+    [Fact]
     public void Walking_a_deep_page_tree_whose_nodes_carry_large_values_holds_what_the_reader_keeps_whatever_its_depth()
     {
         // Four hundred page tree nodes, each the one kid of the node above it and carrying a string of 100,000 bytes after

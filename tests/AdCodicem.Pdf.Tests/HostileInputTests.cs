@@ -1797,6 +1797,7 @@ public class HostileInputTests
         stream.Data.Length.Should().Be(5);
         stream.Data.CutByGuard.Should().BeFalse();
 
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject).Should().Be(row.EndsWith("guard", StringComparison.Ordinal));
         document.WasRepaired.Should().Be(row == "2 KB away");
         document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle();
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
@@ -2893,6 +2894,57 @@ public class HostileInputTests
         document.IsEncrypted.Should().BeFalse();
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
             .Which.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void An_encrypt_entry_under_a_generation_its_object_does_not_carry_opens_unencrypted_whatever_a_guard_cut()
+    {
+        // The trailer's /Encrypt names object 9 under generation 1; it is written 9 0 obj, its dictionary past 300 spaces
+        // MaxObjectLength, lowered to 128, cuts. A reference to an object the guard cut is the guard's, and left the document
+        // encrypted; this one names an object the file does not define, whatever the guard did (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [9] = file.Object(9, new string(' ', 300) + "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
+        };
+        file.Table(10, rows, "/Size 10 /Root 1 0 R /Encrypt 9 1 R /ID [<01> <02>]");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+
+        document.IsEncrypted.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
+            .Which.Message.Should().Be("The trailer's /Encrypt names object 9, which reads as null, not an encryption dictionary; the document is read as unencrypted.");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_length_whose_chain_ends_at_a_reference_under_another_generation_names_that_reference(bool cut)
+    {
+        // Stream 3's /Length names object 7, which holds 8 1 R, and object 8 is written 8 0 obj — 300 spaces after its value,
+        // which MaxObjectLength, lowered to 128, cuts: what the file lacks is the chain's last link, which the report names,
+        // not the object the /Length names, whatever a guard did to object 8 (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 0 R >>\nstream\nhello\nendstream"),
+            [7] = file.Object(7, "8 1 R"),
+            [8] = file.Object(8, cut ? "4" + new string(' ', 300) : "4"),
+        };
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var limits = cut ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(3).AsStream().Required();
+        stream.Data.Length.Should().Be(5);
+        stream.Data.CutByGuard.Should().BeFalse();
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 8 1, which the file lacks");
     }
 
     [Fact]

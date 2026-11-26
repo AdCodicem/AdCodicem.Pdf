@@ -61,6 +61,7 @@ public class ObjectRuleTests
     [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
     [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", true)]
     [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", false)]
+    [InlineData("/A [5 1 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", false)]
     public void An_object_named_under_another_generation_is_walked_only_through_a_reference_naming_its_own(string entries, string message, bool walked)
     {
         // Object 5, written under generation 0, refers to object 99, which the file lacks, and lacks its endobj. The catalog
