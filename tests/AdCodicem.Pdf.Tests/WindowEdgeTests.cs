@@ -883,7 +883,7 @@ public class WindowEdgeTests
         // Rows place objects 4 and 9 at object 9's header, which 20 KB of comment lines precede, under MaxObjectLength 32 KB;
         // object 4's own header lies before it. Object 4's load reads the header whole through a grown window, finds it names
         // object 9, and the search near its row finds object 4; object 9's load then reads its header, which no window cut at
-        // that size (#387).
+        // that size, the file going on past it (#387).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -895,6 +895,7 @@ public class WindowEdgeTests
         rows[4] = at;
         rows[9] = at;
         file.Raw(string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), 80)) + "\n9 0 obj (nine)\nendobj\n");
+        file.Padding(8, 40_000);
         file.Table(10, rows, "/Size 10 /Root 1 0 R");
         using var document = PdfDocument.Open(
             file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } });
