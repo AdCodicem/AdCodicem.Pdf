@@ -1769,14 +1769,15 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_length_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(bool rowAway)
+    [InlineData("at its header")]
+    [InlineData("2 KB away")]
+    [InlineData("at its header, cut by the guard")]
+    public void A_length_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(string row)
     {
         // Stream 3's /Length names object 7 under generation 1, written 7 0 obj; its row places it at its header, or 2 KB away
-        // in the padding, where loading the stream sets off a rebuild the load finishes after it. The length names an object
-        // the file lacks, and the reference is reported, once, whatever the rebuild withdrew of what was reported while it ran
-        // (#185).
+        // in the padding, where loading the stream sets off a rebuild the load finishes after it, or at its header with
+        // MaxObjectLength cutting it. The length names an object the file lacks, whatever a guard did to object 7, and the
+        // reference is reported, once, whatever the rebuild withdrew of what was reported while it ran (#185).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1786,14 +1787,17 @@ public class HostileInputTests
         };
         var padding = file.Padding(8, 4_000);
         rows[8] = padding;
-        rows[7] = file.Object(7, "5");
-        rows[7] = rowAway ? padding + 2_000 : rows[7];
+        rows[7] = file.Object(7, row.EndsWith("guard", StringComparison.Ordinal) ? "5 " + new string(' ', 300) : "5");
+        rows[7] = row == "2 KB away" ? padding + 2_000 : rows[7];
         file.Table(9, rows, "/Size 9 /Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes);
+        var limits = row.EndsWith("guard", StringComparison.Ordinal) ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
 
-        document.GetObject(3).AsStream().Required().Data.Length.Should().Be(5);
+        var stream = document.GetObject(3).AsStream().Required();
+        stream.Data.Length.Should().Be(5);
+        stream.Data.CutByGuard.Should().BeFalse();
 
-        document.WasRepaired.Should().Be(rowAway);
+        document.WasRepaired.Should().Be(row == "2 KB away");
         document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle();
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().Contain("names object 7 1, which the file lacks");

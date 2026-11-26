@@ -1442,7 +1442,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// file lacks.
     /// </summary>
     internal ObjectPresence GetReferencePresence(PdfObjectId id) =>
-        _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation ? ObjectPresence.Missing : GetPresence(id.Number);
+        NamesAnotherGeneration(id) ? ObjectPresence.Missing : GetPresence(id.Number);
 
     /// <summary>
     /// Reads reference <paramref name="id"/>, which names an object under a generation other than <paramref name="carried"/>,
@@ -2216,12 +2216,23 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Determines whether the object <paramref name="reference"/> leads to — through a chain of references too, as
     /// <see cref="PdfReference.Resolve"/> follows it — is one a guard cut, or left out of the index: what it holds may lie
     /// past the cut, or is unknown, and is the guard's until the guard is lifted, rather than a value the file gave
-    /// (#224, #263). Call it once the reference is resolved.
+    /// (#224, #263). Call it once the reference is resolved. A chain that ends at a reference naming a generation its object
+    /// does not carry leads to no object, whatever a guard did to the object of that number (#185).
     /// </summary>
     /// <param name="reference">The reference, as the file wrote it.</param>
     /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
-    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1) =>
-        IsLeftByGuard(reference.Target(objects).Number);
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1)
+    {
+        var target = reference.Target(objects);
+        return !NamesAnotherGeneration(target) && IsLeftByGuard(target.Number);
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="id"/> names a generation other than the one the object of its number carries, once
+    /// read: a reference to an object the file does not define.
+    /// </summary>
+    internal bool NamesAnotherGeneration(PdfObjectId id) =>
+        _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/> is one a guard cut, or left out of the index: what
