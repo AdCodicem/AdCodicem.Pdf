@@ -7,6 +7,42 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-26 — Batch 38: the rebuild's scan — values a window cuts among placed headers, and a header's verdict ([#454])
+
+- **The question.** Measured on `main` at `1d4f0a5`. A value a window cuts, with headers the indexes place inside it
+  in comment lines or strings, regrew every load's window from 8 KB up past them: a table placing a header on each of
+  1,000 lines of 70 spaces read 137 MB, 2,000 lines 487 MB (#387); 5,000 lines of `k 0 obj(`, opened and validated,
+  2.8 s and 981 MB, 20,000 lines 47 s and 16.8 GB. [#389] did not reproduce: a header past a stream's first
+  `endstream` is missing, not unindexed, the reads spent or not. A rebuild took `7 5 obj -3 0 obj` for a definition
+  that holds no value (#438.1), asked a member's verdict again for each listing (#438.2), and the memo's scan lexed
+  every header's (#438.3).
+- **Settled with the maintainer** on 2026-11-26, each as recommended: an internal bound, not a guard (ADR 34),
+  `MaxPlacedHeadersInValue` = 64; past it, the value's data ends at the first placed header, reported by
+  `syntax.truncated-object`.
+- **What changed.** A load counts the rows both indexes place inside a value it reads on, its own stepped over; past
+  64 the data ends at the first. A header that more than 64 rows part is none at its place; a whole number naming
+  another object is read no further. What a load learns of a cut header — its number, the largest window that cut it,
+  the smallest that found none — is kept per reader and answers the loads after it as reading again would. A pair out
+  of a header's range is no header (#438.1); a member's verdict is asked once (#438.2); a value is told from its first
+  byte where it decides (#438.3). [#389] is held by a test row.
+- **Review** (ADR 54): six rounds. Five blockers, all E1 on hand-made shapes, all fixed: one comment line holding a
+  header's tokens (round 1), then the family of many rows at one long header, as on `main` (rounds 2 to 5). No major;
+  ten minors, fixed or filed; twelve nits. The real-damage lens found no object changed over 24,000 to 27,000 variants
+  a round; round 6 checked 15,366 answers of the memo against reading again, none differing.
+- **Mutation** (ADR 53 amended): 63 mutants over the bound, the refusal, the memo and the member's verdict. 55 killed,
+  by the suite and by tests the step added; 1 equivalent, confirmed by a second agent, which refuted another claim,
+  then killed; 7 filed in [#449], [#452] and [#453].
+- **The issues.** Closes [#387], [#389], [#438]. Filed under M02: [#449] to [#453], placed in batches 42, 43 and a
+  new 46.
+- **Checks.** The batch check at `115dc48`; 13,639 unit tests at `cbaed88`, with 235 of the 242 remote documents;
+  the 69 timing and memory tests and the 623 of `HostileInputTests` and `WindowEdgeTests` alone; the corpus
+  differential against `main` identical over 802 reads, the forced rebuilds included; the site. Benchmarks against
+  `main`, alone, alternating: the memo's scan 6 to 9 % faster (median), 4 % on `percent-strings`; 100,000 listings
+  of one member read 1.81 MB against 7.41. The shapes of #387 read linearly: 37.7 MB at 2,000 lines against 487;
+  20,000 lines of `k 0 obj(`, 1.3 s and 188 MB.
+- **For callers.** No public API change. A damaged value with more than 64 placed headers inside it reads as ending at
+  the first; a header that many rows part is none at its place.
+
 ## 2026-11-25 — Dependabot's security updates grouped, and its bypass of the approval ([#439], [#440])
 
 - **The question.** Dependabot pull requests queued for auto-merge never merged: the ruleset on `main` waits for a
@@ -1583,5 +1619,11 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
 [#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
 [#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440
+[#449]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/449
+[#450]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/450
+[#451]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/451
+[#452]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/452
+[#453]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/453
+[#454]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/454
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
