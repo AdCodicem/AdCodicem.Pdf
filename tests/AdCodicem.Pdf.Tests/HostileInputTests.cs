@@ -5793,6 +5793,58 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("rows inside it")]
+    [InlineData("past the guard")]
+    public void Loads_at_a_place_whose_cut_header_a_load_read_before_read_their_first_window_and_little_more(string shape)
+    {
+        // Rows place two hundred objects at one header that a run of comment lines precedes, rows inside that run, or the run
+        // past MaxObjectLength 32 KB. The first load reads the header as far as its refusal or its guard; what it learned
+        // answers every load after it once its first window is read, which, with the search near the place, is all each reads
+        // (#387).
+        const int Objects = 200;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var run = new StringBuilder();
+
+        for (var k = 0; k < 400; k++)
+        {
+            if (shape == "rows inside it" && k % 3 == 0)
+            {
+                rows[3 + Objects + (k / 3)] = at + run.Length + 2;
+            }
+
+            run.Append("\n%").Append('y', 250);
+        }
+
+        file.Raw(run + "\n3 0 obj null\nendobj\n");
+
+        for (var k = 0; k < Objects; k++)
+        {
+            rows[3 + k] = at;
+        }
+
+        var size = 3 + Objects + 400;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+        var options = shape == "past the guard" ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } } : null;
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        for (var k = 1; k < Objects; k++)
+        {
+            _ = document.GetObject(new PdfObjectId(3 + k));
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            2L * Objects * PdfFileReader.InitialObjectWindow, "each load after the first reads its first window and the search near the place");
+    }
+
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
 
