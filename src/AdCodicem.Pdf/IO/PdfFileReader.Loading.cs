@@ -2586,7 +2586,8 @@ internal sealed partial class PdfFileReader
                 position);
         }
 
-        private int IndexOf(int number)
+        /// <summary>Gives the first place the header lists <paramref name="number"/> at, or -1 where it lists it at none.</summary>
+        public int IndexOf(int number)
         {
             _places ??= ObjectStreamPlaces.Of(_numbers);
             return ObjectStreamPlaces.FirstIndexOf(_places, number);

@@ -5621,6 +5621,33 @@ public class HostileInputTests
         TableWithDecoys,
     }
 
+    [Fact]
+    public void A_number_an_object_stream_lists_many_times_is_asked_once_whether_its_later_direct_definition_holds_a_value()
+    {
+        // Object stream 5 lists object 3 a hundred thousand times; a direct definition of 3 follows it. A rebuild asks whether
+        // that definition holds no value at the first listing only, each later one keeping that first place: asked at each,
+        // it read the definition again, 64 bytes a listing, six times the file (#438).
+        const int Listings = 100_000;
+        var header = new StringBuilder();
+
+        for (var i = 0; i < Listings; i++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"3 {i} ");
+        }
+
+        var data = header.ToString() + new string(' ', Listings) + "(member) ";
+        var bytes = Encoding.Latin1.GetBytes(new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+            .Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n")
+            .Append(CultureInfo.InvariantCulture, $"5 0 obj\n<< /Type /ObjStm /N {Listings} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n")
+            .Append("3 0 obj (direct) endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("direct");
+        document.WasRepaired.Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(4L * bytes.Length);
+    }
+
     [Theory]
     [InlineData(1000, 0)]
     [InlineData(100, 70_000)]

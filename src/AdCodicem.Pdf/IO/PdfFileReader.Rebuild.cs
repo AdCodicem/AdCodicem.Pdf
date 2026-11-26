@@ -799,8 +799,10 @@ internal sealed partial class PdfFileReader
 
                 // A definition written directly after the stream that holds no value — an update cut right after a header —
                 // is no newer object than the member, which is kept as a definition before it is (#351). Only such a number
-                // is asked, for the header the scan indexed, which its memo may already know.
-                var empty = held.Kind == XRefEntryKind.Regular && stream.Position < heldAt && DefinitionHoldsNoValue(heldAt);
+                // is asked, for the header the scan indexed, which its memo may already know, and at its first listing: a
+                // later one keeps that place whatever the answer, and asking again would read the definition again for each.
+                var empty = held.Kind == XRefEntryKind.Regular && stream.Position < heldAt && contents.IndexOf(member) == index &&
+                    DefinitionHoldsNoValue(heldAt);
                 redefinitions.Add(member, empty);
 
                 if (stream.Position > heldAt || empty)

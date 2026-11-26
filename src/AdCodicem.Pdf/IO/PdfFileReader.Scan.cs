@@ -271,6 +271,11 @@ internal sealed partial class PdfFileReader
             }
         }
 
+        if (StartsCompositeValue(span, lexer.Position))
+        {
+            return false;
+        }
+
         var next = lexer.Read();
 
         if (!toEnd && next.End >= span.Length)
@@ -308,6 +313,21 @@ internal sealed partial class PdfFileReader
             default:
                 return true;
         }
+    }
+
+    /// <summary>
+    /// Determines whether the first byte past the white space at <paramref name="at"/> opens a string, a name, an array or a
+    /// dictionary: a value however it goes on, which that byte tells without lexing it. The scan for the memo asks whether
+    /// every header it takes holds no value (#438).
+    /// </summary>
+    private static bool StartsCompositeValue(ReadOnlySpan<byte> span, int at)
+    {
+        while (at < span.Length && PdfCharacters.IsWhitespace(span[at]))
+        {
+            at++;
+        }
+
+        return at < span.Length && span[at] is (byte)'(' or (byte)'/' or (byte)'[' or (byte)'<';
     }
 
     /// <summary>
@@ -490,7 +510,12 @@ internal sealed partial class PdfFileReader
                         at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData, objAt: windowStart + objAt);
                 }
                 else if (!memo.TryAddHeader(
-                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, TellNoValueFromPiece(at, span, windowStart, endsData, windowStart + objAt)))
+                    at,
+                    number,
+                    generation,
+                    KindAt(span, windowStart, at, ref scan, ahead: false),
+                    scan.TokensFrom,
+                    StartsCompositeValue(span, objAt + ObjKeyword.Length) ? false : TellNoValueFromPiece(at, span, windowStart, endsData, windowStart + objAt)))
                 {
                     return reached;
                 }
