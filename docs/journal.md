@@ -21,6 +21,9 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   a pin of `System.Security.Cryptography.Pkcs` 8.0.2: `dotnet list package --vulnerable --include-transitive` finds
   no vulnerable package without it. #444, the first grouped security pull request, left to show whether the bypass
   merges it (#439).
+- **CodeQL.** #444, approved and green, still did not merge: CodeQL's default setup ran no analysis on it and
+  reported `neutral`, and the ruleset required code scanning results. The maintainer dropped that rule on 2026-11-26;
+  CodeQL still runs and alerts.
 - **Checks.** Release build without warnings; the unit suite; the documentation site built and checked; actionlint
   1.7.12. The release tooling classified commits and rendered notes before and after. Pillow 13 rebuilt the scanned
   page of the corpus with the same JPEG bytes as 12.3, only ReportLab's dates differing.
