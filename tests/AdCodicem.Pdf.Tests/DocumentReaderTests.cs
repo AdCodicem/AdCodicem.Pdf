@@ -3125,6 +3125,7 @@ public class DocumentReaderTests
     [InlineData("4 0 obj\n42\n", "4 0 obj\n/F\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the name /F, not a length; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("4 0 obj\n42\n", "4 0 obj\n-1\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the integer -1, not a length; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("/Length 4 0 R", "/Length 9 0 R", "The /Length of cross-reference stream 5 names object 9 0, which the file lacks; the chain took its data up to its endstream, after 42 bytes.")]
+    [InlineData("/Length 4 0 R", "/Length 4 1 R", "The /Length of cross-reference stream 5 names object 4 1, which the file lacks; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("4 0 obj\n42\n", "4 0 xbj\n42\n", "The stream's /Length names object 4 0, which could not be read; its data ends after 42 bytes.")]
     public void Reports_a_deferred_length_that_gives_no_length_once_the_chain_is_read(string written, string replacement, string message)
     {
@@ -4437,8 +4438,9 @@ public class DocumentReaderTests
 
     /// <summary>
     /// The sound document with its catalog written <c>1 1 obj</c> and a trailer whose <c>/Root</c> names nothing: the
-    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or 2 at its header
-    /// (<c>row of another generation</c>), or <c>startxref</c> names nothing and the index is rebuilt (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
+    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or 2 at its
+    /// header (<c>row of another generation</c>), or <c>startxref</c> names nothing and the index is rebuilt
+    /// (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
     /// catalog's entries.
     /// </summary>
     internal static byte[] CatalogWrittenUnderGeneration1(string layout, string catalog = "/Type /Catalog /Pages 2 0 R")

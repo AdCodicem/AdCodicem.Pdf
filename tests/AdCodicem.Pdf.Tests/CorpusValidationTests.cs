@@ -291,7 +291,7 @@ public class CorpusValidationTests
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            document.GetObject(new PdfObjectId(number));
+            document.GetObject(number);
         }
 
         document.WasRepaired.Should().Be(repaired, $"{entry.Name} was validated, and its index settled, before it was read");

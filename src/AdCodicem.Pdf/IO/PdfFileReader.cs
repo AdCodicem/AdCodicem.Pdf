@@ -1446,12 +1446,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Reads reference <paramref name="id"/>, which names an object under a generation other than <paramref name="carried"/>,
-    /// the one it carries, as null, reporting each such reference once.
+    /// the one it carries, as null, reporting each such reference once while the record of diagnostics has room.
     /// </summary>
     private PdfNull ReadAsAnotherGeneration(PdfObjectId id, int carried)
     {
         // Noted only while the record has room: once full, it counts what it drops, each reading of such a reference among
-        // them, no message written for it, and the set stays as large as the record — one of every reference a file names
+        // them, no message written for it, and the set grows no larger than the record — one of every reference a file names
         // would grow with what its object streams decode.
         if (!_otherGenerationsReported.Contains(id))
         {

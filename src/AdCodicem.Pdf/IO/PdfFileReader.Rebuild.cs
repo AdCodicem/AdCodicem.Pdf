@@ -1300,7 +1300,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
-    /// length, an object stream's fault, a reference to another generation —, so that what was reported since can be withdrawn and reported again.
+    /// length, an object stream's fault, a reference to another generation —, so that what was reported since can be
+    /// withdrawn and reported again.
     /// </summary>
     /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
     /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>

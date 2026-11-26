@@ -97,7 +97,7 @@ public class ObjectRuleTests
         Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
             "Object 1 refers to object 4 0 under /Outlines, which the file lacks: the reference reads as null.");
 
-        // Under another generation than its row's, a free entry still defines nothing, and carries no generation (#185).
+        // Named under a generation other than 0, a free entry still defines nothing, and carries no generation (#185).
         using var document = PdfDocument.Open(PdfTemplate.Build(template.Replace("/Outlines 4 0 R", "/Outlines 4 1 R", StringComparison.Ordinal)));
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
             "Object 1 refers to object 4 1 under /Outlines, which the file lacks: the reference reads as null.");

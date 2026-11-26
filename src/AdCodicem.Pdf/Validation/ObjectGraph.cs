@@ -14,28 +14,29 @@ namespace AdCodicem.Pdf.Validation;
 /// <remarks>
 /// <para>
 /// The walk follows every reference of every dictionary, array and stream dictionary from the trailer — not the
-/// trailer's <c>/Prev</c> or <c>/XRefStm</c>, which name sections rather than objects —, and resolves each object
-/// once, by its number, through the document — a reference that names a generation the object does not carry is resolved
-/// too, under that generation, as resolving it asks for it, and reads as null: each one met once the object is read, those
-/// met before it under the claim's generation once together (#185) —: memory follows the reader's cache and a set of
-/// object numbers, and no stream's data is read. Cycles through <c>/Parent</c>, <c>/P</c> or a destination are legal and everywhere; the set
-/// of numbers already met stops them.
+/// trailer's <c>/Prev</c> or <c>/XRefStm</c>, which name sections rather than objects —, and resolves each object once,
+/// by its number, through the document — a reference that names a generation the object does not carry is resolved too,
+/// under that generation, as resolving it asks for it, and reads as null: each one met once the object is read or under
+/// another generation than the reference that claimed it, those met before it under the claim's generation once
+/// together (#185) —: memory follows the reader's cache and a set of object numbers, and no stream's data is read.
+/// Cycles through <c>/Parent</c>, <c>/P</c> or a destination are legal and everywhere; the set of numbers already met
+/// stops them.
 /// </para>
 /// <para>
 /// Each object is walked whole when it is read, in the order it is written, and claims the objects its references name
 /// that no reference named before: what the walk keeps of an object still to read is its number, with the object that
-/// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it (#168);
-/// and of the references met to it before it is read, how many of those under the claim's generation each object that holds
-/// them counts, and the first under the generation the object carries where the claim's is not it, the object read at once
-/// for one under another generation than the claim's: what grows with the objects that name it, not with how many times nor
-/// under how many generations they do (#185).
-/// A chain of references so holds what the reader keeps, whatever the objects along it hold beside the reference and
-/// wherever they write it. The objects claimed are read last claimed first, so that a tree of objects is read as a
-/// depth-first walk of what it holds would read it, the last value first. Walking one object keeps a place for each level
-/// of nesting it is in, which the parser bounds in an object read from a file; a value a caller built nests as deep as it
-/// was built, and one that holds itself is walked without end, its array of containers growing a level at a time until
-/// memory runs out (#310). The places are kept in an array, not on the stack, by the walk and by the searches that place a
-/// fault once it is done alike, so that no depth a caller built overflows the stack (#168).
+/// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it
+/// (#168); and of the references met to it before it is read, how many of those under the claim's generation each
+/// object that holds them counts, and the first under the generation the object carries where the claim's is not it,
+/// the object read at once for one under another generation than the claim's: what grows with the objects that name it,
+/// not with how many times nor under how many generations they do (#185). A chain of references so holds what the
+/// reader keeps, whatever the objects along it hold beside the reference and wherever they write it. The objects
+/// claimed are read last claimed first, so that a tree of objects is read as a depth-first walk of what it holds would
+/// read it, the last value first. Walking one object keeps a place for each level of nesting it is in, which the parser
+/// bounds in an object read from a file; a value a caller built nests as deep as it was built, and one that holds
+/// itself is walked without end, its array of containers growing a level at a time until memory runs out (#310). The
+/// places are kept in an array, not on the stack, by the walk and by the searches that place a fault once it is done
+/// alike, so that no depth a caller built overflows the stack (#168).
 /// </para>
 /// <para>
 /// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first

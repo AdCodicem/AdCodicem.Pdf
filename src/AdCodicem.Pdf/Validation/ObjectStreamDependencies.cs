@@ -1017,11 +1017,12 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
-        /// Follows <paramref name="written"/> as <see cref="PdfReference.Resolve"/> does — through
-        /// <paramref name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last dropped
-        /// (#173) —, but by the numbers its references give: a reference under a generation its object does not carry, which
-        /// the reader reads as null (#185), is followed to the object of its number, a hand-made shape left to #NNN —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the reader
-        /// reads.
+        /// Follows <paramref name="written"/> as <see cref="PdfReference.Resolve"/> does — through <paramref
+        /// name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last dropped
+        /// (#173) —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the
+        /// reader reads. It follows the numbers its references give, though: a reference under a generation its object
+        /// does not carry, which the reader reads as null (#185), is followed to the object of its number, whose value
+        /// it gives, a hand-made shape left to #NNN.
         /// </summary>
         /// <param name="written">The value as the file wrote it.</param>
         /// <param name="key">The key of the stream's dictionary the value is read for, as a finding quotes it.</param>
