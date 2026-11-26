@@ -187,6 +187,7 @@ internal ref struct PdfObjectParser
 
     /// <summary>Where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends.</summary>
     private int _headerEnd;
+
     /// <summary>
     /// Whether the end of the buffer came before the value of the last indirect object <see cref="TryReadIndirectObject"/>
     /// read said what it is (<see cref="ValueKindCut"/>).
@@ -369,6 +370,7 @@ internal ref struct PdfObjectParser
 
     /// <summary>Gets where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the buffer.</summary>
     public readonly int HeaderEnd => _headerEnd;
+
     /// <summary>
     /// Gets a value indicating whether the end of the buffer, which does not end the data, came before the value of the last
     /// indirect object <see cref="TryReadIndirectObject"/> read said what it is: no byte of the value lies within the buffer,

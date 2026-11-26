@@ -396,6 +396,14 @@ internal sealed partial class PdfFileReader
                         return false;
                     }
 
+                    // A header whose number the window holds whole names its object however its tokens go on: one that names
+                    // another than the object asked for is not it, and a window grown for it would read on for nothing, once
+                    // for each row that places another object there.
+                    if (number != AnyObject && NamesAnotherObject(bytes.Span, number))
+                    {
+                        return false;
+                    }
+
                     // A header whose tokens more rows than MaxPlacedHeadersInValue part is none there: each row a comment
                     // line of headers holds would otherwise read that line to its end (#387).
                     if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
@@ -590,6 +598,16 @@ internal sealed partial class PdfFileReader
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="bytes"/> start, past white space and comments, with an integer their edge does not
+    /// cut that is not <paramref name="number"/>: the number of a header that names another object, if a header it is.
+    /// </summary>
+    private static bool NamesAnotherObject(ReadOnlySpan<byte> bytes, int number)
+    {
+        var token = new PdfLexer(bytes).Read();
+        return token.Kind == PdfTokenKind.Integer && token.End < bytes.Length && token.Integer != number;
     }
 
     /// <summary>

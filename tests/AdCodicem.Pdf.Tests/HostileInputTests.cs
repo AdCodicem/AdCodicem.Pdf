@@ -5655,6 +5655,63 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(bool validate)
+    {
+        // Rows that place a thousand objects at one header, "3 0", lines of comment, then obj, which a trailer padded past
+        // MaxTrailerLength keeps through the rebuild: each object's load read the header in windows grown until they held its
+        // obj, to find it names object 3, and loading or validating every object took time in the square of the file. A
+        // header whose number the window holds whole and names another object is not the one asked for (#387).
+        var small = Read(250, 200);
+        var large = Read(1_000, 800);
+
+        large.Should().BeLessThan(8 * small, "four times the rows and the header's lines must cost about four times the bytes read ({0:N0})", small);
+
+        long Read(int objects, int lines)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+            var at = file.Position;
+            file.Raw("3 0");
+
+            for (var k = 0; k < lines; k++)
+            {
+                file.Raw("\n%" + new string('y', 250));
+            }
+
+            file.Raw("\nobj null\nendobj\n");
+
+            for (var k = 0; k < objects; k++)
+            {
+                rows[3 + k] = at;
+            }
+
+            file.Table(3 + objects, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {3 + objects} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            if (validate)
+            {
+                _ = new PdfValidator().Validate(document);
+            }
+            else
+            {
+                for (var k = 0; k < objects; k++)
+                {
+                    _ = document.GetObject(new PdfObjectId(3 + k));
+                }
+            }
+
+            return source.BytesRead;
+        }
+    }
+
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
 
