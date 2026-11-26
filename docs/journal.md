@@ -36,7 +36,9 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   new 46.
 - **Checks.** The batch check at `115dc48`; 13,639 unit tests at `cbaed88`, with 235 of the 242 remote documents;
   the 69 timing and memory tests and the 623 of `HostileInputTests` and `WindowEdgeTests` alone; the corpus
-  differential against `main` identical over 802 reads, the forced rebuilds included; the site. Benchmarks against
+  differential against `main` identical over 802 reads, the forced rebuilds included; the integration suite green in
+  CI; `Remote corpus` run 144 green; the site. Patch coverage 98.10 %: two partial arms in `NoteNoHeader`, the memo's
+  creation, which no input takes, and a smaller window's verdict, [#453]'s input. Benchmarks against
   `main`, alone, alternating: the memo's scan 6 to 9 % faster (median), 4 % on `percent-strings`; 100,000 listings
   of one member read 1.81 MB against 7.41. The shapes of #387 read linearly: 37.7 MB at 2,000 lines against 487;
   20,000 lines of `k 0 obj(`, 1.3 s and 188 MB.

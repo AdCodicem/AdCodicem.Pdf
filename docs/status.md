@@ -74,7 +74,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 13,639 unit on [#454]'s branch at `cbaed88`, with 235 of the 242 remote documents fetched, 13,636 passed
   and 3 skipped; the 69 timing and memory tests and the 623 of `HostileInputTests` and `WindowEdgeTests` alone; the
-  corpus differential against `main` identical over 802 reads. Before it, 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
+  corpus differential against `main` identical over 802 reads; the integration suite green in CI; `Remote corpus` run
+  144 green on its code. Before it, 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
   the 69 timing and memory tests, the 359 of `HostileInputTests` and the 252 of `FilterTests` alone; `Remote corpus`
   run 142 green on its code. Before it, 10,627 unit on [#427]'s branch at `8e75b8e`, without the remote documents,
   10,603 passed and 24 skipped; the 69 timing and memory tests and the 359 of `HostileInputTests` alone; `Remote
@@ -117,7 +118,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#436]'s branch at `91c3fde`, as Codecov counts it, 97.95 % of the patch, 143 of its 146 coverable
+- **Coverage**: on [#454]'s branch at `4e6aa4f`, as Codecov counts it, 98.10 % of the patch, 103 of its 105 coverable
+  lines whole; the other two, partial, are in `NoteNoHeader` (`PdfFileReader.Loading.cs`): the `??=` that creates the
+  memo of cut headers, which the load's `NoteHeaderCut` always created before, and the `Math.Min` that keeps the
+  smallest window found to hold no header, which only a second such reading at the place in a smaller window takes,
+  under another bound — [#453]'s input. Before it, on [#436]'s branch at `91c3fde`, as Codecov counts it, 97.95 % of the patch, 143 of its 146 coverable
   lines whole; the other three, in `PdfFileReader.Scan.cs`, are arms no input takes: the `objAt < 0` arm of
   `TellNoValueFromPiece`, whose callers that pass it give an empty piece and return first, and `TellNoValue`'s check of
   a header's tokens with its `return false`, which every header the scan took passes, only a source whose bytes change
