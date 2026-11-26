@@ -30,6 +30,34 @@ namespace AdCodicem.Pdf.IO;
 internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 {
     internal const int InitialObjectWindow = 8 * 1024;
+
+    /// <summary>
+    /// How many rows an index places inside an object a load reads the value may run past before its data is read as ending
+    /// at the first of them (#387): rows past the end of the header's <c>obj</c>, the object's own aside — in the comments
+    /// before its value, in a comment or a string the value holds, or where no header starts; a header its parse meets ends
+    /// the value already.
+    /// </summary>
+    /// <remarks>
+    /// A load whose parse runs to the edge of its window still open asks how many such rows the window holds. Past this
+    /// many, with <see cref="HeaderCheckWindow"/> bytes after the row past the bound, room for a header the parse would meet
+    /// there, the object is parsed again as if the file ended at the first: what was cut short there is reported under
+    /// <see cref="PdfDiagnosticCodes.SyntaxTruncatedObject"/>, which names that place, and the object's <c>endobj</c> is
+    /// missing. Short of it, the window grows no further than that room past the row that would pass the bound, so that a
+    /// load reads about as many bytes as that many rows span. A whole value only <c>endobj</c> or <c>stream</c> is looked
+    /// for after is kept as read where more rows than this lie past it, as where a header lexes past it
+    /// (<see cref="WindowHoldsPlacedHeader"/>); and a header whose tokens more rows than this part, counted from the byte
+    /// past the place, is none there, the load reading no object at the place — one whose number the window holds whole
+    /// and names another object than the one asked for is not read on at all. What loads learn of a header a window's edge
+    /// cut answers the loads after them at the same place (<see cref="_headerCuts"/>). Without the bound, each object a run of comment or string lines
+    /// places read every line after its own, and a rebuild or a validation, which load every object, took time in the
+    /// square of the lines. The rule asks only the window that runs to its edge still open: a value that closes inside the
+    /// window it is first read through is read whole, whatever rows it holds. At the largest window
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> allows, the bound is not asked, and the guard is reached and reported.
+    /// Not a guard a valid file reaches: the rows of a valid file's index each place a header written between objects, none
+    /// inside another object's value.
+    /// </remarks>
+    internal const int MaxPlacedHeadersInValue = 64;
+
     internal const int XRefWindow = 64 * 1024;
 
     /// <summary>What the codes of the faults of the object syntax start with.</summary>
@@ -789,6 +817,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// decides as any load does, or a rebuild drops them (<see cref="IsCutAtLimit"/>, #292). Null while there is none.
     /// </summary>
     private HashSet<int>? _cutAtStop;
+
+    /// <summary>
+    /// What loads learned of a header a window's edge cut at a place, by the place (<see cref="HeaderCut"/>): a load there
+    /// answers from it what reading the header again would, once its first window is read, rather than grow its window over
+    /// the same header again, once for each row that places an object there (#387). Null while there is none.
+    /// </summary>
+    private Dictionary<long, HeaderCut>? _headerCuts;
 
     /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
@@ -2310,6 +2345,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         Release(_unproduced);
         Release(_cutAtLimit);
         _cutAtStop = null;
+        _headerCuts = null;
         _endObjMissing.Clear();
         _endObjMissing.TrimExcess();
         _streamLengthFaults.Clear();

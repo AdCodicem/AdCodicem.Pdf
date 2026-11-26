@@ -2627,6 +2627,8 @@ public class DocumentReaderTests
     [InlineData("7 5 obj stream")]
     [InlineData("7 5 obj R")]
     [InlineData("7 5 obj\n8 0 obj (eight) endobj")]
+    [InlineData("7 5 obj\n2147483647 0 obj")]
+    [InlineData("7 5 obj\n8 65535 obj")]
     public void A_definition_met_again_that_holds_no_value_leaves_the_readable_one_before_it(string later)
     {
         // The file has no table. Object 7's later header is followed by nothing that starts a value — a stray parenthesis,
@@ -2665,6 +2667,31 @@ public class DocumentReaderTests
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
             .Which.Message.Should().Be(
                 "Rebuilding the index " + met + KeptRule[..^1] + ", but for one that holds no value, which leaves the definition before it kept, " + held);
+    }
+
+    [Theory]
+    [InlineData("-3 0 obj", -3)]
+    [InlineData("0 0 obj", 0)]
+    [InlineData("8 -1 obj", 8)]
+    [InlineData("8 99999 obj", 8)]
+    [InlineData("99999999999 0 obj", 99_999_999_999)]
+    [InlineData("2147483648 0 obj", 2_147_483_648)]
+    [InlineData("8 65536 obj", 8)]
+    public void A_definition_met_again_whose_integer_starts_a_pair_the_scan_takes_for_no_header_is_kept(string pair, long value)
+    {
+        // Object 7's later header is followed by two integers and obj whose number or generation lies outside what a header
+        // may give: the scan takes them for no header, a load reads the first integer as the value, and that definition wins
+        // over the one before it (#438).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n7 5 obj " + pair + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(value);
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(5);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
     }
 
     [Theory]

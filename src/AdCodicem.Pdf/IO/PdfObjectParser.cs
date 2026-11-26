@@ -60,6 +60,13 @@ internal ref struct PdfObjectParser
     private readonly bool _guardEdge;
 
     /// <summary>
+    /// Whether the bytes end at a place an index gives another object, the first of more than
+    /// <see cref="PdfFileReader.MaxPlacedHeadersInValue"/> inside this one, rather than where the file does: its reports name
+    /// it.
+    /// </summary>
+    private readonly bool _endsAtPlacedHeader;
+
+    /// <summary>
     /// Whether the value just parsed was dropped, a token a guard's edge parted, or an integer that may start a reference
     /// that edge cuts: an array leaves it out, a dictionary the key it was the value of.
     /// </summary>
@@ -178,6 +185,9 @@ internal ref struct PdfObjectParser
     /// </summary>
     private int _headerDigits;
 
+    /// <summary>Where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends.</summary>
+    private int _headerEnd;
+
     /// <summary>
     /// Whether the end of the buffer came before the value of the last indirect object <see cref="TryReadIndirectObject"/>
     /// read said what it is (<see cref="ValueKindCut"/>).
@@ -209,6 +219,11 @@ internal ref struct PdfObjectParser
     /// Whether the bytes, which do not end the data, end where a guard stops the reading, the largest window it allows: a
     /// token their edge parts is then dropped, rather than kept as far as it was read (<see cref="EndsAtGuardEdge"/>).
     /// </param>
+    /// <param name="endsAtPlacedHeader">
+    /// Whether the bytes, which end the data, end at a place an index gives another object inside this one, the first of
+    /// more than <see cref="PdfFileReader.MaxPlacedHeadersInValue"/>, which what their end cuts short is then reported to
+    /// have met.
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -220,7 +235,8 @@ internal ref struct PdfObjectParser
         bool readsStreams = true,
         int maxDepth = DefaultMaxDepth,
         PdfLimitGuard? guard = null,
-        bool guardEdge = false)
+        bool guardEdge = false,
+        bool endsAtPlacedHeader = false)
     {
         _maxDepth = maxDepth;
         _guard = guard;
@@ -233,6 +249,7 @@ internal ref struct PdfObjectParser
         _fileEdge = fileEdge ?? streamData;
         _endsData = endsData;
         _guardEdge = guardEdge && !endsData;
+        _endsAtPlacedHeader = endsAtPlacedHeader && endsData;
         _readsStreams = readsStreams;
     }
 
@@ -351,6 +368,9 @@ internal ref struct PdfObjectParser
     /// </summary>
     public readonly int HeaderDigits => _headerDigits;
 
+    /// <summary>Gets where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the buffer.</summary>
+    public readonly int HeaderEnd => _headerEnd;
+
     /// <summary>
     /// Gets a value indicating whether the end of the buffer, which does not end the data, came before the value of the last
     /// indirect object <see cref="TryReadIndirectObject"/> read said what it is: no byte of the value lies within the buffer,
@@ -452,6 +472,7 @@ internal ref struct PdfObjectParser
 
         // The number is an integer past 0: its token holds a digit past the signs it may start with.
         _headerDigits = number.Start + _memory.Span[number.Start..number.End].IndexOfAnyExcept((byte)'+', (byte)'-');
+        _headerEnd = keyword.End;
         _headerAt = -1;
         _headerUndecided = false;
         _lookAheadCut = false;
@@ -1976,6 +1997,9 @@ internal ref struct PdfObjectParser
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
     private readonly string End => _member switch
     {
+        null when _endsAtPlacedHeader => string.Create(
+            CultureInfo.InvariantCulture,
+            $"The place the index gives another object, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} inside this one, came"),
         null => "The file ended",
         { EndsAtNextMember: true } => "The next member of the object stream started",
         _ => "The object stream's decoded data ended",

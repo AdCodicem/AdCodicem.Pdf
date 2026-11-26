@@ -277,7 +277,9 @@ public static class PdfDiagnosticCodes
     /// the data, and an <c>endobj</c> ends every container it finds open: the object's own, or, when the object lost it too, the
     /// next object's, the container then taking that object. An object an object stream holds is read to the next one's
     /// start, the last to the end of the decoded data: running into either, it is cut short there, and the message says
-    /// which.
+    /// which. An object read through a window that leaves it open past more than 64 places an index gives other objects
+    /// inside it — in its comments or strings, which hide them from its parse — is read as though the file ended at the
+    /// first of them, which the message says.
     /// Reported once, for the innermost construct left open, where it opens — where the value would start, when none is open;
     /// past the depth the reader follows, the container it skipped, which holds what it did not follow —, the constructs
     /// around it counted in the message; inside an object an object stream holds, where the stream's data

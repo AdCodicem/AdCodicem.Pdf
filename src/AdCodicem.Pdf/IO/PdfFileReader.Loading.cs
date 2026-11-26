@@ -266,7 +266,8 @@ internal sealed partial class PdfFileReader
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
     /// the guard is reported in place of what the cut made the parser notice. One whose value the window holds whole, only what
     /// follows it past the edge, is not read again where the window holds a header an index places past it
-    /// (<see cref="WindowHoldsPlacedHeader"/>).
+    /// (<see cref="WindowHoldsPlacedHeader"/>); one whose value runs past more rows an index places than
+    /// <see cref="MaxPlacedHeadersInValue"/> says ends at the first.
     /// </remarks>
     /// <param name="offset">Where the object starts in the file.</param>
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
@@ -339,6 +340,11 @@ internal sealed partial class PdfFileReader
         var mark = _pending.GetMark();
         var lead = atRow && offset > 0 ? ByteBeforeRow : 0;
 
+        // Where the object's data is read as ending, at a header an index places inside its value; -1 for the file's end.
+        var dataEnd = -1L;
+        var firstWindow = true;
+        var headerCut = false;
+
         try
         {
             while (true)
@@ -358,11 +364,25 @@ internal sealed partial class PdfFileReader
                     lead = 0;
                 }
 
+                // A header a window's edge cut here before is answered as reading it again would answer, without growing.
+                if (firstWindow)
+                {
+                    firstWindow = false;
+
+                    if (number > 0 && _headerCuts is { } cuts && cuts.TryGetValue(offset, out var known) &&
+                        AnswersFromCut(known, offset, number, limit, bytes.Length, maxWindow, out foundNumber) is { } answer)
+                    {
+                        return answer;
+                    }
+                }
+
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is. The
-                // largest the guard allows drops a token its edge parts (#262, #279).
-                var cut = bytes.Length == windowSize && offset + bytes.Length < _source.Length;
+                // largest the guard allows drops a token its edge parts (#262, #279). One that ends at a header an index places
+                // inside the value ends the data there (MaxPlacedHeadersInValue).
+                var cut = dataEnd < 0 && bytes.Length == windowSize && offset + bytes.Length < _source.Length;
                 var parser = new PdfObjectParser(
-                    bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow);
+                    bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow,
+                    endsAtPlacedHeader: dataEnd >= 0 && offset + bytes.Length == dataEnd);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -375,10 +395,26 @@ internal sealed partial class PdfFileReader
                     // that is not an object header is not the object.
                     if (!parser.IsTruncated || !cut)
                     {
+                        // Read past a cut, the place is known to hold no header within these bytes.
+                        if (headerCut)
+                        {
+                            NoteNoHeader(offset, bytes.Length);
+                        }
+
                         return false;
                     }
 
                     _pending.RollBackToRetry(mark);
+                    headerCut = true;
+                    var named = NoteHeaderCut(offset, bytes.Span);
+
+                    // A header whose number the window holds whole names its object however its tokens go on: one that names
+                    // another than the object asked for is not it, under any guard, and a window grown for it would read on
+                    // for nothing, once for each row that places another object there.
+                    if (number > 0 && named is { } first && first != number)
+                    {
+                        return false;
+                    }
 
                     if (windowSize >= maxWindow)
                     {
@@ -390,16 +426,40 @@ internal sealed partial class PdfFileReader
                         return false;
                     }
 
+                    // A header that more rows than MaxPlacedHeadersInValue follow, from the byte past the place, before its
+                    // tokens end is none there: each row a comment line of headers holds would otherwise read that line to its
+                    // end (#387).
+                    if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
+                    {
+                        if (partedAt - offset < bytes.Length)
+                        {
+                            return false;
+                        }
+
+                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), partedAt - offset + 1);
+                        continue;
+                    }
+
                     windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                     continue;
                 }
                 else if (number != AnyObject && found.Number != number)
                 {
+                    if (headerCut)
+                    {
+                        NoteHeaderCut(offset, bytes.Span, whole: true);
+                    }
+
                     return false;
                 }
                 else
                 {
                     foundNumber = found.Number;
+
+                    if (headerCut)
+                    {
+                        NoteHeaderCut(offset, bytes.Span, whole: true);
+                    }
                 }
 
                 var lengthFault = parser.LengthFault;
@@ -409,6 +469,38 @@ internal sealed partial class PdfFileReader
                 // lines (#362). At the largest window the guard allows, the guard is reached and reported, as without the rule.
                 var truncated = parser.IsTruncated && cut &&
                     (windowSize >= maxWindow || !WindowHoldsPlacedHeader(foundNumber, offset, bytes.Span, parser.WholeValueEnd));
+
+                // A value left open past more rows than MaxPlacedHeadersInValue ends at the first, and one whole before them is
+                // kept as read: each object a run of lines places would otherwise read every line after it (#387).
+                if (truncated && windowSize < maxWindow && number != DirectObject)
+                {
+                    var whole = parser.WholeValueEnd >= 0;
+                    var passed = CountPlacedRows(foundNumber, offset + (whole ? parser.WholeValueEnd : parser.HeaderEnd), out var firstRow, out var boundRow);
+
+                    // The row past the bound counts only with room for a header after it: one the parse meets ends the value,
+                    // and the window's edge would cut it.
+                    if (passed > MaxPlacedHeadersInValue && boundRow - offset + HeaderCheckWindow <= bytes.Length)
+                    {
+                        if (whole)
+                        {
+                            truncated = false;
+                        }
+                        else
+                        {
+                            _pending.RollBackToRetry(mark);
+                            dataEnd = firstRow;
+                            windowSize = (int)(firstRow - offset);
+                            continue;
+                        }
+                    }
+                    else if (passed > MaxPlacedHeadersInValue)
+                    {
+                        // The window grows to hold the row past the bound, and no further: the bytes a load reads follow the rows.
+                        _pending.RollBackToRetry(mark);
+                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), boundRow - offset + HeaderCheckWindow);
+                        continue;
+                    }
+                }
 
                 if (truncated)
                 {
@@ -539,6 +631,128 @@ internal sealed partial class PdfFileReader
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Notes in <see cref="_headerCuts"/> what <paramref name="bytes"/>, read from <paramref name="offset"/>, tell of the header
+    /// there: that it runs past them, its tokens cut, unless <paramref name="whole"/>; and the integer they start with, past
+    /// white space and comments, where their edge does not cut it, which it gives.
+    /// </summary>
+    private long? NoteHeaderCut(long offset, ReadOnlySpan<byte> bytes, bool whole = false)
+    {
+        var token = new PdfLexer(bytes).Read();
+        long? number = token.Kind == PdfTokenKind.Integer && token.End < bytes.Length ? token.Integer : null;
+        var cuts = _headerCuts ??= new(SeededComparer.Instance);
+        cuts.TryGetValue(offset, out var known);
+        cuts[offset] = known with
+        {
+            Number = number ?? known.Number,
+            NumberEnd = number is null ? known.NumberEnd : (int)token.End,
+            CutPast = whole ? known.CutPast : Math.Max(known.CutPast, bytes.Length),
+        };
+        return number;
+    }
+
+    /// <summary>
+    /// Notes in <see cref="_headerCuts"/> that the <paramref name="length"/> bytes from <paramref name="offset"/>, read past a
+    /// window that cut the header there, hold no header: a token they hold whole rules one out, or the file ends in them.
+    /// </summary>
+    private void NoteNoHeader(long offset, int length)
+    {
+        var cuts = _headerCuts ??= new(SeededComparer.Instance);
+        cuts.TryGetValue(offset, out var known);
+        cuts[offset] = known with { NoneWithin = known.NoneWithin == 0 ? length : Math.Min(known.NoneWithin, length) };
+    }
+
+    /// <summary>
+    /// Answers a load of object <paramref name="number"/> at <paramref name="offset"/> from what loads learned of the header a
+    /// window's edge cut there (<paramref name="known"/>), as reading it again from a first window of
+    /// <paramref name="firstWindow"/> bytes would answer: false where a window no larger than the largest
+    /// <paramref name="maxWindow"/> was found to hold no header there, where its first integer, whole within that window
+    /// <paramref name="maxWindow"/>, names another object, or where more rows than <see cref="MaxPlacedHeadersInValue"/>
+    /// follow the place within the window the reading would refuse it in — the first, or the one grown to hold the row past
+    /// the bound —, short of that largest one and known to cut the header, the rows as the indexes place them now; the guard
+    /// of <paramref name="limit"/> reached, and false, where that largest window cuts the header; and null, for the load to
+    /// read it, where what was learned does not tell.
+    /// </summary>
+    private bool? AnswersFromCut(
+        HeaderCut known, long offset, int number, PdfLimit limit, int firstWindow, int maxWindow, out int foundNumber)
+    {
+        foundNumber = 0;
+
+        if ((known.NoneWithin > 0 && known.NoneWithin <= maxWindow) ||
+            (known.NumberEnd > 0 && known.NumberEnd < maxWindow && known.Number != number))
+        {
+            return false;
+        }
+
+        if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
+        {
+            var refusing = firstWindow > partedAt - offset ? firstWindow : partedAt - offset + 1;
+
+            if (refusing < maxWindow && refusing <= known.CutPast)
+            {
+                return false;
+            }
+        }
+
+        if (known.CutPast >= maxWindow)
+        {
+            ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
+            foundNumber = (int)HeaderPastGuard;
+            return false;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// What loads learned of a header a window's edge cut at a place (<see cref="_headerCuts"/>), from the place on.
+    /// </summary>
+    /// <param name="Number">The integer the header starts with, past white space and comments, where a window held it whole.</param>
+    /// <param name="NumberEnd">Where that integer ends; 0 where no window held it whole.</param>
+    /// <param name="CutPast">The longest window that cut the header's tokens.</param>
+    /// <param name="NoneWithin">The shortest window, read past one that cut it, found to hold no header; 0 where none was.</param>
+    private readonly record struct HeaderCut(long Number, int NumberEnd, int CutPast, int NoneWithin);
+
+    /// <summary>
+    /// Counts the rows an index places from <paramref name="from"/> on, in the file — of the chain's index, and of the
+    /// rebuilt one after a rebuild that followed the chain, each index's entry of object <paramref name="number"/> stepped
+    /// over —, up to one past <see cref="MaxPlacedHeadersInValue"/>, and gives where the first lies and where the last
+    /// counted does; -1 for each where none is.
+    /// </summary>
+    private int CountPlacedRows(int number, long from, out long first, out long last)
+    {
+        var index = SearchIndex;
+        var rebuilt = _repaired && !ReferenceEquals(index, _xref) ? _xref : null;
+        var own = OwnOffset(index, number);
+        var ownRebuilt = rebuilt is null ? long.MinValue : OwnOffset(rebuilt, number);
+        first = last = -1;
+        var count = 0;
+
+        // Offsets the indexes give count from the header; positions in the file, from its start.
+        for (var at = from - _headerOffset - 1; count <= MaxPlacedHeadersInValue;)
+        {
+            var row = Math.Min(index.FirstOffsetAfter(at), rebuilt?.FirstOffsetAfter(at) ?? long.MaxValue);
+
+            if (row == long.MaxValue)
+            {
+                break;
+            }
+
+            at = row;
+
+            if (row == own || row == ownRebuilt)
+            {
+                continue;
+            }
+
+            last = row + _headerOffset;
+            first = first < 0 ? last : first;
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>Gives the offset <paramref name="index"/>'s entry of object <paramref name="number"/> places it at, where it places it.</summary>
@@ -2510,7 +2724,8 @@ internal sealed partial class PdfFileReader
                 position);
         }
 
-        private int IndexOf(int number)
+        /// <summary>Gives the first place the header lists <paramref name="number"/> at, or -1 where it lists it at none.</summary>
+        public int IndexOf(int number)
         {
             _places ??= ObjectStreamPlaces.Of(_numbers);
             return ObjectStreamPlaces.FirstIndexOf(_places, number);

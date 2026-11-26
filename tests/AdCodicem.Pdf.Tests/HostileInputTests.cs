@@ -476,7 +476,8 @@ public class HostileInputTests
         // taken without a search; or where one object placed inside every stream's data, near its end, let each keep nearly
         // all of it. Each length is counted once for each object and place its data starts at, whatever the indexes place:
         // past what such streams may keep whole, the data ends at a header placed inside it while what it keeps fits a
-        // second allowance, or reads empty, and says so (#280).
+        // second allowance, or reads empty, and says so (#280). Headers nested in strings are written short enough that each
+        // dictionary closes within the window its load starts with, which reads it whole whatever rows it holds (#387).
         const int Streams = 200;
         const int Filler = 1024 * 1024;
         var first = 10;
@@ -486,9 +487,9 @@ public class HostileInputTests
         var file = shape switch
         {
             "rows past the file, so that a rebuild places the streams" => OverlappingRebuilt(Streams, Filler),
-            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler),
-            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1),
-            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100),
+            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler, lengthDigits: 7),
+            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1, lengthDigits: 7),
+            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100, lengthDigits: 7),
             "headers on one comment line before one body" => HeadersOnOneCommentLine(Streams, Filler),
             _ when guarded => NestedInStrings(Streams, Filler, lengthObject: "5" + new string(' ', 20_000)),
             _ => OverlappingLengthened(Streams, Filler, out first, out junk),
@@ -5491,6 +5492,23 @@ public class HostileInputTests
     [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " (abc", "\"abc\\n% \"", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " (abc", "\"abc\\n%\"")]
     public void Objects_whose_headers_a_run_of_comment_lines_holds_are_read_without_reading_the_lines_after_each(
         CommentHeadersPlacedBy shape, string body, string read, string gap = " ")
     {
@@ -5498,7 +5516,10 @@ public class HostileInputTests
         // its value, its window grown eight times over, and opening, which loads every object a rebuild places, or
         // validating, which loads every object, took time in the square of the lines. A whole value is kept as read where
         // the window holds the next line's header, however much white space parts its tokens, and a row past the value that
-        // starts no header does not keep it from counting (#362).
+        // starts no header does not keep it from counting (#362); or where more rows than the bound lie past it, a byte
+        // early on the next lines' headers. A value left open — missing, a dictionary, an array or a string that runs on —
+        // whose window holds more rows than the bound, however much white space or comment parts their headers' tokens,
+        // ends at the first of them (#387).
         const int Lines = 1_000;
 
         var small = ReadHeaderLines(shape, body, read, gap, Lines);
@@ -5526,7 +5547,7 @@ public class HostileInputTests
             for (var k = 0; k < lines; k++)
             {
                 file.Raw("% ");
-                rows[100 + k] = file.Position;
+                rows[100 + k] = file.Position - (shape == CommentHeadersPlacedBy.TableByteEarly ? 1 : 0);
                 var line = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj{body}");
 
                 if (shape == CommentHeadersPlacedBy.TableWithDecoys)
@@ -5558,7 +5579,7 @@ public class HostileInputTests
             using var source = new StrictCountingSource(file.Bytes);
             using var document = PdfDocument.Open(source, options: null, ownsSource: false);
 
-            if (shape == CommentHeadersPlacedBy.Table)
+            if (shape is CommentHeadersPlacedBy.Table or CommentHeadersPlacedBy.TableByteEarly)
             {
                 _ = new PdfValidator().Validate(document);
             }
@@ -5583,8 +5604,264 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("one comment line")]
+    [InlineData("a comment line each, then obj")]
+    [InlineData("a comment line each, then 0 obj")]
+    public void Headers_whose_tokens_a_run_of_placed_rows_parts_are_read_without_reading_the_run_for_each(string shape)
+    {
+        // Rows that each place a header whose tokens a comment parts from the next ones, "10 0 %11 0 %12 0 % ... obj" on one
+        // line, or on a line each: each row's load read the run of comments after it for the obj that would end its header,
+        // its window grown eight times over, and reading every object took time in the square of the rows. A header whose
+        // tokens more rows than the bound part is none there (#387).
+        const int Headers = 1_000;
+
+        var small = Read(Headers);
+        var large = Read(4 * Headers);
+
+        large.Should().BeLessThan(8 * small, "four times the rows must cost about four times the bytes read ({0:N0} for {1:N0})", small, Headers);
+
+        long Read(int headers)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var k = 0; k < headers; k++)
+            {
+                rows[10 + k] = file.Position;
+                file.Raw(shape switch
+                {
+                    "one comment line" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %"),
+                    "a comment line each, then obj" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %\n"),
+                    _ => string.Create(CultureInfo.InvariantCulture, $"{10 + k} %\n"),
+                });
+            }
+
+            file.Raw((shape == "one comment line" ? "\n" : string.Empty) + (shape.EndsWith("then 0 obj", StringComparison.Ordinal) ? "0 obj" : "obj") + " << >>\nendobj\n");
+            file.Table(10 + headers, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + headers} /Root 1 0 R"));
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            for (var k = 0; k < headers; k++)
+            {
+                _ = document.GetObject(new PdfObjectId(10 + k));
+            }
+
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("3 0, comment lines, obj", false)]
+    [InlineData("3 0, comment lines, obj", true)]
+    [InlineData("comment lines, 3 0 obj", false)]
+    [InlineData("comment lines, 3 0 obj", true)]
+    [InlineData("white space, 3 0 obj", false)]
+    [InlineData("leading zeros, 3 0 obj", false)]
+    [InlineData("leading signs, 3 0 obj", false)]
+    [InlineData("comment lines past the guard, 3 0 obj", false)]
+    [InlineData("comment lines holding rows, 3 0 obj", false)]
+    [InlineData("comment lines, a name", false)]
+    [InlineData("comment lines, 0 0 obj", false)]
+    public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(string shape, bool validate)
+    {
+        // Rows that place a thousand objects at one header whose tokens, or what comes before its number, run on for lines,
+        // which a trailer padded past MaxTrailerLength keeps through the rebuild: each object's load read the header in
+        // windows grown until they held its obj, to find it names object 3, and loading or validating every object took time
+        // in the square of the file. A header whose number the window holds whole and names another object is not the one
+        // asked for, and what loads learn of a header a window cut at a place — its number, the guard's cut, or that no header
+        // is there — serves the loads after them (#387).
+        var small = Read(250, 200);
+        var large = Read(1_000, 800);
+
+        large.Should().BeLessThan(8 * small, "four times the rows and the header's lines must cost about four times the bytes read ({0:N0})", small);
+
+        long Read(int objects, int lines)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+            var at = file.Position;
+            var run = new StringBuilder();
+
+            for (var k = 0; k < lines; k++)
+            {
+                if (shape == "comment lines holding rows, 3 0 obj" && k % 3 == 0)
+                {
+                    // A row past the place on every third line, for an object of its own: more of them part the header than the
+                    // bound allows.
+                    rows[3 + objects + (k / 3)] = at + run.Length + 2;
+                }
+
+                run.Append(shape switch
+                {
+                    "white space, 3 0 obj" => new string(' ', 251),
+                    "leading zeros, 3 0 obj" => new string('0', 251),
+                    "leading signs, 3 0 obj" => new string('+', 251),
+                    _ => "\n%" + new string('y', 250),
+                });
+            }
+
+            file.Raw(shape switch
+            {
+                "3 0, comment lines, obj" => "3 0" + run + "\nobj (three)\nendobj\n",
+                "comment lines, a name" => run + "\n/Name null\nendobj\n",
+                "comment lines, 0 0 obj" => run + "\n0 0 obj null\nendobj\n",
+                "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj (three)\nendobj\n",
+                _ => run + "\n3 0 obj (three)\nendobj\n",
+            });
+
+            for (var k = 0; k < objects; k++)
+            {
+                rows[3 + k] = at;
+            }
+
+            var size = 3 + objects + lines;
+            file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+            var options = shape.Contains("past the guard", StringComparison.Ordinal)
+                ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+                : null;
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+            if (validate)
+            {
+                _ = new PdfValidator().Validate(document);
+            }
+            else
+            {
+                for (var k = 0; k < objects; k++)
+                {
+                    _ = document.GetObject(new PdfObjectId(3 + k));
+                }
+            }
+
+            // The header's own object reads where its row places it: the rows of the other objects at its place part nothing.
+            if (shape is not ("comment lines past the guard, 3 0 obj" or "comment lines holding rows, 3 0 obj" or "comment lines, a name" or "comment lines, 0 0 obj"))
+            {
+                document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+            }
+
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("9 0, comment lines past the guard, obj")]
+    [InlineData("comment lines past the guard, 9 0 obj")]
+    [InlineData("9 0, comment lines, obj")]
+    [InlineData("comment lines within the guard, 9 0 obj")]
+    public void Objects_placed_at_one_header_a_window_cuts_read_alike_whatever_order_they_are_read_in(string shape)
+    {
+        // Rows place objects 4 to 9 at one header a window's edge cuts, under MaxObjectLength 32 KB, which it runs past or
+        // not. What a load learns of that header serves the loads after it, and must answer each as reading the header again
+        // would: the objects, and the codes and places reported, are the same whether object 9, whose header it is, is read
+        // first or last (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var lines = string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), shape.Contains("past the guard", StringComparison.Ordinal) ? 200 : shape.Contains("within", StringComparison.Ordinal) ? 80 : 40));
+        file.Raw(shape.StartsWith("9 0", StringComparison.Ordinal) ? "9 0" + lines + "\nobj (nine)\nendobj\n" : lines + "\n9 0 obj (nine)\nendobj\n");
+
+        for (var number = 4; number <= 9; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } };
+
+        Read([9, 4, 5, 6, 7, 8]).Should().Equal(Read([4, 5, 6, 7, 8, 9]));
+
+        List<string> Read(int[] order)
+        {
+            using var document = PdfDocument.Open(file.Bytes, options);
+            var seen = new List<string>();
+
+            foreach (var number in order)
+            {
+                seen.Add(string.Create(CultureInfo.InvariantCulture, $"{number}: {document.GetObject(new PdfObjectId(number))}"));
+            }
+
+            // A guard reached at one place is reported once, naming the object whose load reached it first.
+            seen.AddRange(document.Diagnostics.Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Code} at {entry.Position}")));
+            return [.. seen.Order(StringComparer.Ordinal)];
+        }
+    }
+
+    [Theory]
+    [InlineData("rows inside it")]
+    [InlineData("past the guard")]
+    [InlineData("a header past the first window")]
+    [InlineData("a name at the guard's window")]
+    public void Loads_at_a_place_whose_cut_header_a_load_read_before_read_their_first_window_and_little_more(string shape)
+    {
+        // Rows place two hundred objects at one header that a run of comment lines precedes, rows inside that run, or the run
+        // past MaxObjectLength 32 KB, or 20 KB of it, then the header or a name that rules one out. The first load, of an object
+        // the header does not name, reads it as far as its refusal, its guard, the number it gives or what rules a header out;
+        // what it learned answers every load after it once its first window is read, which, with the search near the place,
+        // is all each reads (#387).
+        const int Objects = 200;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var run = new StringBuilder();
+
+        for (var k = 0; k < (shape.StartsWith("rows", StringComparison.Ordinal) || shape.StartsWith("past", StringComparison.Ordinal) ? 400 : 80); k++)
+        {
+            if (shape == "rows inside it" && k % 3 == 0)
+            {
+                rows[3 + Objects + (k / 3)] = at + run.Length + 2;
+            }
+
+            run.Append("\n%").Append('y', 250);
+        }
+
+        file.Raw(run + (shape == "a name at the guard's window" ? "\n/Name null\nendobj\n" : "\n3 0 obj null\nendobj\n"));
+
+        for (var k = 0; k < Objects; k++)
+        {
+            rows[3 + k] = at;
+        }
+
+        var size = 3 + Objects + 400;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+        var options = shape is "past the guard" or "a name at the guard's window"
+            ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+            : null;
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        for (var k = 1; k < Objects; k++)
+        {
+            _ = document.GetObject(new PdfObjectId(3 + k));
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            2L * Objects * PdfFileReader.InitialObjectWindow, "each load after the first reads its first window and the search near the place");
+    }
+
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
+
+    /// <summary>What parts the tokens of a header written with a comment line between them.</summary>
+    private const string CommentLine = "\n% x\n";
 
     /// <summary>What places the headers a run of lines holds.</summary>
     public enum CommentHeadersPlacedBy
@@ -5600,6 +5877,36 @@ public class HostileInputTests
 
         /// <summary>A table as <see cref="Table"/>, with a row past each value that starts no header.</summary>
         TableWithDecoys,
+
+        /// <summary>A table whose rows each place a header a byte early, on the white space before its number.</summary>
+        TableByteEarly,
+    }
+
+    [Fact]
+    public void A_number_an_object_stream_lists_many_times_is_asked_once_whether_its_later_direct_definition_holds_a_value()
+    {
+        // Object stream 5 lists object 3 a hundred thousand times; a direct definition of 3 follows it. A rebuild asks whether
+        // that definition holds no value at the first listing only, each later one keeping that first place: asked at each,
+        // it read the definition again, 64 bytes a listing, six times the file (#438).
+        const int Listings = 100_000;
+        var header = new StringBuilder();
+
+        for (var i = 0; i < Listings; i++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"3 {i} ");
+        }
+
+        var data = header.ToString() + new string(' ', Listings) + "(member) ";
+        var bytes = Encoding.Latin1.GetBytes(new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+            .Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n")
+            .Append(CultureInfo.InvariantCulture, $"5 0 obj\n<< /Type /ObjStm /N {Listings} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n")
+            .Append("3 0 obj (direct) endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("direct");
+        document.WasRepaired.Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(4L * bytes.Length);
     }
 
     [Theory]
@@ -7633,8 +7940,10 @@ public class HostileInputTests
     /// <paramref name="filler"/> bytes, less <paramref name="shortBy"/>, or names object 999, which holds
     /// <paramref name="lengthObject"/>. With <paramref name="placedFromEnd"/>, object 9, which the index places, starts that
     /// many bytes before that <c>endstream</c>, inside every stream's data. The trailer holds <paramref name="entries"/> besides.
+    /// A direct length is written with <paramref name="lengthDigits"/> digits.
     /// </summary>
-    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "")
+    internal static byte[] NestedInStrings(
+        int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "", int lengthDigits = 10)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -7652,7 +7961,7 @@ public class HostileInputTests
             rows[10 + k] = origin + text.Length;
             text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
             lengthAt[k] = text.Length;
-            text.Append(lengthObject is null ? "0000000000" : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
+            text.Append(lengthObject is null ? new string('0', lengthDigits) : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
         }
 
         starts[^1] = text.Length;
@@ -7677,7 +7986,7 @@ public class HostileInputTests
 
         for (var k = 0; lengthObject is null && k < streams; k++)
         {
-            var digits = (end - starts[k] - shortBy).ToString("D10", CultureInfo.InvariantCulture);
+            var digits = (end - starts[k] - shortBy).ToString("D" + lengthDigits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
             for (var d = 0; d < digits.Length; d++)
             {
