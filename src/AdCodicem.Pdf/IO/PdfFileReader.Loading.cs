@@ -370,7 +370,7 @@ internal sealed partial class PdfFileReader
                     firstWindow = false;
 
                     if (number > 0 && _headerCuts is { } cuts && cuts.TryGetValue(offset, out var known) &&
-                        AnswersFromCut(known, offset, number, limit, maxWindow, out foundNumber) is { } answer)
+                        AnswersFromCut(known, offset, number, limit, bytes.Length, maxWindow, out foundNumber) is { } answer)
                     {
                         return answer;
                     }
@@ -647,13 +647,16 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Answers a load of object <paramref name="number"/> at <paramref name="offset"/> from what loads learned of the header a
-    /// window's edge cut there (<paramref name="known"/>), as reading it again would answer: false where its first integer,
-    /// whole within the largest window <paramref name="maxWindow"/>, names another object, or where more rows than
-    /// <see cref="MaxPlacedHeadersInValue"/> follow the place before a window short of that largest one that still cuts the
-    /// header, as the reading would find them now; the guard of <paramref name="limit"/> reached, and false, where that
-    /// largest window cuts the header; and null, for the load to read it, where what was learned does not tell.
+    /// window's edge cut there (<paramref name="known"/>), as reading it again from a first window of
+    /// <paramref name="firstWindow"/> bytes would answer: false where its first integer, whole within the largest window
+    /// <paramref name="maxWindow"/>, names another object, or where more rows than <see cref="MaxPlacedHeadersInValue"/>
+    /// follow the place within the window the reading would refuse it in — the first, or the one grown to hold the row past
+    /// the bound —, short of that largest one and known to cut the header, the rows as the indexes place them now; the guard
+    /// of <paramref name="limit"/> reached, and false, where that largest window cuts the header; and null, for the load to
+    /// read it, where what was learned does not tell.
     /// </summary>
-    private bool? AnswersFromCut(HeaderCut known, long offset, int number, PdfLimit limit, int maxWindow, out int foundNumber)
+    private bool? AnswersFromCut(
+        HeaderCut known, long offset, int number, PdfLimit limit, int firstWindow, int maxWindow, out int foundNumber)
     {
         foundNumber = 0;
 
@@ -662,10 +665,14 @@ internal sealed partial class PdfFileReader
             return false;
         }
 
-        if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue &&
-            partedAt - offset + 1 < maxWindow && partedAt - offset < known.CutPast)
+        if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
         {
-            return false;
+            var refusing = firstWindow > partedAt - offset ? firstWindow : partedAt - offset + 1;
+
+            if (refusing < maxWindow && refusing <= known.CutPast)
+            {
+                return false;
+            }
         }
 
         if (known.CutPast >= maxWindow)
