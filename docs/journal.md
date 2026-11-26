@@ -23,7 +23,9 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   merges it (#439).
 - **CodeQL.** #444, approved and green, still did not merge: CodeQL's default setup ran no analysis on it and
   reported `neutral`, and the ruleset required code scanning results. The maintainer dropped that rule on 2026-11-26;
-  CodeQL still runs and alerts.
+  CodeQL still runs and alerts. #444 then showed `behind`: the ruleset asked a branch to be up to date with `main`,
+  and Dependabot rebases only a pull request in conflict. The maintainer dropped that requirement the same day, and
+  #444 was asked to rebase (`@dependabot rebase`).
 - **Checks.** Release build without warnings; the unit suite; the documentation site built and checked; actionlint
   1.7.12. The release tooling classified commits and rendered notes before and after. Pillow 13 rebuilt the scanned
   page of the corpus with the same JPEG bytes as 12.3, only ReportLab's dates differing.

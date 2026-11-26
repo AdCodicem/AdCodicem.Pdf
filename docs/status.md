@@ -390,8 +390,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
   approval and every review thread resolved, linear history and coverage of at least 61 %; it
   requires the checks `Build and unit tests`, `Integration tests`, `Conventional commits` and `workflows` by name
-  (confirmed by the maintainer on 2026-11-25), and only administrators and Dependabot bypass it, for pull requests
-  only. CodeQL runs as GitHub's default setup
+  (confirmed by the maintainer on 2026-11-25), without asking the branch to be up to date with `main` since
+  2026-11-26 — Dependabot rebases only a pull request in conflict, so one merely behind waited for ever —, and only
+  administrators and Dependabot bypass it, for pull requests only. CodeQL runs as GitHub's default setup
   since 2026-09-22, and no longer blocks a merge since 2026-11-26: it ran no analysis on Dependabot's pull requests
   and reported `neutral`, which held #444 even approved and green, so the maintainer dropped its rule; the repository's own workflow and configuration, disabled since then, were deleted on
   2026-09-26 at the maintainer's choice (T35).
