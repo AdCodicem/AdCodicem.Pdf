@@ -188,7 +188,8 @@ internal sealed partial class PdfFileReader
     /// Determines whether the object whose header starts at <paramref name="at"/> holds no value: past its <c>obj</c>
     /// keyword, the white space and comments there lead to nothing that starts a value — the end of the file, a closing
     /// delimiter, a byte none of a value's, a brace, a keyword other than <c>true</c>, <c>false</c> and <c>null</c>, which a
-    /// load reads as null —, or to another object's header, whose number a load reads as the value (#351).
+    /// load reads as null —, or to another object's header, whose number a load reads as the value (#351): two integers and
+    /// <c>obj</c>, the number and the generation in the range the scan takes a header's in.
     /// </summary>
     /// <remarks>
     /// Told from the first <see cref="NoValueReach"/> bytes from the header, within <see cref="PdfReaderLimits.MaxObjectLength"/>:
@@ -291,7 +292,8 @@ internal sealed partial class PdfFileReader
 
             case PdfTokenKind.Integer:
                 // An integer is a value but where it starts another object's header, two integers and obj, which a load
-                // reads its number of as the value: no value this definition wrote.
+                // reads its number of as the value: no value this definition wrote. A pair the scan would take for no header
+                // (ReadHeaderBackwards) is the definition's value.
                 var generation = lexer.Read();
                 var keyword = generation.Kind == PdfTokenKind.Integer ? lexer.Read() : generation;
 
@@ -300,7 +302,8 @@ internal sealed partial class PdfFileReader
                     return null;
                 }
 
-                return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword);
+                return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword) &&
+                    next.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration;
 
             default:
                 return true;
