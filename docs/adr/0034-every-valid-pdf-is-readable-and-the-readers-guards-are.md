@@ -304,6 +304,15 @@ file's fault either way, and no row is read either way, so the older sections ar
 reads them, and the guard is reached once the chain is read. Yielding the section to the guard wherever a value could
 make it unreadable — every value a guard cut can — would end the chain there and leave the older sections unread.
 
+Amended on 2026-11-26, by the maintainer, while [#185](https://github.com/AdCodicem/AdCodicem.Pdf/issues/185) was fixed:
+a third kind of internal constant, beside a bound only an invalid file reaches and a bound on what a message repeats. A
+threshold that changes only when the library reads an object — never what it reads, nor what it reports — bounds nothing
+a guard would lift, and is an internal constant even where a valid file reaches it. The validator's walk keeps counts of
+the references met to objects it has yet to read, to tell the generation each names once it reads them; past
+`ObjectGraph.MaxWaitingCounts` counts, it reads such an object at the next reference instead, which tells its references
+there and then. Lifting it would change only the memory the walk holds; the whole corpus validated alike with it at 0 and
+with no bound. Such a constant's declaration says so, in place of the reason no valid file reaches it.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a

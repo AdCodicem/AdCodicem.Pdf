@@ -1022,7 +1022,7 @@ internal sealed class ObjectStreamDependencies
         /// (#173) —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the
         /// reader reads. It follows the numbers its references give, though: a reference under a generation its object
         /// does not carry, which the reader reads as null (#185), is followed to the object of its number, whose value
-        /// it gives, a hand-made shape left to #NNN.
+        /// it gives, a hand-made shape left to #455.
         /// </summary>
         /// <param name="written">The value as the file wrote it.</param>
         /// <param name="key">The key of the stream's dictionary the value is read for, as a finding quotes it.</param>

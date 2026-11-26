@@ -3129,10 +3129,10 @@ public class DocumentReaderTests
     [InlineData("4 0 obj\n42\n", "4 0 xbj\n42\n", "The stream's /Length names object 4 0, which could not be read; its data ends after 42 bytes.")]
     public void Reports_a_deferred_length_that_gives_no_length_once_the_chain_is_read(string written, string replacement, string message)
     {
-        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes, or object 4 under a
-        // generation it does not carry (#185); object 4's header is misspelled, which no search near its entry nor any rebuild then finds — the rebuild its load sets off parses
-        // the stream again, and the parser reports the length first: the stream is reported once. Each replacement keeps
-        // every offset.
+        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes, or object 4
+        // under a generation it does not carry (#185); object 4's header is misspelled, which no search near its entry
+        // nor any rebuild then finds — the rebuild its load sets off parses the stream again, and the parser reports
+        // the length first: the stream is reported once. Each replacement keeps every offset.
         var file = Encoding.Latin1.GetBytes(
             Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength()).Replace(written, replacement, StringComparison.Ordinal));
         using var document = PdfDocument.Open(file);
@@ -3154,6 +3154,20 @@ public class DocumentReaderTests
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().StartWith("The /Length of cross-reference stream 5 names object 4 1, which the file lacks;");
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_deferred_length_whose_chain_ends_under_another_generation_names_the_link_the_file_lacks()
+    {
+        // The cross-reference stream's /Length names object 4, which holds 3 1 R; object 3 is written 3 0 obj. The chain's
+        // last link is what the file lacks, which the report names, not the object the /Length names (#185).
+        var file = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength(lengthTail: 3)).Replace("4 0 obj\n42   ", "4 0 obj\n3 1 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().StartWith("The /Length of cross-reference stream 5 names object 3 1, which the file lacks;");
     }
 
     [Theory]

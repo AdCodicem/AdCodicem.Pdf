@@ -2916,6 +2916,7 @@ public class HostileInputTests
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
             .Which.Message.Should().Be("The trailer's /Encrypt names object 9, which reads as null, not an encryption dictionary; the document is read as unencrypted.");
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
     }
 
     [Theory]
@@ -2943,6 +2944,7 @@ public class HostileInputTests
         stream.Data.Length.Should().Be(5);
         stream.Data.CutByGuard.Should().BeFalse();
 
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject).Should().Be(cut);
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().Contain("names object 8 1, which the file lacks");
     }

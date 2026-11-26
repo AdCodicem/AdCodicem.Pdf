@@ -303,8 +303,9 @@ public class HostileInputMemoryTests
     {
         // The catalog names 800 objects, then 800 holders, each naming every one of the 800: read last claimed first, the
         // holders are walked while the 800 objects wait. A count was kept for each holder and object, as many as the
-        // references; past ObjectGraph.MaxWaitingCounts counts, an object is read at the next reference to it, and the walk
-        // allocates about what it allocates with the holders named last, the objects read first (#185).
+        // references; past ObjectGraph.MaxWaitingCounts counts, an object is read at the next reference to it from a holder
+        // that has no count yet, and the walk allocates about what it allocates with the holders named first, the objects read
+        // first (#185).
         const int Objects = 800;
         var objects = string.Join(' ', Enumerable.Range(10, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
         var holders = string.Join(' ', Enumerable.Range(1_000, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));

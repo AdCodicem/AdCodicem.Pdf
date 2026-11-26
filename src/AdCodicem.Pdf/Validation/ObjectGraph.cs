@@ -25,8 +25,9 @@ namespace AdCodicem.Pdf.Validation;
 /// that no reference named before: what the walk keeps of an object still to read is its number, with the object that
 /// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it
 /// (#168); and of the references met to it before it is read, counts by holder and one reference, no more than
-/// <see cref="MaxWaitingCounts"/> counts in all, which grow neither with the references nor with the generations they name
-/// (<see cref="ClaimAgain"/>, #185). A chain of references so holds what the reader keeps, whatever the objects along
+/// <see cref="MaxWaitingCounts"/> counts in all, past which a reference from a holder that has no count yet has the object
+/// read, so that they grow neither with the references nor with the generations they name (<see cref="ClaimAgain"/>,
+/// #185). A chain of references so holds what the reader keeps, whatever the objects along
 /// it hold beside the reference and wherever they write it. The objects claimed are read last claimed first, so that a
 /// tree of objects is read as a depth-first walk of what it holds would read it, the last value first. Walking one
 /// object keeps a place for each level of nesting it is in, which the parser bounds in an object read from a file; a
@@ -63,10 +64,11 @@ internal sealed class ObjectGraph
     /// object at the next one instead, which tells that object's references there and then (<see cref="ClaimAgain"/>).
     /// </summary>
     /// <remarks>
-    /// An internal bound, not a guard (ADR 34): past it, what the walk reports is the same, only when it reads an object
-    /// changes. A file whose objects many holders name before the walk reads them — each holder naming each of them, as a
-    /// table of references between thousands of objects does — would keep a count for each pair: memory as large as the
-    /// references, valid or not (#185).
+    /// No guard (ADR 34, amended 2026-11-26): it changes when the walk reads an object, not what it reads nor what it
+    /// reports, and a valid file may reach it. A file whose objects many holders name before the walk reads them — each
+    /// holder naming each of them, as a table of references between thousands of objects does — would keep a count for each
+    /// pair: memory as large as the references, valid or not (#185). Past it, a reference from a holder that has no count
+    /// yet has the object read; one from a holder that has one adds to it.
     /// </remarks>
     internal const int MaxWaitingCounts = 16_384;
 
@@ -362,9 +364,9 @@ internal sealed class ObjectGraph
                 return;
             }
 
-            var counted = WaitingFor(number).Counted ??= new(SeededComparer.Instance);
+            var counts = WaitingFor(number);
 
-            if (counted.TryGetValue(owner, out var count))
+            if (counts.Counted is { } counted && counted.TryGetValue(owner, out var count))
             {
                 counted[owner] = count + 1;
                 return;
@@ -372,7 +374,7 @@ internal sealed class ObjectGraph
 
             if (_waitingCounts < MaxWaitingCounts)
             {
-                counted.Add(owner, 1);
+                (counts.Counted ??= new(SeededComparer.Instance)).Add(owner, 1);
                 _waitingCounts++;
                 return;
             }
@@ -841,7 +843,7 @@ internal sealed class ObjectGraph
     {
         /// <summary>
         /// Gets or sets how many references under the claim's generation each object that holds them counts — references
-        /// another rule judges are not counted —; null until one is.
+        /// another rule judges are not counted —; null while none is kept, before the first and once they are told.
         /// </summary>
         public Dictionary<int, int>? Counted { get; set; }
 

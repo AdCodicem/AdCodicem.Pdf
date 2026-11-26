@@ -62,6 +62,7 @@ public class ObjectRuleTests
     [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", true)]
     [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", false)]
     [InlineData("/A [5 1 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", false)]
+    [InlineData("/A [5 1 R 5 1 R 5 0 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
     public void An_object_named_under_another_generation_is_walked_only_through_a_reference_naming_its_own(string entries, string message, bool walked)
     {
         // Object 5, written under generation 0, refers to object 99, which the file lacks, and lacks its endobj. The catalog
@@ -84,6 +85,27 @@ public class ObjectRuleTests
         missing.Should().Contain(finding => finding.Location.Object == new PdfObjectId(1)).Which.Message.Should().Be(message);
         missing.Any(finding => finding.Location.Object == new PdfObjectId(5)).Should().Be(walked);
         report.Findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing).Should().Be(walked);
+    }
+
+    [Fact]
+    public void A_reference_read_to_tell_its_generation_is_read_once()
+    {
+        // The catalog names object 5 under generations 0 to 3; object 5 is written under 0, and nothing reads it before the
+        // walk. Each reference met under another generation than the claim's has the object read for it, which reads the
+        // reference: it read it again, a second read the full record counted with what it drops (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /A [5 0 R 5 1 R 5 2 R 5 3 R] >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0 });
+
+        _ = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(3);
     }
 
     [Fact]
