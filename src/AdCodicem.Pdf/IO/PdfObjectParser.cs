@@ -1444,6 +1444,7 @@ internal ref struct PdfObjectParser
                 return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target(PdfReference.MaxChainLength));
             }
 
+            // A reference missing for the generation it names, at the end of a chain, is the one named (#185).
             if (presence != ObjectPresence.Defined)
             {
                 return new DeclaredLength(
@@ -1453,7 +1454,7 @@ internal ref struct PdfObjectParser
                         ObjectPresence.Deferred => StreamLengthForm.Deferred,
                         _ => StreamLengthForm.ObjectUnreadable,
                     },
-                    Reference: reference);
+                    Reference: presence == ObjectPresence.Missing ? named.Target(PdfReference.MaxChainLength) : reference);
             }
         }
 

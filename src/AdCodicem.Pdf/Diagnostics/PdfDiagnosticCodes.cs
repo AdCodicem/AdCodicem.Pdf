@@ -358,8 +358,8 @@ public static class PdfDiagnosticCodes
     /// generation plays no part, a disagreement of the entry with the header being the validator's
     /// (<see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/>). Raised as a warning, with no position: each
     /// distinct reference — number and generation — is reported once, on its first read, while the record has room; once it
-    /// is full, each read of a reference not reported before is counted with what it drops. The object itself is read once, by its number,
-    /// whatever generations name it.
+    /// is full, each read of a reference not reported before is counted with what it drops. The object itself is read once,
+    /// by its number, whatever generations name it.
     /// </summary>
     public const string ObjectGenerationMismatch = "object.generation-mismatch";
 

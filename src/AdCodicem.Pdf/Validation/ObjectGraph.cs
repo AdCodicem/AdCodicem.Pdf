@@ -16,27 +16,24 @@ namespace AdCodicem.Pdf.Validation;
 /// The walk follows every reference of every dictionary, array and stream dictionary from the trailer — not the
 /// trailer's <c>/Prev</c> or <c>/XRefStm</c>, which name sections rather than objects —, and resolves each object once,
 /// by its number, through the document — a reference that names a generation the object does not carry is resolved too,
-/// under that generation, as resolving it asks for it, and reads as null: each one met once the object is read or under
-/// another generation than the reference that claimed it, those met before it under the claim's generation once
-/// together (#185) —: memory follows the reader's cache and a set of object numbers, and no stream's data is read.
-/// Cycles through <c>/Parent</c>, <c>/P</c> or a destination are legal and everywhere; the set of numbers already met
-/// stops them.
+/// under that generation, as resolving it asks for it, and reads as null (<see cref="ClaimAgain"/>, #185) —: memory
+/// follows the reader's cache and a set of object numbers, and no stream's data is read. Cycles through <c>/Parent</c>,
+/// <c>/P</c> or a destination are legal and everywhere; the set of numbers already met stops them.
 /// </para>
 /// <para>
 /// Each object is walked whole when it is read, in the order it is written, and claims the objects its references name
 /// that no reference named before: what the walk keeps of an object still to read is its number, with the object that
 /// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it
-/// (#168); and of the references met to it before it is read, how many of those under the claim's generation each
-/// object that holds them counts, and the first under the generation the object carries where the claim's is not it,
-/// the object read at once for one under another generation than the claim's: what grows with the objects that name it,
-/// not with how many times nor under how many generations they do (#185). A chain of references so holds what the
-/// reader keeps, whatever the objects along it hold beside the reference and wherever they write it. The objects
-/// claimed are read last claimed first, so that a tree of objects is read as a depth-first walk of what it holds would
-/// read it, the last value first. Walking one object keeps a place for each level of nesting it is in, which the parser
-/// bounds in an object read from a file; a value a caller built nests as deep as it was built, and one that holds
-/// itself is walked without end, its array of containers growing a level at a time until memory runs out (#310). The
-/// places are kept in an array, not on the stack, by the walk and by the searches that place a fault once it is done
-/// alike, so that no depth a caller built overflows the stack (#168).
+/// (#168); and of the references met to it before it is read, counts by holder and one reference, no more than
+/// <see cref="MaxWaitingCounts"/> counts in all, which grow neither with the references nor with the generations they name
+/// (<see cref="ClaimAgain"/>, #185). A chain of references so holds what the reader keeps, whatever the objects along
+/// it hold beside the reference and wherever they write it. The objects claimed are read last claimed first, so that a
+/// tree of objects is read as a depth-first walk of what it holds would read it, the last value first. Walking one
+/// object keeps a place for each level of nesting it is in, which the parser bounds in an object read from a file; a
+/// value a caller built nests as deep as it was built, and one that holds itself is walked without end, its array of
+/// containers growing a level at a time until memory runs out (#310). The places are kept in an array, not on the
+/// stack, by the walk and by the searches that place a fault once it is done alike, so that no depth a caller built
+/// overflows the stack (#168).
 /// </para>
 /// <para>
 /// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first
@@ -61,6 +58,18 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 internal sealed class ObjectGraph
 {
+    /// <summary>
+    /// How many counts by holder the walk keeps of the references met to objects it has yet to read before it reads such an
+    /// object at the next one instead, which tells that object's references there and then (<see cref="ClaimAgain"/>).
+    /// </summary>
+    /// <remarks>
+    /// An internal bound, not a guard (ADR 34): past it, what the walk reports is the same, only when it reads an object
+    /// changes. A file whose objects many holders name before the walk reads them — each holder naming each of them, as a
+    /// table of references between thousands of objects does — would keep a count for each pair: memory as large as the
+    /// references, valid or not (#185).
+    /// </remarks>
+    internal const int MaxWaitingCounts = 16_384;
+
     private readonly PdfDocument _document;
     private readonly PdfFileReader _reader;
     private readonly PageTreeWalk _pages;
@@ -74,13 +83,13 @@ internal sealed class ObjectGraph
     private readonly Dictionary<int, int> _claimed = new(SeededComparer.Instance);
 
     /// <summary>
-    /// What references met to an object claimed and not read yet leave to tell once it is read, by number: how many of those
-    /// that name the claim's generation each object that holds them counts, and the first that names the generation the object
-    /// carries where the claim does not. One that names another generation than the claim's is told when it is met, the
-    /// object read for it (<see cref="ClaimAgain"/>): what is kept grows with the objects that name a waiting object, not with
-    /// how many times, nor under how many generations, they name it.
+    /// What references met to objects claimed and not read yet leave to tell, by number: counts by holder and the first
+    /// reference that names the generation the object carries, as <see cref="ClaimAgain"/> keeps them.
     /// </summary>
     private readonly Dictionary<int, Waiting> _waiting = new(SeededComparer.Instance);
+
+    /// <summary>How many counts by holder <see cref="_waiting"/> keeps in all, which <see cref="MaxWaitingCounts"/> bounds.</summary>
+    private int _waitingCounts;
 
     /// <summary>
     /// The objects read only through references that name a generation they do not carry, which read as null: none of
@@ -139,7 +148,11 @@ internal sealed class ObjectGraph
             var number = pending.Id.Number;
             var value = _reader.GetObject(pending.Id);
             _claimed.Remove(number);
-            _waiting.Remove(number, out var waiting);
+
+            if (_waiting.Remove(number, out var waiting))
+            {
+                _waitingCounts -= waiting.Counted?.Count ?? 0;
+            }
 
             // A reference that names a generation the object does not carry reads as null, and names an object the file
             // lacks (7.3.10): the one that claimed it, and each met while it waited. The object is walked through the first
@@ -326,12 +339,14 @@ internal sealed class ObjectGraph
     }
 
     /// <summary>
-    /// Meets <paramref name="reference"/> again, to an object a reference claimed before. To one still to read, a reference
-    /// that names the claim's generation waits with it, counted by the object that holds it, for that generation to be told
-    /// once the object is read; one that names another is told now, the object read for it by its number as resolving the
-    /// reference reads it — of two generations, only reading it says which one names it. Once the object is read, a reference
-    /// that names a generation it does not carry is counted as one to an object the file lacks, and resolved, as resolving it
-    /// asks for it; one that names the generation it carries leads the walk to it where only references naming another did.
+    /// Meets <paramref name="reference"/> again, to an object a reference claimed before. While the reader has not read
+    /// the object, a reference that names the claim's generation waits, counted by the object that holds it, for that
+    /// generation to be told when the walk reaches the object; one that names another, or one past
+    /// <see cref="MaxWaitingCounts"/> counts kept, has the object read now by its number, as resolving the reference reads it
+    /// — of two generations, only reading it says which one names it —, and the references counted so far are told with it.
+    /// Once the reader has read the object, each reference is told when it is met: one that names a generation the object
+    /// does not carry is counted as one to an object the file lacks, and resolved, as resolving it asks for it; one that
+    /// names the generation it carries leads the walk to it where only references naming another did.
     /// </summary>
     private void ClaimAgain(PdfReference reference, int owner, Role role)
     {
@@ -342,23 +357,47 @@ internal sealed class ObjectGraph
 
         if (waiting && !known && generation == claimedUnder)
         {
-            if ((role & Role.Uncounted) == 0)
+            if ((role & Role.Uncounted) != 0)
             {
-                var counted = WaitingFor(number).Counted ??= new(SeededComparer.Instance);
-                counted[owner] = counted.TryGetValue(owner, out var count) ? count + 1 : 1;
+                return;
             }
 
-            return;
+            var counted = WaitingFor(number).Counted ??= new(SeededComparer.Instance);
+
+            if (counted.TryGetValue(owner, out var count))
+            {
+                counted[owner] = count + 1;
+                return;
+            }
+
+            if (_waitingCounts < MaxWaitingCounts)
+            {
+                counted.Add(owner, 1);
+                _waitingCounts++;
+                return;
+            }
         }
+
+        var resolved = !known && waiting;
 
         if (!known && (!waiting || !ResolveToTell(reference.Id, out carried)))
         {
             return;
         }
 
+        if (resolved)
+        {
+            TellWaiting(number, claimedUnder, carried);
+        }
+
         if (carried != generation)
         {
-            _ = _reader.GetObject(reference.Id);
+            // Read once only: the object read for it read the reference too.
+            if (!resolved)
+            {
+                _ = _reader.GetObject(reference.Id);
+            }
+
             CountMissing(role, owner);
         }
         else if (waiting && claimedUnder != carried)
@@ -381,6 +420,37 @@ internal sealed class ObjectGraph
     {
         _ = _reader.GetObject(id);
         return _reader.TryGetCarriedGeneration(id.Number, out carried);
+    }
+
+    /// <summary>
+    /// Tells, once waiting object <paramref name="number"/> is read before the walk reaches it and found to carry
+    /// <paramref name="carried"/>, the references counted while it waited under the claim's generation,
+    /// <paramref name="claimedUnder"/>: references to an object the file lacks where that generation is not the object's, and
+    /// nothing otherwise. Their counts are let go; the claim itself is told when the walk reaches the object.
+    /// </summary>
+    private void TellWaiting(int number, int claimedUnder, int carried)
+    {
+        if (!_waiting.TryGetValue(number, out var waiting) || waiting.Counted is not { } byOwner)
+        {
+            return;
+        }
+
+        if (claimedUnder != carried)
+        {
+            AddCounts(byOwner);
+        }
+
+        _waitingCounts -= byOwner.Count;
+        waiting.Counted = null;
+    }
+
+    /// <summary>Adds the counts <paramref name="byOwner"/> holds to the references to objects the file lacks, by holder.</summary>
+    private void AddCounts(Dictionary<int, int> byOwner)
+    {
+        foreach (var (owner, count) in byOwner)
+        {
+            _missingReferences[owner] = _missingReferences.TryGetValue(owner, out var counted) ? counted + count : count;
+        }
     }
 
     /// <summary>Gives what references met to waiting object <paramref name="number"/> leave to tell, kept from the first.</summary>
@@ -412,10 +482,7 @@ internal sealed class ObjectGraph
 
         if (waiting?.Counted is { } byOwner)
         {
-            foreach (var (owner, count) in byOwner)
-            {
-                _missingReferences[owner] = _missingReferences.TryGetValue(owner, out var counted) ? counted + count : count;
-            }
+            AddCounts(byOwner);
         }
 
         if (waiting?.Named is not { } named)
@@ -773,8 +840,8 @@ internal sealed class ObjectGraph
     private sealed class Waiting
     {
         /// <summary>
-        /// Gets or sets how many of the references that name the claim's generation each object that holds them counts, those
-        /// another rule judges left out; null until one counts.
+        /// Gets or sets how many references under the claim's generation each object that holds them counts — references
+        /// another rule judges are not counted —; null until one is.
         /// </summary>
         public Dictionary<int, int>? Counted { get; set; }
 
