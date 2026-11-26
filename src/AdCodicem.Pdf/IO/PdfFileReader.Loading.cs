@@ -404,8 +404,9 @@ internal sealed partial class PdfFileReader
                         return false;
                     }
 
-                    // A header whose tokens more rows than MaxPlacedHeadersInValue part is none there: each row a comment
-                    // line of headers holds would otherwise read that line to its end (#387).
+                    // A header that more rows than MaxPlacedHeadersInValue follow, from the byte past the place, before its
+                    // tokens end is none there: each row a comment line of headers holds would otherwise read that line to its
+                    // end (#387).
                     if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
                     {
                         if (partedAt - offset < bytes.Length)
