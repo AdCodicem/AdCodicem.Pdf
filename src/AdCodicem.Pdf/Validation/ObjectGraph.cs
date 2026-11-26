@@ -128,6 +128,15 @@ internal sealed class ObjectGraph
     /// <summary>Gets the objects whose value <c>endobj</c> does not follow.</summary>
     public ProbeFindings MissingEndObj { get; }
 
+    /// <summary>Gets the most counts by holder the walk kept at once, which <see cref="MaxWaitingCounts"/> bounds.</summary>
+    internal int MostWaitingCounts { get; private set; }
+
+    /// <summary>Gets how many counts by holder the walk still keeps once it is done: none.</summary>
+    internal int WaitingCountsLeft => _waitingCounts;
+
+    /// <summary>Gets how many objects the walk read before it reached them because it kept <see cref="MaxWaitingCounts"/> counts.</summary>
+    internal int ReadEarly { get; private set; }
+
     /// <summary>
     /// Walks the objects of <paramref name="document"/> reachable from its trailer, describing of each kind of fault the
     /// first <paramref name="room"/> objects that hold one and counting the rest: the room the report has when the walk is
@@ -376,8 +385,11 @@ internal sealed class ObjectGraph
             {
                 (counts.Counted ??= new(SeededComparer.Instance)).Add(owner, 1);
                 _waitingCounts++;
+                MostWaitingCounts = Math.Max(MostWaitingCounts, _waitingCounts);
                 return;
             }
+
+            ReadEarly++;
         }
 
         var resolved = !known && waiting;

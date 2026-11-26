@@ -109,6 +109,63 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_under_the_claim_s_generation_met_once_its_object_is_read_is_told_when_met()
+    {
+        // The catalog names object 5 under generation 1, then 0, which has it read, then 1 again; object 5 is written under
+        // 0, and nothing reads it before the walk. Read, the third reference is told when it is met — read, as resolving it
+        // reads it —, rather than kept to be told with the first, a read the full record counts with what it drops (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /A [5 1 R 5 0 R 5 1 R] >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0 });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(2);
+        report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().StartWith("Object 1 holds 2 references");
+    }
+
+    [Fact]
+    public void References_from_many_holders_to_objects_waiting_to_be_read_are_counted_within_the_walk_s_bound()
+    {
+        // The catalog names 200 objects, then 100 holders, each naming all 200: read last claimed first, the holders are walked
+        // while the 200 wait, 20,000 pairs of holder and object. The walk keeps no more counts than its bound at once, reads an
+        // object early only once it keeps that many, lets go of an object's counts when it reads it so, and keeps none once
+        // done (#185).
+        const int Objects = 200;
+        var objects = string.Join(' ', Enumerable.Range(10, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var holders = string.Join(' ', Enumerable.Range(1_000, 100).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /W [" + objects + "] /H [" + holders + "] >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var k = 0; k < Objects; k++)
+        {
+            builder.WithObject(10 + k, "(object)");
+        }
+
+        for (var k = 0; k < 100; k++)
+        {
+            builder.WithObject(1_000 + k, "[" + objects + "]");
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        document.Reader.SettleIndex();
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        graph.MissingReferences.Total.Should().Be(0);
+        graph.MostWaitingCounts.Should().Be(ObjectGraph.MaxWaitingCounts);
+        graph.ReadEarly.Should().Be(37);
+        graph.WaitingCountsLeft.Should().Be(0);
+    }
+
+    [Fact]
     public void A_reference_to_a_free_entry_names_an_object_the_file_lacks()
     {
         var template = PdfTemplate.Sound
