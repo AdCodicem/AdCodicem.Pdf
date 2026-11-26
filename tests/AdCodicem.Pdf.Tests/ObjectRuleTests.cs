@@ -45,8 +45,8 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData("/Annots [1 1 R]", "Object 3 refers to object 1 1 under /Annots[0], which the file lacks: it defines object 1 under generation 0 only, and the reference reads as null.")]
-    [InlineData("/Annots [2 1 R 2 1 R 2 3 R]", "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 2 1 under /Annots[0], which the file defines under generation 0 only.")]
+    [InlineData("/Annots [1 1 R]", "Object 3 refers to object 1 1 under /Annots[0], which the file lacks: the object numbered 1 carries generation 0, and the reference reads as null.")]
+    [InlineData("/Annots [2 1 R 2 1 R 2 3 R]", "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 2 1 under /Annots[0], the object numbered 2 carrying generation 0.")]
     [InlineData("/Annots [9 0 R 2 1 R]", "Object 3 holds 2 references to objects the file lacks, which read as null; the first refers to object 9 0 under /Annots[0].")]
     public void A_reference_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(string annots, string message)
     {
@@ -58,9 +58,9 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], which the file defines under generation 0 only.", true)]
-    [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: it defines object 5 under generation 0 only, and the reference reads as null.", true)]
-    [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: it defines object 5 under generation 0 only, and the reference reads as null.", false)]
+    [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
+    [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", true)]
+    [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", false)]
     public void An_object_named_under_another_generation_is_walked_only_through_a_reference_naming_its_own(string entries, string message, bool walked)
     {
         // Object 5, written under generation 0, refers to object 99, which the file lacks, and lacks its endobj. The catalog
@@ -96,6 +96,12 @@ public class ObjectRuleTests
 
         Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
             "Object 1 refers to object 4 0 under /Outlines, which the file lacks: the reference reads as null.");
+
+        // Under another generation than its row's, a free entry still defines nothing, and carries no generation (#185).
+        using var document = PdfDocument.Open(PdfTemplate.Build(template.Replace("/Outlines 4 0 R", "/Outlines 4 1 R", StringComparison.Ordinal)));
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 1 refers to object 4 1 under /Outlines, which the file lacks: the reference reads as null.");
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
     }
 
     [Fact]

@@ -256,6 +256,40 @@ public class HostileInputMemoryTests
     }
 
     [Fact]
+    public void References_met_to_an_object_waiting_to_be_read_cost_the_walk_what_they_cost_once_it_is_read()
+    {
+        // The catalog names object 5, then object 6, which names object 5 200,000 times: read last claimed first, object 6 is
+        // walked while object 5 waits. Each reference met to it then was kept until it was read, to tell its generation, a
+        // list growing with the references; they are counted by the object that holds them, and the walk allocates about what
+        // it allocates with the keys the other way round, object 5 read first (#185).
+        var references = string.Concat(Enumerable.Repeat("5 0 R ", 200_000));
+
+        var waiting = Allocated("/A 5 0 R /B 6 0 R");
+        var read = Allocated("/B 6 0 R /A 5 0 R");
+
+        waiting.Should().BeLessThan(read + (512 * 1024), $"read first, the walk allocated {read:N0} bytes");
+
+        long Allocated(string entries)
+        {
+            var file = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(5, "(five)")
+                .WithObject(6, "[" + references + "]")
+                .BuildClassic(rootNumber: 1);
+            using var document = PdfDocument.Open(file);
+            document.Reader.SettleIndex();
+            var pages = Validation.PageTreeWalk.Run(document);
+            _ = document.GetObject(6);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            Validation.ObjectGraph.Run(document, pages).MissingReferences.Total.Should().Be(0);
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+    }
+
+    [Fact]
     public void Walking_a_deep_page_tree_whose_nodes_carry_large_values_holds_what_the_reader_keeps_whatever_its_depth()
     {
         // Four hundred page tree nodes, each the one kid of the node above it and carrying a string of 100,000 bytes after
