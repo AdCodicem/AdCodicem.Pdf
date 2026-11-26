@@ -166,6 +166,31 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_another_rule_judges_met_to_an_object_the_walk_has_yet_to_read_is_not_counted()
+    {
+        // A caller puts in the trailer /A and /Root, both naming object 4 under generation 1, which it carries 0 — /Root with
+        // no source, so that the page tree walk does not read object 4 through it. The walk meets /Root, a reference another
+        // rule judges, while object 4 waits, and counts /A alone (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+            [4] = file.Object(4, "<< /X 1 >>"),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var trailer = document.Trailer;
+        trailer.Remove(PdfName.Root);
+        trailer.Set(PdfName.Get("A"), new PdfReference(new PdfObjectId(4, 1)));
+        trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(4, 1)));
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "The trailer refers to object 4 1 under /A, which the file lacks: the object numbered 4 carries generation 0, and the reference reads as null.");
+    }
+
+    [Fact]
     public void A_reference_to_a_free_entry_names_an_object_the_file_lacks()
     {
         var template = PdfTemplate.Sound
