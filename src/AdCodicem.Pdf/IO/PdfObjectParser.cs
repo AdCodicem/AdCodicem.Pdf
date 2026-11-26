@@ -60,9 +60,9 @@ internal ref struct PdfObjectParser
     private readonly bool _guardEdge;
 
     /// <summary>
-    /// Whether the bytes end at a header an index places, the first of more than
-    /// <see cref="PdfFileReader.MaxPlacedHeadersInValue"/> inside the value, rather than where the file does: its reports
-    /// name it.
+    /// Whether the bytes end at a place an index gives another object, the first of more than
+    /// <see cref="PdfFileReader.MaxPlacedHeadersInValue"/> inside this one, rather than where the file does: its reports name
+    /// it.
     /// </summary>
     private readonly bool _endsAtPlacedHeader;
 
@@ -187,7 +187,6 @@ internal ref struct PdfObjectParser
 
     /// <summary>Where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends.</summary>
     private int _headerEnd;
-
     /// <summary>
     /// Whether the end of the buffer came before the value of the last indirect object <see cref="TryReadIndirectObject"/>
     /// read said what it is (<see cref="ValueKindCut"/>).
@@ -220,8 +219,9 @@ internal ref struct PdfObjectParser
     /// token their edge parts is then dropped, rather than kept as far as it was read (<see cref="EndsAtGuardEdge"/>).
     /// </param>
     /// <param name="endsAtPlacedHeader">
-    /// Whether the bytes, which end the data, end at a header an index places inside the object's value, the first of more
-    /// than <see cref="PdfFileReader.MaxPlacedHeadersInValue"/>, which what their end cuts short is then reported to have met.
+    /// Whether the bytes, which end the data, end at a place an index gives another object inside this one, the first of
+    /// more than <see cref="PdfFileReader.MaxPlacedHeadersInValue"/>, which what their end cuts short is then reported to
+    /// have met.
     /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
@@ -369,7 +369,6 @@ internal ref struct PdfObjectParser
 
     /// <summary>Gets where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the buffer.</summary>
     public readonly int HeaderEnd => _headerEnd;
-
     /// <summary>
     /// Gets a value indicating whether the end of the buffer, which does not end the data, came before the value of the last
     /// indirect object <see cref="TryReadIndirectObject"/> read said what it is: no byte of the value lies within the buffer,
@@ -1998,7 +1997,7 @@ internal ref struct PdfObjectParser
     {
         null when _endsAtPlacedHeader => string.Create(
             CultureInfo.InvariantCulture,
-            $"An object header the index places, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} the object ran past, came"),
+            $"The place the index gives another object, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} inside this one, came"),
         null => "The file ended",
         { EndsAtNextMember: true } => "The next member of the object stream started",
         _ => "The object stream's decoded data ended",

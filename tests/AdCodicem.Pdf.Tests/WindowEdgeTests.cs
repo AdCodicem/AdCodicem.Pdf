@@ -710,6 +710,7 @@ public class WindowEdgeTests
     [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 0, "cut")]
     [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, -1, 0, "cut")]
     [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 8 * 1024, "guard")]
+    [InlineData("(", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 13_005, "guard")]
     [InlineData("[", PdfFileReader.MaxPlacedHeadersInValue + 1, 0, 0, "cut")]
     [InlineData("<< /Length 3 >>", PdfFileReader.MaxPlacedHeadersInValue, -1, 0, "whole")]
     [InlineData("<< /Length 3 >>", PdfFileReader.MaxPlacedHeadersInValue + 1, -1, 0, "kept")]
@@ -720,7 +721,8 @@ public class WindowEdgeTests
         // whose headers the table places, or places a byte early, then closes what it opened, and ends with a stream keyword
         // after a dictionary. Past MaxPlacedHeadersInValue rows inside it, an open value's data ends at the first, which is
         // reported, and a whole one is kept as read, its stream keyword unseen; up to the bound, the window grows and reads
-        // it whole; and the largest window MaxObjectLength allows reaches the guard first, which is reported (#387).
+        // it whole; and the largest window MaxObjectLength allows reaches the guard first, which is reported, the bound not
+        // asked there even where that window holds the row past it (#387).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -760,7 +762,7 @@ public class WindowEdgeTests
                     opening == "(" ? (rowShift < 0 ? "\n%" : "\n% ") : "0");
                 reports.Should().Equal(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"syntax.truncated-object: An object header the index places, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} the object ran past, came inside {(opening == "[" ? "an array, which was never closed" : $"a literal string, which takes the {(rowShift < 0 ? 3 : 4)} bytes from where it opens to that end")}."));
+                    $"syntax.truncated-object: The place the index gives another object, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} inside this one, came inside {(opening == "[" ? "an array, which was never closed" : $"a literal string, which takes the {(rowShift < 0 ? 3 : 4)} bytes from where it opens to that end")}."));
                 document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeTrue();
                 break;
 
@@ -773,6 +775,96 @@ public class WindowEdgeTests
             default:
                 document.Reader.IsCutAtLimit(ObjectNumber).Should().BeTrue();
                 reports.Should().ContainSingle().Which.Should().StartWith(PdfDiagnosticCodes.LimitObject);
+                break;
+        }
+    }
+
+    [Theory]
+    [InlineData("rows before the value", "missing")]
+    [InlineData("the object's own row inside the value", "whole")]
+    [InlineData("a header the parse meets at the row past the bound", "ended")]
+    [InlineData("a read the source gives short at the first row", "file")]
+    public void Rows_the_bound_counts_are_those_inside_the_value_before_a_header_ends_it(string shape, string outcome)
+    {
+        // Object 5 is a value its first window leaves open. Rows a table places in the comments between its header and its
+        // value count as rows inside it: past the bound, the value is missing. Its own row, which the search near it reads
+        // past, is no other object's: the window grows, and the value reads whole. A header the table places past 64 rows
+        // inside an array that lost its closing ends it there, the window grown far enough to read it. A source that gives
+        // the read up to the first row short ends the data there, which no header does (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var objectAt = file.Position;
+        rows[ObjectNumber] = objectAt;
+        var lines = shape is "rows before the value" or "a read the source gives short at the first row"
+            ? PdfFileReader.MaxPlacedHeadersInValue + 1
+            : PdfFileReader.MaxPlacedHeadersInValue;
+        file.Raw("5 0 obj\n" + shape switch { "rows before the value" => string.Empty, "a header the parse meets at the row past the bound" => "[ 1 2 3", _ => "(" });
+
+        for (var k = 0; k < lines; k++)
+        {
+            file.Raw("\n% ");
+            rows[100 + k] = file.Position;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj ");
+            file.Raw(header + new string('x', 200 - header.Length) + (shape.StartsWith("a header", StringComparison.Ordinal) ? "\n7" : string.Empty));
+        }
+
+        switch (shape)
+        {
+            case "rows before the value":
+                file.Raw("\n<< /A [" + string.Join(' ', Enumerable.Range(0, 3_000)) + "] >>\nendobj\n");
+                break;
+
+            case "the object's own row inside the value":
+                rows[ObjectNumber] = objectAt + 12;
+                file.Raw(")\nendobj\n");
+                break;
+
+            case "a header the parse meets at the row past the bound":
+                file.Raw("\n");
+                rows[300] = file.Position;
+                file.Raw("300 0 obj (next) endobj\n");
+                break;
+
+            default:
+                file.Raw("\nendobj\n");
+                break;
+        }
+
+        file.Table(301, rows, "/Size 301 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var firstRow = rows[100];
+        using var source = new ShortCountSource(
+            bytes, (offset, held) => shape.StartsWith("a read", StringComparison.Ordinal) && offset == objectAt && held == firstRow - objectAt ? held - 5 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+        var truncated = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject).Select(entry => entry.Message).ToList();
+
+        switch (outcome)
+        {
+            case "missing":
+                read.Should().BeSameAs(PdfNull.Instance);
+                truncated.Should().Equal(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The place the index gives another object, the first of more than {PdfFileReader.MaxPlacedHeadersInValue} inside this one, came in the middle of an object."));
+                break;
+
+            case "whole":
+                read.Should().BeOfType<PdfString>().Which.Length.Should().BeGreaterThan(200 * PdfFileReader.MaxPlacedHeadersInValue);
+                truncated.Should().BeEmpty();
+                break;
+
+            case "ended":
+                read.AsArray().Required().Count.Should().Be(3 + PdfFileReader.MaxPlacedHeadersInValue);
+                truncated.Should().Equal("An object header ended the object inside an array, which was never closed.");
+                break;
+
+            default:
+                truncated.Should().Equal("The file ended in the middle of an object.");
                 break;
         }
     }

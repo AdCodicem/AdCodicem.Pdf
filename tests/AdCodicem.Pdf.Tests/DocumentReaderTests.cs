@@ -2627,6 +2627,8 @@ public class DocumentReaderTests
     [InlineData("7 5 obj stream")]
     [InlineData("7 5 obj R")]
     [InlineData("7 5 obj\n8 0 obj (eight) endobj")]
+    [InlineData("7 5 obj\n2147483647 0 obj")]
+    [InlineData("7 5 obj\n8 65535 obj")]
     public void A_definition_met_again_that_holds_no_value_leaves_the_readable_one_before_it(string later)
     {
         // The file has no table. Object 7's later header is followed by nothing that starts a value — a stray parenthesis,
@@ -2673,6 +2675,8 @@ public class DocumentReaderTests
     [InlineData("8 -1 obj", 8)]
     [InlineData("8 99999 obj", 8)]
     [InlineData("99999999999 0 obj", 99_999_999_999)]
+    [InlineData("2147483648 0 obj", 2_147_483_648)]
+    [InlineData("8 65536 obj", 8)]
     public void A_definition_met_again_whose_integer_starts_a_pair_the_scan_takes_for_no_header_is_kept(string pair, long value)
     {
         // Object 7's later header is followed by two integers and obj whose number or generation lies outside what a header

@@ -2153,6 +2153,7 @@ public class ReaderLimitsTests
         {
             using var unbounded = PdfDocument.Open(
                 Encoding.Latin1.GetBytes(text.ToString()), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = 64 } });
+            unbounded.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().BeFalse();
             unbounded.Reader.GetPresence(77).Should().Be(presence == "Unindexed" ? ObjectPresence.Defined : ObjectPresence.Missing);
         }
     }

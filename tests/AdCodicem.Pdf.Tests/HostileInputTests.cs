@@ -5506,15 +5506,20 @@ public class HostileInputTests
     [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"", CommentLine)]
     [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " (abc", "\"abc\\n%\"")]
     public void Objects_whose_headers_a_run_of_comment_lines_holds_are_read_without_reading_the_lines_after_each(
         CommentHeadersPlacedBy shape, string body, string read, string gap = " ")
     {
         // Lines "% N 0 obj ..." whose headers the index places: each object's load read every line after it for what follows
         // its value, its window grown eight times over, and opening, which loads every object a rebuild places, or
         // validating, which loads every object, took time in the square of the lines. A whole value is kept as read where
-        // the window holds the next line's header, however much white space or comment parts its tokens, and a row past the
-        // value that starts no header does not keep it from counting (#362). A value left open — missing, a dictionary, an
-        // array or a string that runs on — ends at the first row past more than the bound inside it (#387).
+        // the window holds the next line's header, however much white space parts its tokens, and a row past the value that
+        // starts no header does not keep it from counting (#362); or where more rows than the bound lie past it, a byte
+        // early on the next lines' headers. A value left open — missing, a dictionary, an array or a string that runs on —
+        // whose window holds more rows than the bound, however much white space or comment parts their headers' tokens,
+        // ends at the first of them (#387).
         const int Lines = 1_000;
 
         var small = ReadHeaderLines(shape, body, read, gap, Lines);
@@ -5542,7 +5547,7 @@ public class HostileInputTests
             for (var k = 0; k < lines; k++)
             {
                 file.Raw("% ");
-                rows[100 + k] = file.Position;
+                rows[100 + k] = file.Position - (shape == CommentHeadersPlacedBy.TableByteEarly ? 1 : 0);
                 var line = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj{body}");
 
                 if (shape == CommentHeadersPlacedBy.TableWithDecoys)
@@ -5574,7 +5579,7 @@ public class HostileInputTests
             using var source = new StrictCountingSource(file.Bytes);
             using var document = PdfDocument.Open(source, options: null, ownsSource: false);
 
-            if (shape == CommentHeadersPlacedBy.Table)
+            if (shape is CommentHeadersPlacedBy.Table or CommentHeadersPlacedBy.TableByteEarly)
             {
                 _ = new PdfValidator().Validate(document);
             }
@@ -5599,6 +5604,57 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("one comment line")]
+    [InlineData("a comment line each, then obj")]
+    [InlineData("a comment line each, then 0 obj")]
+    public void Headers_whose_tokens_a_run_of_placed_rows_parts_are_read_without_reading_the_run_for_each(string shape)
+    {
+        // Rows that each place a header whose tokens a comment parts from the next ones, "10 0 %11 0 %12 0 % ... obj" on one
+        // line, or on a line each: each row's load read the run of comments after it for the obj that would end its header,
+        // its window grown eight times over, and reading every object took time in the square of the rows. A header whose
+        // tokens more rows than the bound part is none there (#387).
+        const int Headers = 1_000;
+
+        var small = Read(Headers);
+        var large = Read(4 * Headers);
+
+        large.Should().BeLessThan(8 * small, "four times the rows must cost about four times the bytes read ({0:N0} for {1:N0})", small, Headers);
+
+        long Read(int headers)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var k = 0; k < headers; k++)
+            {
+                rows[10 + k] = file.Position;
+                file.Raw(shape switch
+                {
+                    "one comment line" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %"),
+                    "a comment line each, then obj" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %\n"),
+                    _ => string.Create(CultureInfo.InvariantCulture, $"{10 + k} %\n"),
+                });
+            }
+
+            file.Raw((shape == "one comment line" ? "\n" : string.Empty) + (shape.EndsWith("then 0 obj", StringComparison.Ordinal) ? "0 obj" : "obj") + " << >>\nendobj\n");
+            file.Table(10 + headers, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + headers} /Root 1 0 R"));
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            for (var k = 0; k < headers; k++)
+            {
+                _ = document.GetObject(new PdfObjectId(10 + k));
+            }
+
+            return source.BytesRead;
+        }
+    }
+
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
 
@@ -5619,6 +5675,9 @@ public class HostileInputTests
 
         /// <summary>A table as <see cref="Table"/>, with a row past each value that starts no header.</summary>
         TableWithDecoys,
+
+        /// <summary>A table whose rows each place a header a byte early, on the white space before its number.</summary>
+        TableByteEarly,
     }
 
     [Fact]

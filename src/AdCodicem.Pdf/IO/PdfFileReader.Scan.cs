@@ -317,8 +317,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether the first byte past the white space at <paramref name="at"/> opens a string, a name, an array or a
-    /// dictionary: a value however it goes on, which that byte tells without lexing it. The scan for the memo asks whether
-    /// every header it takes holds no value (#438).
+    /// dictionary: a value however it goes on, which that byte tells without lexing it, for <see cref="TellNoValue"/>, and
+    /// for the scan for the memo, which asks whether every header it takes holds no value (#438).
     /// </summary>
     private static bool StartsCompositeValue(ReadOnlySpan<byte> span, int at)
     {

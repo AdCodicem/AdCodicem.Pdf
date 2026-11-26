@@ -368,7 +368,7 @@ internal sealed partial class PdfFileReader
                 var cut = dataEnd < 0 && bytes.Length == windowSize && offset + bytes.Length < _source.Length;
                 var parser = new PdfObjectParser(
                     bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard, guardEdge: windowSize >= maxWindow,
-                    endsAtPlacedHeader: dataEnd >= 0);
+                    endsAtPlacedHeader: dataEnd >= 0 && offset + bytes.Length == dataEnd);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -394,6 +394,19 @@ internal sealed partial class PdfFileReader
                         ReachLimit(limit, LimitSubject(number, maxWindow, read: null), offset);
                         foundNumber = number == AnyObject ? 0 : (int)HeaderPastGuard;
                         return false;
+                    }
+
+                    // A header whose tokens more rows than MaxPlacedHeadersInValue part is none there: each row a comment
+                    // line of headers holds would otherwise read that line to its end (#387).
+                    if (CountPlacedRows(number, offset + 1, out _, out var partedAt) > MaxPlacedHeadersInValue)
+                    {
+                        if (partedAt - offset < bytes.Length)
+                        {
+                            return false;
+                        }
+
+                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), partedAt - offset + 1);
+                        continue;
                     }
 
                     windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
@@ -423,7 +436,9 @@ internal sealed partial class PdfFileReader
                     var whole = parser.WholeValueEnd >= 0;
                     var passed = CountPlacedRows(foundNumber, offset + (whole ? parser.WholeValueEnd : parser.HeaderEnd), out var firstRow, out var boundRow);
 
-                    if (passed > MaxPlacedHeadersInValue && boundRow - offset < bytes.Length)
+                    // The row past the bound counts only with room for a header after it: one the parse meets ends the value,
+                    // and the window's edge would cut it.
+                    if (passed > MaxPlacedHeadersInValue && boundRow - offset + HeaderCheckWindow <= bytes.Length)
                     {
                         if (whole)
                         {
@@ -441,7 +456,7 @@ internal sealed partial class PdfFileReader
                     {
                         // The window grows to hold the row past the bound, and no further: the bytes a load reads follow the rows.
                         _pending.RollBackToRetry(mark);
-                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), boundRow - offset + 1);
+                        windowSize = (int)Math.Min(Math.Min((long)windowSize * 8, maxWindow), boundRow - offset + HeaderCheckWindow);
                         continue;
                     }
                 }
