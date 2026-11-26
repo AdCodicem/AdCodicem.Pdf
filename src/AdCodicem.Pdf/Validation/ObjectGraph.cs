@@ -400,9 +400,12 @@ internal sealed class ObjectGraph
             {
                 _ = _reader.GetObject(id);
 
-                foreach (var (owner, count) in references.Counted ?? [])
+                if (references.Counted is { } byOwner)
                 {
-                    _missingReferences[owner] = _missingReferences.TryGetValue(owner, out var counted) ? counted + count : count;
+                    foreach (var (owner, count) in byOwner)
+                    {
+                        _missingReferences[owner] = _missingReferences.TryGetValue(owner, out var counted) ? counted + count : count;
+                    }
                 }
             }
             else if (!named)
