@@ -74,7 +74,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
+- **Tests**: 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
+  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
+  the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 146 green on its code.
+  Before it, 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
   and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 802 reads;
   the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145 green on its code.
   Before it, 13,639 unit on [#454]'s branch at `cbaed88`, with 235 of the 242 remote documents fetched, 13,636 passed
@@ -123,8 +126,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#457]'s branch at `ef9121e`, as Codecov counts it, 99.43 % of the patch, 175 of its 176 coverable
-  lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
+- **Coverage**: on [#458]'s branch at `5bbccdf`, as Codecov counts it, 98.97 % of the patch, 193 of its 195 coverable
+  lines whole; the other two, partial, are the `?.` on `_chains` in `ObjectGraph.AddCuts` and `CountCut`, which run only
+  once the walk has read a link of a chain, the table then held. Before it, on [#457]'s branch at `ef9121e`, as Codecov
+  counts it, 99.43 % of the patch, 175 of its 176 coverable lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
   catalog search reads a candidate, which notes the generation it carries, before it takes it. Before it, on [#454]'s
   branch at `4e6aa4f`, as Codecov counts it, 98.10 % of the patch, 103 of its 105 coverable
   lines whole; the other two, partial, are in `NoteNoHeader` (`PdfFileReader.Loading.cs`): the `??=` that creates the
