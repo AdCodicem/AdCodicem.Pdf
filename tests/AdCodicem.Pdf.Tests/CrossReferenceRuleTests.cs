@@ -345,6 +345,7 @@ public class CrossReferenceRuleTests
     [InlineData("two spaces before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("two carriage returns", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("line feed and carriage return", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("tab before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("space alone", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("carriage return and line feed", 2, null)]
     [InlineData("carriage return and line feed", 3, null)]
@@ -377,6 +378,7 @@ public class CrossReferenceRuleTests
             "two spaces before the end of line" => $"{offset} 00000 n  \n",
             "two carriage returns" => $"{offset} 00000 n\r\r",
             "line feed and carriage return" => $"{offset} 00000 n\n\r",
+            "tab before the end of line" => $"{offset} 00000 n\t\n",
             "space alone" => $"{offset} 00000 n ",
             "carriage return and line feed" => $"{offset} 00000 n\r\n",
             "space and carriage return" => $"{offset} 00000 n \r",

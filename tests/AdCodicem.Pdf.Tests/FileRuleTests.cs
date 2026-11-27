@@ -658,6 +658,24 @@ public class FileRuleTests
         }
     }
 
+    [Fact]
+    public void A_catalog_a_caller_writes_in_a_trailer_the_file_lacks_is_said_to_be_no_reference_of_the_document()
+    {
+        // The file holds no trailer: the index is rebuilt as it opens, and the search takes catalog 1. A caller writes that
+        // catalog in the trailer in place of the reference to it: no trailer of the file holds it, and the finding is the
+        // document's.
+        var text = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var file = Encoding.Latin1.GetBytes(text[..text.IndexOf("xref\n", StringComparison.Ordinal)]);
+        using var document = PdfDocument.Open(file);
+        document.Trailer.Set(PdfName.Root, document.GetObject(1));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootDirect);
+
+        document.Reader.Structure.ChainRead.Should().BeFalse();
+        document.Reader.TrailerLocation.Should().Be(-1);
+        finding.Location.IsDocument.Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("<< /Pad (", "file.root-direct")]
     [InlineData("1 0 R /Pad (", "")]

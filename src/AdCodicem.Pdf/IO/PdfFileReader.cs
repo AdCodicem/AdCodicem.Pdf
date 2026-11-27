@@ -1952,7 +1952,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Gets a value indicating whether the last search for a catalog, over an index rebuilt since the document opened, read
     /// whole the object the reader took for the catalog as it opened (<see cref="FileStructure.CatalogFoundAs"/>), and found
     /// it none: the rebuilt index serves another definition of it, or none (#381). One a limit cut, or left out of the
-    /// rebuilt index, was not read whole, and is not said to be none.
+    /// rebuilt index, was not read whole, and is not said to be none; nor is one the walks' guard cut, which the search reads
+    /// again only to look for a catalog among them (<see cref="FindCatalog"/>).
     /// </summary>
     internal bool OpeningCatalogNotServed => _openingCatalogNotServed;
 

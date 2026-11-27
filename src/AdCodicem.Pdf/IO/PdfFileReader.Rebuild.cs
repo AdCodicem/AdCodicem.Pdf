@@ -1218,10 +1218,6 @@ internal sealed partial class PdfFileReader
             {
                 firstCut = Math.Min(firstCut, order);
             }
-            else if (!isCatalog && IsOpeningCatalog(number))
-            {
-                _openingCatalogNotServed = true;
-            }
 
             if (isCatalog)
             {

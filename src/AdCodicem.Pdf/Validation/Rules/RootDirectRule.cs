@@ -40,7 +40,8 @@ internal sealed class RootDirectRule : IValidationRule
                 return;
             }
 
-            trailer = structure.Sections.Count > 0 ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation) : default;
+            // A chain that gave an index read its newest section, whose trailer the merged one starts from.
+            trailer = PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation);
         }
         else
         {

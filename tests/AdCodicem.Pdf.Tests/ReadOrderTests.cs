@@ -544,12 +544,15 @@ public class ReadOrderTests
             "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader took object 20 for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now no object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
     }
 
-    [Fact]
-    public void A_catalog_a_guard_cut_in_the_rebuilt_index_is_not_said_to_be_none_to_a_caller_that_goes_on()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_catalog_a_guard_cut_in_the_rebuilt_index_is_not_said_to_be_none_to_a_caller_that_goes_on(bool throwOnLimit)
     {
-        // Opening takes catalog 20; later in the file, 20 is defined again, MaxObjectLength cutting it, and the document opened
-        // to throw on a guard. Reading object 40 rebuilds the index, whose search for a catalog throws on the later 20: what
-        // that definition is was not read, and a caller that goes on to validate is told a limit cut a candidate, every time.
+        // Opening takes catalog 20; later in the file, 20 is defined again, MaxObjectLength cutting it. Reading object 40
+        // rebuilds the index, whose search for a catalog meets the later 20 cut — and, the document opened to throw on a guard,
+        // throws once it ends: what that definition is was not read, and a caller that goes on to validate is told a limit cut
+        // a candidate, every time.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -564,12 +567,21 @@ public class ReadOrderTests
         file.Object(20, "<< /Type /Annot /Subtype /Text" + new string(' ', 2000) + "/Rect [0 0 1 1] >>");
         file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
         using var document = PdfDocument.Open(
-            file.Bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1300 } });
+            file.Bytes, new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1300 } });
 
         document.Reader.CatalogFoundAs.Should().Be(20);
         var read = () => document.Reader.GetObject(new PdfObjectId(40));
 
-        read.Should().Throw<PdfLimitExceededException>();
+        if (throwOnLimit)
+        {
+            read.Should().Throw<PdfLimitExceededException>();
+        }
+        else
+        {
+            read();
+        }
+
+        document.WasRepaired.Should().BeTrue();
 
         for (var validation = 0; validation < 2; validation++)
         {
