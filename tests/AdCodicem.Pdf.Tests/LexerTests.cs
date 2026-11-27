@@ -314,28 +314,47 @@ end)"u8.ToArray());
     }
 
     [Theory]
-    [InlineData("hexadecimal", "<FEFF0041004200430044>", "FEFF0041004200430044")]
-    [InlineData("hexadecimal", "<48 65\n6C zz 6>", "48656C60")]
-    [InlineData("hexadecimal", "<long>", "long")]
-    [InlineData("literal", @"(Total \(net\) 100)", "546F74616C20286E65742920313030")]
-    [InlineData("literal", "(cr:\r\nlf)", "63723A0A6C66")]
-    [InlineData("literal", "(long)", "long")]
-    public void Decodes_an_escaped_or_hexadecimal_string_into_one_array_its_exact_length(string kind, string written, string bytes)
+    [InlineData("<", "FEFF0041004200430044", 1, "", "FEFF0041004200430044", "")]
+    [InlineData("<", "48 65\n6C zz 6", 1, "", "48656C60", "")]
+    [InlineData("<", "4A", 255, "6", "4A", "60")]
+    [InlineData("<", "4A", 256, "6", "4A", "60")]
+    [InlineData("<", "4A", 512, "6", "4A", "60")]
+    [InlineData("<", "4A", 65_535, "6", "4A", "60")]
+    [InlineData("<", "4A", 65_536, "6", "4A", "60")]
+    [InlineData("(", @"Total \(net\) 100", 1, "", "546F74616C20286E65742920313030", "")]
+    [InlineData("(", "cr:\r\nlf", 1, "", "63723A0A6C66", "")]
+    [InlineData("(", "a", 255, "\r", "61", "0A")]
+    [InlineData("(", "a", 256, "\r", "61", "0A")]
+    [InlineData("(", @"a\(", 300, "", "6128", "")]
+    [InlineData("(", "a", 65_535, "\r", "61", "0A")]
+    [InlineData("(", "a", 65_536, "\r", "61", "0A")]
+    public void Decodes_an_escaped_or_hexadecimal_string_into_one_array_its_exact_length(
+        string opening, string written, int times, string ending, string bytes, string endingBytes)
     {
-        // A string decodes into a working buffer, on the stack or rented past 256 bytes, and its bytes are copied out once:
-        // the result is the one array the string allocates. The long rows hold 300 bytes, past the stack's share.
-        var (raw, expected) = written switch
-        {
-            "<long>" => (Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("4A 6b", 300))), Enumerable.Repeat(new byte[] { 0x4A, 0x6B }, 300).SelectMany(pair => pair).ToArray()),
-            "(long)" => (Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(@"a\(", 300))), Enumerable.Repeat(new byte[] { (byte)'a', (byte)'(' }, 300).SelectMany(pair => pair).ToArray()),
-            _ => (Encoding.ASCII.GetBytes(written[1..^1]), Convert.FromHexString(bytes)),
-        };
-        Func<byte[]> decode = kind == "literal" ? () => PdfStringDecoder.DecodeLiteral(raw) : () => PdfStringDecoder.DecodeHex(raw, out _, out _);
+        // A string decodes into a working buffer — on the stack up to 256 bytes, rented up to 64 KB, an array of its own past
+        // that — and its bytes are copied out once: the result is the one array the string allocates, but past 64 KB. The
+        // rows written several times sit on each side of those sizes, a hexadecimal string's buffer holding half its digits
+        // and one byte more.
+        var raw = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(written, times)) + ending);
+        var expected = Enumerable.Repeat(Convert.FromHexString(bytes), times).SelectMany(unit => unit).Concat(Convert.FromHexString(endingBytes)).ToArray();
+        var hexadecimal = opening == "<";
+        var buffer = hexadecimal ? (raw.Length / 2) + 1 : raw.Length;
+        Func<byte[]> decode = hexadecimal ? () => PdfStringDecoder.DecodeHex(raw, out _, out _) : () => PdfStringDecoder.DecodeLiteral(raw);
 
         var allocated = Allocations.Least(decode, out var decoded);
 
         decoded.Should().Equal(expected);
-        allocated.Should().Be(Allocations.Least(() => new byte[expected.Length], out _));
+        allocated.Should().Be(Allocations.Least(Arrays, out _));
+
+        byte[] Arrays()
+        {
+            if (buffer > 64 * 1024)
+            {
+                GC.KeepAlive(new byte[buffer]);
+            }
+
+            return new byte[expected.Length];
+        }
     }
 
     [Fact]
