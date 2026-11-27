@@ -145,6 +145,74 @@ public class ObjectRuleTests
         Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().StartWith($"Object 1 refers to object 5 1 under {missing}");
     }
 
+    [Fact]
+    public void A_reference_under_another_generation_met_while_its_object_waits_is_no_reference_to_its_chain()
+    {
+        // The catalog names object 5 under generation 1, and object 3 names it so while it waits; object 4, which the walk
+        // reads, names object 5 under generation 0, and object 5's chain loops through object 6, which 4's chain reads before
+        // the walk reaches 5: object 3 refers to an object the file lacks, and is no holder of a reference to the chain — the
+        // catalog is, through object 4 (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /X 5 1 R /S 4 0 R /H 3 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /R 5 1 R >>"),
+            [4] = file.Object(4, "5 0 R"),
+            [5] = file.Object(5, "6 0 R"),
+            [6] = file.Object(6, "5 0 R"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+
+        var findings = Validate(file.Bytes).Findings;
+
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceChainUnresolved).Select(finding => finding.Location.Object)
+            .Should().Equal(new PdfObjectId(1));
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Select(finding => finding.Location.Object)
+            .Should().BeEquivalentTo([new PdfObjectId(1), new PdfObjectId(3)]);
+    }
+
+    [Fact]
+    public void An_object_read_before_the_walk_reaches_it_is_asked_once_whether_it_holds_a_reference()
+    {
+        // Object 5, which repeats a key, is read through a reference under generation 1 before the walk reaches it; objects 7
+        // and 8 name it under generation 0 while it waits, between 160 objects the cache, kept to 64, lets it go for. Asked once
+        // whether it holds a reference, it is not read again for object 8's reference — read again, its repeated key, met
+        // anew with the record of diagnostics full, would be counted once more (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Z 5 0 R /B 5 1 R /First 7 0 R /Many 9 0 R /Second 8 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "<< /A 1 /A 2 >>"),
+            [8] = file.Object(8, "<< /R 5 0 R >>"),
+            [7] = file.Object(7, "<< /R 5 0 R /More 90 0 R >>"),
+        };
+        var many = new StringBuilder("[");
+        var more = new StringBuilder("[");
+
+        for (var number = 10; number < 90; number++)
+        {
+            many.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            rows[number] = file.Object(number, "<< >>");
+        }
+
+        for (var number = 91; number < 171; number++)
+        {
+            more.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            rows[number] = file.Object(number, "<< >>");
+        }
+
+        rows[9] = file.Object(9, many.Append(']').ToString());
+        rows[90] = file.Object(90, more.Append(']').ToString());
+        file.Table(171, rows, "/Size 171 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0, ObjectCacheCapacity = 0 });
+
+        _ = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(4);
+    }
+
     [Theory]
     [InlineData("10 0 R", "11 0 R", "<< /Type /Pages /Kids [] /Count 0 >>", null)]
     [InlineData("10 0 R", "11 0 R", "(pages)", PdfValidationRuleIds.ObjectValueTypeWrong)]

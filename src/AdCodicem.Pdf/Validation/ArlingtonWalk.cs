@@ -702,8 +702,9 @@ internal sealed class ArlingtonWalk
 
     /// <summary>
     /// Gives the number of the object <see cref="Classify"/> judges for <paramref name="reference"/>: the one a chain of
-    /// references from it leads to; the one it names where its value is no reference, a limit cut it, or its chain reaches
-    /// no value.
+    /// references from it leads to; the one it names where its value is no reference, a limit cut it, or <see cref="Classify"/>
+    /// found its chain reaches no value. A chain not classified yet is not read past its last link for it: one that reaches no
+    /// value is unknown, and its node never expanded, by whatever number it is remembered (#173).
     /// </summary>
     private int JudgedNumber(PdfReference reference)
     {
@@ -714,13 +715,7 @@ internal sealed class ArlingtonWalk
             return known.Number == 0 ? number : known.Number;
         }
 
-        if (_reader.GetObject(reference.Id) is not PdfReference || _reader.IsCutAtLimit(number))
-        {
-            return number;
-        }
-
-        var target = reference.Target();
-        return _reader.GetObject(target) is PdfReference ? number : target.Number;
+        return _reader.GetObject(reference.Id) is not PdfReference || _reader.IsCutAtLimit(number) ? number : reference.Target().Number;
     }
 
     /// <summary>Whether an object, which <see cref="Classify"/> has resolved, was cut by a reader limit; never for a direct value.</summary>
