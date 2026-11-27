@@ -2,7 +2,7 @@
 
   <!-- Checks that the rebuild's scan for objects keeps the lexer inlined in its optimized compiles, which nothing a caller
        observes tells and no benchmark run in CI would (#374). CI runs it after the build, and so does the batch check
-       (.claude/scripts/batch-check.sh); it exits non-zero when an optimized compile leaves the lexer out. -->
+       (.claude/scripts/batch-check.sh); it exits non-zero when a compile other than the quick tiers leaves the lexer out. -->
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>

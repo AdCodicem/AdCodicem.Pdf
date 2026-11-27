@@ -9,6 +9,9 @@ internal sealed class Compile
     /// <summary>The runtime's tier of a method compiled with minimal optimization, which inlines nothing.</summary>
     private const uint MinimalTier = 1;
 
+    /// <summary>The tier the runtime gives a compile it does not name, or the tier of a compile that has not loaded.</summary>
+    private const uint UnknownTier = 0;
+
     private string? _refusal;
     private uint _tier;
 
@@ -16,8 +19,8 @@ internal sealed class Compile
     public string Tier { get; private set; } = "unknown";
 
     /// <summary>
-    /// Gets a value indicating whether the compile must inline the lexer: any but the quick tiers, which the runtime
-    /// replaces once the method runs long, and a tier it does not name.
+    /// Gets a value indicating whether the compile must inline the lexer: any tier but the quick ones, which the runtime
+    /// replaces once the method runs long; a tier it does not name included.
     /// </summary>
     public bool Checked { get; private set; }
 
@@ -32,6 +35,7 @@ internal sealed class Compile
         _refusal is not null ? $"PdfLexer.Read refused ({_refusal})"
         : LexerInlined ? "PdfLexer.Read inlined"
         : _tier == MinimalTier ? "minimally optimized, which inlines nothing"
+        : _tier == UnknownTier ? "PdfLexer.Read not inlined, at a tier the runtime does not name"
         : Checked ? "PdfLexer.Read not considered: the call that reaches it was not inlined"
         : "not optimized";
 

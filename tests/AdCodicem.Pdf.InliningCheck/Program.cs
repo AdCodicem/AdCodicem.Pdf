@@ -7,7 +7,7 @@ namespace AdCodicem.Pdf.InliningCheck;
 
 /// <summary>
 /// Opens, again and again, a file whose index is rebuilt, until the rebuild's scan for objects has its final optimized
-/// compile, and fails when one of its optimized compiles left the lexer out of the scan's loop (#374).
+/// compile, and fails when one of its compiles other than the quick tiers left the lexer out of the scan's loop (#374).
 /// </summary>
 /// <remarks>
 /// <para>

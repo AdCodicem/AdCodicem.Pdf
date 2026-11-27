@@ -803,7 +803,8 @@ internal sealed partial class PdfFileReader
     /// Kept out of the scan's loop, which meets a <c>trailer</c> keyword about once a file: inlined, with the sweep it asks
     /// whether a comment or a string holds the keyword, it took the locals that left the lexer of
     /// <see cref="HeaderNumbers.TakeLine"/> out of the loop's optimized compiles, as the compiler of the 10.0.4xx SDK writes
-    /// the loop, for the reason given at <see cref="ScanState.PieceXRefAt"/> (#374).
+    /// the loop, for the reason given at <see cref="ScanState.PieceXRefAt"/> (#374). A file dense with <c>trailer</c>
+    /// keywords pays the call for each, about a tenth of its scan.
     /// </remarks>
     /// <returns>False where the memo can hold the keyword no more; true otherwise.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2768,9 +2769,10 @@ internal sealed partial class PdfFileReader
         /// (<see cref="HeaderNumbers.TakeLine"/>); the rebuild of a file of such lines ran about a tenth slower
         /// (<c>ObjectScanBenchmarks</c>). The method has grown since, and stays near that edge: the five temporaries a
         /// pattern and a tuple took in a statement it gained for the memo's kinds made its optimized compiles leave that
-        /// lexer out again, and the index's lookups (<see cref="IndexScannedHeader"/>) with it, the rebuild of those lines
-        /// about an eighth slower and its scan for the memo about a fifth, until that statement was written without them
-        /// (#374).
+        /// lexer out again, the rebuild of those lines about an eighth slower and its scan for the memo about a fifth, until
+        /// that statement was written without them; and the loop as the compiler of the 10.0.4xx SDK writes it left the lexer
+        /// out until <see cref="NoteTrailerKeyword"/> left the loop (#374). The check in <c>tests/AdCodicem.Pdf.InliningCheck</c>
+        /// fails when an optimized compile leaves the lexer out.
         /// </remarks>
         public int PieceXRefAt;
 
