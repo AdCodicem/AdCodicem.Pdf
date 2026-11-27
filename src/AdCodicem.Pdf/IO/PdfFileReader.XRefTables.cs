@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
@@ -949,7 +950,8 @@ internal sealed partial class PdfFileReader
 
             // A row read by its tokens reads as it was meant, whatever its width, but a reader that seeks rows by their fixed
             // width misreads every row after it: the first is described, the others counted.
-            if (FormOf(window, offsetToken, generationToken, kindToken) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
+            if (!IsInTwentyBytes(window, offsetToken, generationToken, kindToken) &&
+                FormOf(window, offsetToken, generationToken, kindToken) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
             {
                 section.WidthWrongRows++;
                 section.WidthWrongRow ??= string.Create(
@@ -980,6 +982,28 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
+    /// Determines, at a glance, whether the row whose tokens are <paramref name="offset"/>, <paramref name="generation"/> and
+    /// <paramref name="kind"/> is in its 20 bytes, as most rows are: the tokens where those 20 bytes place them, each number
+    /// starting with a digit — so all digits, being an integer —, the end of line one of the three pairs ISO 32000-1 allows,
+    /// and no third byte of it the window holds. False for any other row, which <see cref="FormOf"/> then judges.
+    /// </summary>
+    /// <remarks>
+    /// The common row is so told without a call, and the call it saves is what kept the index's own additions inlined in the
+    /// loop that reads the rows.
+    /// </remarks>
+    private static bool IsInTwentyBytes(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind)
+    {
+        var start = offset.Start;
+        var end = kind.End;
+
+        return offset.End == start + 10 && generation.Start == start + 11 && generation.End == start + 16 && end == start + 18 &&
+            end + 2 < window.Length && window[start + 10] == (byte)' ' && window[start + 16] == (byte)' ' &&
+            PdfCharacters.IsDigit(window[start]) && PdfCharacters.IsDigit(window[start + 11]) &&
+            window[end + 2] is not ((byte)' ' or (byte)'\r' or (byte)'\n') &&
+            (window[end], window[end + 1]) is ((byte)' ', (byte)'\r') or ((byte)' ', (byte)'\n') or ((byte)'\r', (byte)'\n');
+    }
+
+    /// <summary>
     /// Gives how the row whose tokens are <paramref name="offset"/>, <paramref name="generation"/> and <paramref name="kind"/>
     /// departs from the 20 bytes ISO 32000-1 (7.5.4) writes each row in: a ten-digit offset, a space, a five-digit generation,
     /// a space, <c>n</c> or <c>f</c>, and an end of line of a space and a carriage return, a space and a line feed, or a
@@ -987,8 +1011,10 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// A row whose end of line the window does not hold is not judged: a larger window reads it again, or a guard cut it,
-    /// and what lies past the cut is the guard's.
+    /// and what lies past the cut is the guard's. Called for the rows <see cref="IsInTwentyBytes"/> does not tell, and kept
+    /// out of the loop that reads the rows, whose own calls it would crowd out of the inlining.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static RowForm FormOf(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind)
     {
         var end = kind.End;
@@ -1014,16 +1040,33 @@ internal sealed partial class PdfFileReader
             return RowForm.GenerationDigits;
         }
 
-        return (window[end], window[end + 1]) switch
+        // The run of spaces, carriage returns and line feeds past the keyword is the row's end of line, which takes its two
+        // bytes: a run of one or of three makes the row 19 bytes or 21 or more — a reader seeking rows by width misreads the
+        // next —, and one of two is one of the three pairs ISO 32000-1 allows. A third byte the window does not hold is not
+        // looked at: the row's two are judged.
+        var (first, second) = (window[end], window[end + 1]);
+
+        if (!IsEndOfLineByte(first))
         {
-            ((byte)' ', (byte)'\r') => end + 2 < window.Length && window[end + 2] == (byte)'\n' ? RowForm.ThreeEndOfLineBytes : RowForm.Twenty,
-            ((byte)' ', (byte)'\n') or ((byte)'\r', (byte)'\n') => RowForm.Twenty,
-            ((byte)'\r' or (byte)'\n', _) => RowForm.OneEndOfLineByte,
-            _ => RowForm.EndOfLine,
-        };
+            return RowForm.EndOfLine;
+        }
+
+        if (!IsEndOfLineByte(second))
+        {
+            return first == (byte)' ' ? RowForm.EndOfLine : RowForm.OneEndOfLineByte;
+        }
+
+        if (end + 2 < window.Length && IsEndOfLineByte(window[end + 2]))
+        {
+            return RowForm.MoreEndOfLineBytes;
+        }
+
+        return (first, second) is ((byte)' ', (byte)'\r') or ((byte)' ', (byte)'\n') or ((byte)'\r', (byte)'\n') ? RowForm.Twenty : RowForm.EndOfLine;
 
         static bool IsDigits(ReadOnlySpan<byte> field, int length) =>
             field.Length == length && field.IndexOfAnyExceptInRange((byte)'0', (byte)'9') < 0;
+
+        static bool IsEndOfLineByte(byte value) => value is (byte)' ' or (byte)'\r' or (byte)'\n';
     }
 
     /// <summary>Describes <paramref name="form"/>, how a row departs from the 20 bytes ISO 32000-1 writes it in, for a finding.</summary>
@@ -1033,7 +1076,7 @@ internal sealed partial class PdfFileReader
         RowForm.Separators => "whose fields are not parted by single spaces",
         RowForm.GenerationDigits => $"whose generation {FileQuote.Keyword(window[generation.Start..generation.End])} is not five digits",
         RowForm.OneEndOfLineByte => "which ends with one end-of-line byte, not two",
-        RowForm.ThreeEndOfLineBytes => "which ends with three end-of-line bytes, not two",
+        RowForm.MoreEndOfLineBytes => "which ends with more than two end-of-line bytes",
         _ => "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed",
     };
 
@@ -1055,13 +1098,13 @@ internal sealed partial class PdfFileReader
         /// <summary>The generation is not five digits.</summary>
         GenerationDigits,
 
-        /// <summary>The row ends with one end-of-line byte.</summary>
+        /// <summary>The row ends with one end-of-line byte, a carriage return or a line feed no other follows.</summary>
         OneEndOfLineByte,
 
-        /// <summary>The row ends with a space, a carriage return and a line feed.</summary>
-        ThreeEndOfLineBytes,
+        /// <summary>The row ends with more than two spaces, carriage returns and line feeds.</summary>
+        MoreEndOfLineBytes,
 
-        /// <summary>The two bytes after the keyword are no end of line ISO 32000-1 allows a row.</summary>
+        /// <summary>The keyword is followed by no end of line ISO 32000-1 allows a row, of two bytes or of one.</summary>
         EndOfLine,
     }
 }

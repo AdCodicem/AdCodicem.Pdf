@@ -59,8 +59,8 @@ public static class PdfValidationRuleIds
     public const string FileTrailerMalformed = "file.trailer-malformed";
 
     /// <summary>
-    /// The trailer's <c>/Root</c> is missing, is not a reference, or does not lead to a document catalog.
-    /// <see cref="PdfValidationSeverity.Error"/>.
+    /// The trailer's <c>/Root</c> is missing, is not a reference — unless it is the catalog written in the trailer, which
+    /// <see cref="FileRootDirect"/> reports —, or does not lead to a document catalog. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string FileRootInvalid = "file.root-invalid";
 
@@ -135,9 +135,9 @@ public static class PdfValidationRuleIds
     public const string XRefSubsectionMissing = "xref.subsection-missing";
 
     /// <summary>
-    /// A classic cross-reference table holds rows not written in the 20 bytes ISO 32000-1 (7.5.4) gives each: a ten-digit
-    /// offset, a space, a five-digit generation, a space, <c>n</c> or <c>f</c>, and a two-byte end of line. The reader reads
-    /// them by their tokens. <see cref="PdfValidationSeverity.Warning"/>.
+    /// A classic cross-reference table holds rows not in the 20-byte form ISO 32000-1 (7.5.4) gives each: a ten-digit offset,
+    /// a space, a five-digit generation, a space, <c>n</c> or <c>f</c>, and a two-byte end of line. The reader reads them by
+    /// their tokens. <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
     public const string XRefEntryWidthWrong = "xref.entry-width-wrong";
 

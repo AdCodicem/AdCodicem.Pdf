@@ -25,9 +25,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// trailer from being read whole: it may lie past the cut, or in an older trailer the chain stopped short of.
 /// </para>
 /// <para>
-/// A <c>/Root</c> written in a dictionary the end of the file leaves open — a cross-reference stream's, in a file cut
-/// inside it — is not judged: no reader takes a dictionary left open for a trailer, and the rebuild merges none, so the
-/// finding says that no trailer the reader read gives <c>/Root</c>.
+/// A <c>/Root</c> written in a cross-reference stream's dictionary the end of the file leaves open, in a file cut inside it,
+/// is not judged: the reader takes no such dictionary for a trailer, and the rebuild merges a stream's only from an object
+/// it read whole, so the finding says that no trailer the reader read gives <c>/Root</c>. A classic trailer the end of the
+/// file leaves open is taken as read, and judged.
 /// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
@@ -83,9 +84,10 @@ internal sealed class RootInvalidRule : IValidationRule
             ? $"read as null: its chain of references {chain}"
             : "read as null through the cross-reference chain";
 
-        // Where a rebuild run since made /Root lead to a catalog, what the chain read is said as the chain's: the finding ends
-        // with the catalog, and the object would otherwise be said to be two things (#381).
-        var chainGave = reader.HasCatalog && reader.CatalogFoundAs <= 0 && context.Document.Trailer.GetRaw(PdfName.Root) is PdfReference;
+        // What the chain read, where a rebuild run since serves another definition of the object or none, is said as the
+        // chain's: the object would otherwise be said to be what the index no longer serves, or two things (#381).
+        var chainGave = structure.RootResolvedByChain && reader.WasRepaired && structure.RootAsWritten is PdfReference written &&
+            ServedOtherwise(reader, written.Id.Number);
         ReportRoot(
             context, structure.RootAsWritten, structure.RootResolved, asNull, trailer, "The trailer has no /Root.", Found(context, reader), chainGave);
     }
@@ -186,23 +188,29 @@ internal sealed class RootInvalidRule : IValidationRule
 
         // What the reader could not read — a definition a later one supersedes, an object in a stream that cannot be decoded,
         // an object a guard cut — may be one: only what it read is said not to be. A catalog it took as the document opened,
-        // which the index rebuilt since serves as something else, was one, and is said to have been (#381).
+        // which the search over the index rebuilt since read whole as none, was one, and is said to have been (#381).
         var none = reader.CatalogCandidateCut
             ? "no object the reader read whole is a catalog: one of the reader's limits cut some, which its report names."
             : "no object the reader could read is a catalog.";
-        var taken = context.Structure.CatalogFoundAs;
 
-        if (taken > 0 && !reader.IsCutAtLimit(taken) && !IsCatalog(context.Document.GetObject(taken)))
+        if (reader.OpeningCatalogNotServed)
         {
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $" The reader took object {taken} for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now {none}");
+                $" The reader took object {context.Structure.CatalogFoundAs} for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now {none}");
         }
 
         return " " + char.ToUpperInvariant(none[0]) + none[1..];
     }
 
-    private static bool IsCatalog(PdfObject value) => value is PdfDictionary dictionary && dictionary.IsOfType(PdfName.Catalog);
+    /// <summary>
+    /// Determines whether the index the reader reads with now places object <paramref name="number"/> elsewhere than the
+    /// index the chain gave did, or not at all: a rebuild found another definition of it, or none.
+    /// </summary>
+    private static bool ServedOtherwise(PdfFileReader reader, int number) =>
+        reader.ChainIndex is not { } chain || !chain.TryGet(number, out var given) || !reader.Index.TryGet(number, out var served) ||
+        (given.Kind, given.Offset, given.Generation, given.ObjectStreamNumber, given.IndexInObjectStream) !=
+        (served.Kind, served.Offset, served.Generation, served.ObjectStreamNumber, served.IndexInObjectStream);
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>
         context.Report(this, location, message, "Point /Root at the document catalog, as an indirect reference.");

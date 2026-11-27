@@ -385,6 +385,8 @@ internal sealed class XRefSectionRecord
         RowsHeld = attempt.RowsHeld;
         RowsLeftToGuard = attempt.RowsLeftToGuard;
         RowsRefusedBefore = attempt.RowsRefusedBefore;
+        WidthWrongRows = attempt.WidthWrongRows;
+        WidthWrongRow = attempt.WidthWrongRow;
         NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;

@@ -418,6 +418,37 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_root_the_rebuilt_index_defines_again_is_said_as_the_chain_read_it()
+    {
+        // /Root names object 1, no catalog: opening takes catalog 20. Later in the file, 1 is defined again as an annotation.
+        // Object 40's row leads nowhere: reading it rebuilds the index, which serves the later 1, and takes 20 again. What
+        // the finding says of object 1 is what the chain read, not what the index serves now.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        file.Object(1, "<< /Type /Annot /Subtype /Text /Rect [0 0 1 1] >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        document.GetObject(new PdfObjectId(40));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).AsDictionary()!.GetName(PdfName.Type).Should().Be(PdfName.Get("Annot"));
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid)
+            .Message.Should().Be(
+                "The trailer's /Root names object 1 0, which the cross-reference chain read as a dictionary of /Type /Foo, not a document catalog. The reader took object 20, which is one, for the catalog.");
+    }
+
+    [Fact]
     public void A_catalog_the_rebuilt_index_no_longer_serves_is_not_named_as_the_one_the_reader_took()
     {
         // /Root names object 1, no catalog: opening takes catalog 20. Later in the file, 20 is defined again as an
@@ -453,7 +484,8 @@ public class ReadOrderTests
     {
         // Opening takes catalog 20, which MaxObjectLength cuts after its /Type. Object 40's row leads nowhere: the validator
         // rebuilds the index, which serves a later object 1, a catalog, and searches for none. Once the caller removes /Root,
-        // the finding ends with what the search that took 20 met: an object a limit cut, which the catalog it took is.
+        // the finding ends with what the search that took 20 met: an object a limit cut, which the catalog it took is. What
+        // it says of object 1 is what the chain read, the rebuilt index serving another definition of it.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -476,7 +508,7 @@ public class ReadOrderTests
         document.Trailer.Remove(PdfName.Root);
 
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+            "The trailer's /Root names object 1 0, which the cross-reference chain read as a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
     }
 
     [Fact]
@@ -510,6 +542,76 @@ public class ReadOrderTests
         document.Reader.CatalogFoundAs.Should().Be(0);
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
             "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader took object 20 for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now no object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+    }
+
+    [Fact]
+    public void A_catalog_a_guard_cut_in_the_rebuilt_index_is_not_said_to_be_none_to_a_caller_that_goes_on()
+    {
+        // Opening takes catalog 20; later in the file, 20 is defined again, MaxObjectLength cutting it, and the document opened
+        // to throw on a guard. Reading object 40 rebuilds the index, whose search for a catalog throws on the later 20: what
+        // that definition is was not read, and a caller that goes on to validate is told a limit cut a candidate, every time.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        file.Object(20, "<< /Type /Annot /Subtype /Text" + new string(' ', 2000) + "/Rect [0 0 1 1] >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1300 } });
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        var read = () => document.Reader.GetObject(new PdfObjectId(40));
+
+        read.Should().Throw<PdfLimitExceededException>();
+
+        for (var validation = 0; validation < 2; validation++)
+        {
+            new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+                "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+        }
+    }
+
+    [Theory]
+    [InlineData(6, "No object the reader could read is a catalog.")]
+    [InlineData(7, "No object the reader could read is a catalog.")]
+    [InlineData(8, "The reader took object 4, which is one, for the catalog.")]
+    public void A_catalog_a_guard_left_out_of_the_rebuilt_index_is_not_said_to_be_none(int maxIndexEntries, string found)
+    {
+        // Opening takes catalog 4, which the chain indexes and the file holds last, past objects 7 to 10 the chain does not
+        // index. Object 5's row leads nowhere: the validator rebuilds the index, which MaxIndexEntries fills before 4 below 8
+        // entries. What the rebuilt index does not hold was not read, and is not said to be no catalog.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+
+        for (var number = 7; number <= 10; number++)
+        {
+            file.Object(number, "<< /Title (filler) >>");
+        }
+
+        rows[4] = file.Object(4, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[5] = rows[4] + 400;
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = maxIndexEntries } });
+
+        document.Reader.CatalogFoundAs.Should().Be(4);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. " + found);
     }
 
     [Fact]

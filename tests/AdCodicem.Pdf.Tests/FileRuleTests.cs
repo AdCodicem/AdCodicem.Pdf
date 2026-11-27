@@ -658,6 +658,26 @@ public class FileRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("<< /Pad (", "file.root-direct")]
+    [InlineData("1 0 R /Pad (", "")]
+    public void A_catalog_written_in_a_trailer_a_limit_cut_is_said_to_be_no_reference(string root, string rules)
+    {
+        // MaxTrailerLength cuts the trailer within the catalog written in it, before its /Type and its /Pages: the reader takes
+        // what it read for the catalog, looking for no other (#175), which file.root-invalid does not judge; that it is no
+        // reference was read before the cut. A reference before the cut is neither's.
+        var file = PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>", $"<< /Size 4 /Root {root}{new string('x', 400)}) /Type /Catalog /Pages 2 0 R >> >>");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
+        report.Findings.Select(finding => finding.RuleId).Where(id => id is PdfValidationRuleIds.FileRootDirect or PdfValidationRuleIds.FileRootInvalid)
+            .Should().Equal(rules.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
     [Fact]
     public void A_root_written_in_a_cross_reference_stream_dictionary_the_end_of_the_file_leaves_open_is_not_judged()
     {
@@ -859,11 +879,16 @@ public class FileRuleTests
     [InlineData("1 0 R", "/Root 1 0 R", "The trailer's /Root names object 1 0, which reads as null: its chain of references loops back to object 1 0. No object the reader could read is a catalog.")]
     [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 1 0 R", null)]
     [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 5 0 R", null)]
+    [InlineData(
+        "<< /Type /Outlines >>",
+        "/Root << /Type /Outlines >>",
+        "The trailer's /Root is a dictionary written in the trailer, not a reference to the document catalog. No object the reader could read is a catalog.")]
     public void A_document_rebuilt_as_it_opens_is_judged_by_its_trailers_root_when_no_object_is_a_catalog(string one, string root, string? message)
     {
         // startxref names no section, and the index is rebuilt as the document opens. Where no object of the file is a catalog,
         // the trailer the rebuild merged is judged; where its /Root leads to one, or a search finds one, the document has a way
-        // in, and the rules that judge the chain say what went wrong (#132).
+        // in, and the rules that judge the chain say what went wrong (#132). A dictionary written in the trailer that is no
+        // catalog is no catalog written there either.
         var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", one);
         file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file)
             .Replace("/Root 1 0 R", root, StringComparison.Ordinal)
@@ -876,6 +901,7 @@ public class FileRuleTests
         report.Contains(PdfValidationRuleIds.FileStartXRefWrong).Should().BeTrue();
         report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Select(finding => finding.Message)
             .Should().Equal(message is null ? [] : [message]);
+        report.Contains(PdfValidationRuleIds.FileRootDirect).Should().BeFalse();
     }
 
     [Theory]
@@ -1145,7 +1171,8 @@ public class FileRuleTests
     {
         // The only table's one row, for object 0, gives a generation of 65,536, which refuses it: the chain indexes nothing,
         // and the index is rebuilt as the document opens. The table's /Size 4 is not judged by the one number its rows use,
-        // 0, which would make it 1: the chain gave no index, and the objects the rebuild found number up to 3.
+        // 0, which would make it 1: the chain gave no index, and the objects the rebuild found number up to 3. The row, its
+        // offset written short of ten digits, is not in the 20-byte form either.
         var file = PdfTemplate.SoundWith("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "0 1\n{off:1} 65536 n\n");
         using var document = PdfDocument.Open(file);
 

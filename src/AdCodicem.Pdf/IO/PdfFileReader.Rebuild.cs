@@ -1094,6 +1094,7 @@ internal sealed partial class PdfFileReader
         var rebuilt = _repaired;
         var numbers = _xref.CopyNumbers();
         _catalogCandidateCut = false;
+        _openingCatalogNotServed = false;
 
         for (var order = 0; order < numbers.Length; order++)
         {
@@ -1130,7 +1131,8 @@ internal sealed partial class PdfFileReader
 
             // A dictionary a guard cut may give /Type /Catalog past the cut, or be a stream whose dictionary does; one taken for
             // giving it before the cut is read only in part all the same.
-            _catalogCandidateCut |= _cutAtLimit.Contains(number);
+            var cutAtLimit = _cutAtLimit.Contains(number);
+            _catalogCandidateCut |= cutAtLimit;
 
             if (isCatalog)
             {
@@ -1145,10 +1147,20 @@ internal sealed partial class PdfFileReader
             {
                 NoteCutByWalk(number, order, ref cut);
             }
+            else if (!cutAtLimit && IsOpeningCatalog(number))
+            {
+                _openingCatalogNotServed = true;
+            }
         }
 
         return false;
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="number"/>, a candidate a search read whole as no catalog, is the object the reader took
+    /// for the catalog as the document opened, the search running over an index rebuilt since (#381).
+    /// </summary>
+    private bool IsOpeningCatalog(int number) => _repaired && number != 0 && number == _structure.CatalogFoundAs;
 
     /// <summary>
     /// Notes candidate <paramref name="number"/>, the <paramref name="order"/>th of the search's, as one the walks' guard cut,
@@ -1205,6 +1217,10 @@ internal sealed partial class PdfFileReader
             if (walkCuts != _walkCuts || IsCutAtLimit(number))
             {
                 firstCut = Math.Min(firstCut, order);
+            }
+            else if (!isCatalog && IsOpeningCatalog(number))
+            {
+                _openingCatalogNotServed = true;
             }
 
             if (isCatalog)

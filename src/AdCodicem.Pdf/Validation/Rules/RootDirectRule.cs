@@ -11,7 +11,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// file reads as written, and <see cref="PdfValidationRuleIds.FileRootInvalid"/>, whose error is the reader choosing a
 /// catalog the file does not name, does not apply. A warning (ADR 45): an object no reference names has no number for an
 /// incremental update to replace it under, nor for a signature or a structure to name it by. A direct dictionary that is no
-/// catalog is <see cref="PdfValidationRuleIds.FileRootInvalid"/>'s. It judges the trailer
+/// catalog is <see cref="PdfValidationRuleIds.FileRootInvalid"/>'s; one a guard cut, which the reader takes for the catalog as
+/// read, is no reference whatever lay past the cut, and is reported. It judges the trailer
 /// <see cref="PdfValidationRuleIds.FileRootInvalid"/> judges: the one the chain gave, as written; where the chain gave no
 /// index, the one the rebuild merged.
 /// </remarks>
@@ -32,8 +33,9 @@ internal sealed class RootDirectRule : IValidationRule
 
         if (structure.ChainRead)
         {
-            // /Root as the chain's trailer wrote it, which the reader took for the catalog as the document opened.
-            if (!structure.TrailerRead || !structure.RootUsable || structure.RootAsWritten is not PdfDictionary)
+            // /Root as the chain's trailer wrote it, which the reader took for the catalog as the document opened: whole, or
+            // cut by a guard and taken as read, which is no reference whatever lay past the cut.
+            if (!structure.TrailerRead || !(structure.RootUsable || structure.RootCutByGuard) || structure.RootAsWritten is not PdfDictionary)
             {
                 return;
             }
