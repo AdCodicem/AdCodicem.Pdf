@@ -2541,7 +2541,7 @@ internal sealed class ObjectStreamDependencies
     /// <summary>
     /// The objects a chain loads one after the other from an object written in the file, or held by an object stream that
     /// decodes alike, each a reference to the next and none a stream — 32 at most, as many as the longest chain loads —, and
-    /// the object it loads after them.
+    /// the object the last of them names, which the chain loads next where it has loads left.
     /// </summary>
     /// <param name="numbers">The objects, in the order the chain loads them.</param>
     /// <param name="next">The object the last of them names.</param>
@@ -2553,7 +2553,7 @@ internal sealed class ObjectStreamDependencies
         /// <summary>Gets the objects, in the order the chain loads them.</summary>
         public int[] Numbers { get; } = numbers;
 
-        /// <summary>Gets the object the last of them names, which the chain loads next.</summary>
+        /// <summary>Gets the object the last of them names, which the chain loads next where it has loads left.</summary>
         public int Next { get; } = next;
 
         /// <summary>

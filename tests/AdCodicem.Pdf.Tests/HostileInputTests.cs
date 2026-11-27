@@ -1973,26 +1973,33 @@ public class HostileInputTests
             .Which.Message.Should().Contain("names object 7 0, whose chain of references reaches no value within the 32 a resolution follows");
     }
 
-    [Fact]
-    public void An_encrypt_entry_reached_through_a_chain_of_references_is_read_as_the_dictionary_it_leads_to()
+    [Theory]
+    [InlineData("6 0 R", false)]
+    [InlineData("6 0 R", true)]
+    [InlineData("5 0 R", false)]
+    public void An_encrypt_entry_reached_through_a_chain_of_references_is_read_as_the_dictionary_it_leads_to(string five, bool guarded)
     {
-        // The trailer's /Encrypt names object 5, which names object 6, an encryption dictionary: the document is encrypted,
-        // as a reference resolves through a chain to the value it leads to; the reader read object 5 alone, and opened the
-        // document as unencrypted, its /Encrypt "read as null" (#173).
+        // The trailer's /Encrypt names object 5, which names object 6, an encryption dictionary — past 300 spaces, which
+        // MaxObjectLength, lowered to 128, cuts —, or names itself. The document is encrypted where the chain leads to the
+        // dictionary, or to an object a guard cut, as a reference resolves through a chain to the value it leads to; the
+        // reader read object 5 alone, and opened the document as unencrypted, its /Encrypt "read as null". A chain that loops
+        // reads as null, and the document is unencrypted (#173).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [5] = file.Object(5, "6 0 R"),
-            [6] = file.Object(6, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
+            [5] = file.Object(5, five),
+            [6] = file.Object(6, (guarded ? new string(' ', 300) : string.Empty) + "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
         };
         file.Table(7, rows, "/Size 7 /Root 1 0 R /Encrypt 5 0 R /ID [<01> <02>]");
+        var limits = guarded ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        var encrypted = five == "6 0 R";
 
-        FluentActions.Invoking(() => PdfDocument.Open(file.Bytes)).Should().Throw<PdfEncryptedException>();
-        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
-        document.IsEncrypted.Should().BeTrue();
-        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid);
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false, Limits = limits });
+        document.IsEncrypted.Should().Be(encrypted);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid).Should().Be(!encrypted);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut).Should().Be(!encrypted);
     }
 
     [Theory]
@@ -2001,9 +2008,9 @@ public class HostileInputTests
     public void A_catalog_search_takes_the_catalog_itself_not_an_object_whose_chain_of_references_leads_to_it(int links)
     {
         // The trailer's /Root names object 90, which the file lacks; object 3 names object 4, and so on through `links`
-        // objects to object 35 + links - 31, the catalog. The search takes the catalog: an object whose value is a reference
-        // is none, whatever its chain leads to. It took object 3, which /Root then read through 32 references or more, and
-        // the document ended with no catalog (#173).
+        // objects to object 3 + links, the catalog. The search takes the catalog: an object whose value is a reference is
+        // none, whatever its chain leads to. It took object 3, which /Root then read through its chain — to no catalog past
+        // 32 references (#173).
         var file = new HandWrittenFile();
         var catalog = 3 + links;
         var rows = new Dictionary<int, long>

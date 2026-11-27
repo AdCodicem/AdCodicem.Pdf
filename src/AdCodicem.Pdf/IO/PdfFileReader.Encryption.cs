@@ -31,7 +31,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Decides, once, as the document opens, whether it is encrypted: its trailer's <c>/Encrypt</c> resolves to a dictionary,
-    /// or names an object one of the reader's guards kept it from reading. One that names an object the file lacks, or one
+    /// or names an object one of the reader's guards kept it from reading — through a chain of references, the object the
+    /// chain leads to (#173). One that names an object the file lacks, or one
     /// that is null, or that is a value of another type, leaves the document unencrypted, and is reported
     /// (<see cref="PdfDiagnosticCodes.TrailerEncryptInvalid"/>, #154).
     /// </summary>

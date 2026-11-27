@@ -1829,10 +1829,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     }
 
     /// <summary>
-    /// Reads, while the chain is read, what the <c>/Length</c> object <paramref name="id"/> leads to through as many
-    /// references as the parse resolves a <c>/Length</c> through (<see cref="MaxReferenceLinks"/>), each read with
-    /// <see cref="ReadWithoutLoading"/>; null when one of them cannot be read — no section read so far places it, or a guard
-    /// cut it —: a value whose chain leads there waits for the chain, as one the first reference cannot read does. A value
+    /// Reads, while the chain is read, what object <paramref name="id"/> — a <c>/Length</c>, or a section's <c>/Prev</c> or
+    /// <c>/XRefStm</c> (<see cref="ReadThrough"/>) — leads to through as many references as a resolution follows, the one
+    /// the value gives counted (<see cref="MaxReferenceLinks"/>), each read with <see cref="ReadWithoutLoading"/>; null when
+    /// one of them cannot be read — no section read so far places it, or a guard cut it —: a <c>/Length</c> whose chain leads
+    /// there waits for the chain, as one the first reference cannot read does. A value
     /// still a reference past them is one the parse reads as null, reported where <paramref name="report"/> says so.
     /// </summary>
     private PdfObject? ReadThroughWithoutLoading(PdfObjectId id, bool report = true)

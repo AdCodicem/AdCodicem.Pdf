@@ -369,7 +369,8 @@ public static class PdfDiagnosticCodes
     /// leads from reference to reference past the 32 a resolution follows, the value of the 32nd object read still a
     /// reference. The reference it starts from reads as null, and no object past the 32nd is read. A shorter chain is read
     /// as the object it leads to, and not reported. Raised as a warning, with no position, by the read that cuts the chain —
-    /// a resolution, or the reads made while the cross-reference chain is read —: each object a cut chain starts from — the
+    /// a resolution, or the reads made while the cross-reference chain is read, but for the <c>/Prev</c> of a stream the
+    /// chain only weighs and does not take —: each object a cut chain starts from — the
     /// one a reference names, or a stream's <c>/Length</c> names — is reported once, while the record has room; once it is
     /// full, each read of a chain not reported before is counted with what it drops. The message names the object the chain
     /// loops back to, or says it is too long.
@@ -386,7 +387,8 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// The trailer's <c>/Encrypt</c>, as the document opened, is no encryption dictionary: it names an object the file lacks
     /// or one that is null, which ISO 32000-1 reads as the key absent (7.3.10, 7.3.7) — not one a guard kept the reader
-    /// from reading, which counts as encrypted —, or it is a value of another type — a
+    /// from reading, which counts as encrypted —, or leads through a chain of references to one of these, or to none (#173),
+    /// or it is a value of another type — a
     /// name, an integer —, which gives nothing to decrypt with. The document is read as unencrypted, as qpdf, pdf.js and
     /// PDFBox read the first and the last two the second, and <see cref="Documents.PdfReaderOptions.ThrowOnEncrypted"/>
     /// throws nothing for it (#154). Reported once, at opening, where the trailer lies.

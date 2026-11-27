@@ -1848,7 +1848,8 @@ internal sealed partial class PdfFileReader
             return -1;
         }
 
-        notAnOffset = read is null
+        // Only the object the entry names is said to be placed nowhere: a later link of its chain leaves the entry no offset.
+        notAnOffset = value is PdfReference named && ReadWithoutLoading(named.Id) is null
             ? $"is {DescribeValue(value)}, which no section read before it places where it can be read"
             : $"is {DescribeValue(value)}, not an offset";
         return -1;

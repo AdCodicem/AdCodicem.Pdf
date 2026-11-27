@@ -695,10 +695,33 @@ internal sealed class ArlingtonWalk
 
     /// <summary>
     /// Whether a tree's node or array is to be expanded: one written inside another object always, for it lies in an
-    /// object expanded once; an indirect one the first time any tree meets it, which is remembered — by the object a chain
-    /// of references leads to, which many chains may lead to (#173).
+    /// object expanded once; an indirect one the first time any tree meets it, which is remembered — by the object
+    /// <see cref="Classify"/> judges, the one a chain of references leads to, which many chains may lead to (#173).
     /// </summary>
-    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(reference.Target().Number);
+    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(JudgedNumber(reference));
+
+    /// <summary>
+    /// Gives the number of the object <see cref="Classify"/> judges for <paramref name="reference"/>: the one a chain of
+    /// references from it leads to; the one it names where its value is no reference, a limit cut it, or its chain reaches
+    /// no value.
+    /// </summary>
+    private int JudgedNumber(PdfReference reference)
+    {
+        var number = reference.Id.Number;
+
+        if (_chainTargets?.TryGetValue(number, out var known) == true)
+        {
+            return known.Number == 0 ? number : known.Number;
+        }
+
+        if (_reader.GetObject(reference.Id) is not PdfReference || _reader.IsCutAtLimit(number))
+        {
+            return number;
+        }
+
+        var target = reference.Target();
+        return _reader.GetObject(target) is PdfReference ? number : target.Number;
+    }
 
     /// <summary>Whether an object, which <see cref="Classify"/> has resolved, was cut by a reader limit; never for a direct value.</summary>
     private bool IsCut(int number) => number != 0 && _reader.IsCutAtLimit(number);

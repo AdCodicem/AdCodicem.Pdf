@@ -109,7 +109,7 @@ internal sealed class ObjectGraph
     private Dictionary<int, bool>? _chains;
 
     /// <summary>
-    /// The objects read before the walk reached them, still claimed, found to hold no reference as their value: told once,
+    /// The objects read before the walk reached them, still claimed, found to hold no reference as their value: asked once,
     /// not read again for each reference met to them. Null until one is.
     /// </summary>
     private HashSet<int>? _plainWhileWaiting;
@@ -553,8 +553,8 @@ internal sealed class ObjectGraph
 
     /// <summary>
     /// Determines whether the object <paramref name="id"/> names, which the reader has read, starts a chain that reaches no
-    /// value: told once the walk reaches it; for one read before the walk reached it, still <paramref name="waiting"/>, its
-    /// value is asked again, as resolving a reference asks.
+    /// value: known once the walk reaches it; for one read before the walk reached it, still <paramref name="waiting"/>, its
+    /// value is asked, as resolving a reference asks, and an answer that it holds no reference remembered.
     /// </summary>
     private bool StartsCutChainOnceRead(PdfObjectId id, bool waiting)
     {

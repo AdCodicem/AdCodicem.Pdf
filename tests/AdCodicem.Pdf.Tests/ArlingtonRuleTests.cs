@@ -1037,6 +1037,28 @@ public class ArlingtonRuleTests
         walk.Checked.Should().BeLessThan(2 * Links, "node 4 and each of its labels are checked once, however many chains lead to it");
     }
 
+    [Theory]
+    [InlineData("[11 0 R 20 0 R]")]
+    [InlineData("[20 0 R 11 0 R]")]
+    public void A_tree_node_named_directly_is_expanded_though_a_link_a_limit_cut_also_names_it(string kids)
+    {
+        // The catalog's /PageLabels lists node 11 and object 20, whose value, 11 0 R, MaxObjectLength cuts after the reference
+        // it left whole: object 20 is judged as cut, and not expanded; node 11, named directly, is expanded whatever the order,
+        // its label's /S judged — where the walk took node 11 for entered through object 20 (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Kids " + kids + " >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(11, "<< /Nums [0 << /S 5 >>] >>")
+            .WithObject(20, "11 0 R\n%" + new string('=', 1_100))
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1_024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Contain("/S");
+    }
+
     [Fact]
     public void The_parameters_of_a_filter_named_through_a_chain_of_references_are_typed_by_that_filter()
     {
@@ -1044,10 +1066,10 @@ public class ArlingtonRuleTests
         // whose /Predictor is an integer, as they are where /Filter names object 10 itself; the walk typed none, the chain's
         // first link holding a reference (#173).
         var file = Pdf(
-            "<< /Type /Catalog /Pages 2 0 R /Metadata 3 0 R >>",
+            "<< /Type /Catalog /Pages 2 0 R /Metadata 4 0 R >>",
             Root,
-            "<< /Type /Metadata /Subtype /XML /Length 0 /Filter 9 0 R /DecodeParms << /Predictor (bad) >> >>\nstream\n\nendstream",
             Page,
+            "<< /Type /Metadata /Subtype /XML /Length 0 /Filter 9 0 R /DecodeParms << /Predictor (bad) >> >>\nstream\n\nendstream",
             "null",
             "null",
             "null",
