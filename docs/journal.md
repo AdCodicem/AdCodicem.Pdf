@@ -22,7 +22,9 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   length, but past 64 KB, where its buffer is an array of its own, as on `main`, so that the pool keeps no large one.
   The check's first push failed in CI: the 10.0.4xx SDK, which CI and the releases build with, writes the scan otherwise,
   and the binaries shipped from `main` left the lexer out of two of its three optimized compiles. The trailer keyword's
-  handling now stays out of the loop, and every such compile inlines the lexer under both SDKs.
+  handling now stays out of the loop, and every such compile inlines the lexer under both SDKs. The maintainer chose to
+  pay [#463] here, filed for that gap: `global.json` pins the 10.0.4xx band (`latestPatch`), every workflow installs it,
+  and the session's hook installs it from `builds.dotnet.microsoft.com` beside the archive's 10.0.1xx.
 - **Review** (ADR 54): two rounds, no blocker, no major, no minor. Round 1's nits: the first rewrite, which spelled an
   entry back through its prefix codes, decoded long entries two to four times slower than `main`, and was replaced by
   the copy; the check's failure in CI, above; a minimally optimized compile taken for the last; the end-of-data code
@@ -34,7 +36,7 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   the strings' sizes and the check's tiers, decisions and event filters. 46 killed, 4 by tests the step added; one
   settled by the code, the instrumented optimized tier of a ReadyToRun build no longer held; 8 equivalent, confirmed by
   a second agent, which also caught their first classing, made with the widening backwards.
-- **The issues.** Closes [#192] and [#374]. Filed under M02: [#463] (batch 32), the session's and CI's SDKs.
+- **The issues.** Closes [#192], [#374] and [#463], which the batch filed and the maintainer chose to pay in it.
 - **Checks.** The batch check at the head; the 72 timing and memory tests alone; the corpus differential against
   `main` identical over 806 reads, the forced rebuilds included; `Remote corpus` run 148 green; CI green, the inlining
   check, the integration suite and the .NET 11 compatibility island among it; the site. Every changed and coverable line

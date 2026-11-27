@@ -28,8 +28,9 @@ namespace AdCodicem.Pdf.InliningCheck;
 /// <para>
 /// What the runtime inlines depends on the code the C# compiler writes as much as on the runtime: the compilers of the
 /// 10.0.1xx and 10.0.4xx SDKs write the scan differently, and only the first kept the lexer in until its trailer keyword's
-/// handling left the loop. The check holds under the runtime's default settings: without tiered compilation, or without
-/// the profile its tiers gather, no compile of the scan inlines the call that reaches the lexer.
+/// handling left the loop. <c>global.json</c> pins the 10.0.4xx band, which sessions, CI and the releases build with
+/// (#463). The check holds under the runtime's default settings: without tiered compilation, or without the profile its
+/// tiers gather, no compile of the scan inlines the call that reaches the lexer.
 /// </para>
 /// </remarks>
 internal static class Program

@@ -5,12 +5,11 @@
 #
 # It builds the solution in Release (warnings are errors), verifies the code style, checks as CI does that the rebuild's
 # scan keeps the lexer inlined, runs the whole unit suite as CI does, and checks the subjects of the commits since the
-# base against the conventional-commit rules CI applies. The inlining check holds the code the SDK on PATH compiled: CI
-# and the releases build with the 10.0.4xx SDK, whose compiler writes the scan differently from the 10.0.1xx one a
-# session installs, so a pass under the latter does not predict CI's (#374). The suite's timing tests run last in their
-# own collection; run the script while no benchmark or other heavy process loads the machine, or a timing test may fail
-# for the load alone (#342). It prints one line per step and exits non-zero on the first failure, so a workflow reads
-# its result without reading its logs, which are in $TMPDIR/batch-check (or /tmp/batch-check).
+# base against the conventional-commit rules CI applies. It compiles with the SDK band global.json pins, as CI does, so
+# that its inlining check predicts CI's (#463). The suite's timing tests run last in their own collection; run the
+# script while no benchmark or other heavy process loads the machine, or a timing test may fail for the load alone
+# (#342). It prints one line per step and exits non-zero on the first failure, so a workflow reads its result without
+# reading its logs, which are in $TMPDIR/batch-check (or /tmp/batch-check).
 set -uo pipefail
 
 base="${1:-origin/main}"

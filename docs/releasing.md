@@ -120,6 +120,12 @@ dependency (invariant 1).
 anything is pushed: one package per packable project, all at the version asked for, in the file name and in
 the nuspec, each with its `.snupkg`, and nothing else.
 
+Every package is compiled by the SDK band `global.json` pins, 10.0.4xx (`rollForward: latestPatch`), which every
+workflow installs as `dotnet-version: "10.0.4xx"` and a session's `SessionStart` hook installs too: the C# compilers of
+two bands write some methods differently, and what the runtime inlines follows (#374, #463), so what a session measures
+is what ships. Moving to another band is one pull request that changes `global.json`, the workflows and
+`.claude/scripts/setup-dotnet.sh` together, its benchmarks and inlining check run with the new band.
+
 `VersionPrefix` in `Directory.Build.props` only matters for a build nobody handed a version to — a local
 `dotnet pack` gives `0.1.0-alpha`, and the `-alpha` is there to make an accidentally published local build
 obvious. `release-pack.sh` passes `-p:Version` explicitly, which overrides prefix and suffix alike. A version
