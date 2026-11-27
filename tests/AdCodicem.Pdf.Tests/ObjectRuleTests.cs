@@ -238,6 +238,24 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_trailer_that_refers_to_a_chain_of_references_that_reaches_no_value_is_the_holder()
+    {
+        // The trailer's /Info names object 5, which names itself: the trailer holds the reference, and the finding is
+        // located there (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "5 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R /Info 5 0 R");
+
+        Single(Validate(file.Bytes), PdfValidationRuleIds.ObjectReferenceChainUnresolved).Message.Should().Be(
+            "The trailer refers to object 5 0 under /Info, whose chain of references loops back to object 5 0: the reference reads as null.");
+    }
+
+    [Fact]
     public void A_required_key_whose_chain_of_references_reaches_no_value_is_not_missing()
     {
         // The catalog's /Pages names object 5, which names itself: the key is present, its value lost, which the chain's finding

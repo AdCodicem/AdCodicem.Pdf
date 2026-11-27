@@ -1038,6 +1038,28 @@ public class ArlingtonRuleTests
     }
 
     [Theory]
+    [InlineData("4 0 R")]
+    [InlineData("10 0 R")]
+    public void A_tree_node_reached_through_a_chain_the_walk_judged_before_is_expanded_as_that_chain_leads(string ten)
+    {
+        // The catalog's /Legal names object 10, which names node 4 — or itself —, judged before /PageLabels, whose kids list
+        // object 10: the tree takes the chain as the walk found it, node 4 expanded and its label's /S judged, or a chain that
+        // reaches no value expanded to nothing (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Legal 10 0 R /PageLabels << /Kids [10 0 R] >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(4, "<< /Nums [0 << /S 5 >>] >>")
+            .WithObject(10, ten)
+            .BuildClassic(rootNumber: 1);
+
+        var report = Validate(file);
+
+        report.Findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong && finding.Message.Contains("/S", StringComparison.Ordinal))
+            .Should().Be(ten == "4 0 R", string.Join("; ", report.Findings));
+    }
+
+    [Theory]
     [InlineData("[11 0 R 20 0 R]")]
     [InlineData("[20 0 R 11 0 R]")]
     public void A_tree_node_named_directly_is_expanded_though_a_link_a_limit_cut_also_names_it(string kids)
