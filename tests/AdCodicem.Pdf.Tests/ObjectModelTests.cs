@@ -352,14 +352,41 @@ public class ObjectModelTests
         }
     }
 
-    [Fact]
-    public void A_chain_of_references_that_loops_resolves_to_null()
+    [Theory]
+    [InlineData(31, 0)]
+    [InlineData(32, 0)]
+    [InlineData(40, 0)]
+    [InlineData(2, 1)]
+    [InlineData(5, 3)]
+    public void A_chain_of_references_resolves_through_32_references_and_reads_no_object_past_them(int links, int loopsBackTo)
     {
-        var source = Substitute.For<IPdfObjectSource>();
-        source.GetObject(new PdfObjectId(1)).Returns(new PdfReference(new PdfObjectId(2), source));
-        source.GetObject(new PdfObjectId(2)).Returns(new PdfReference(new PdfObjectId(1), source));
+        // Object 1 holds a reference to object 2, and so on: `links` objects hold references, the last to the next, which holds
+        // 7 — or back to object `loopsBackTo`. A resolution follows 32 references, the value of the last object it reads
+        // examined: a chain of 31 such objects reads 7; a longer one, or one that loops, reads null, no object past the 32nd
+        // read, and the source is told the chain from object 1 was cut, once each time it is resolved (#173).
+        var source = new ChainSource(links, loopsBackTo);
+        var resolved = new PdfReference(new PdfObjectId(1), source).Resolve();
+        var cut = links > PdfReference.MaxChainLength - 1 || loopsBackTo > 0;
 
-        new PdfReference(new PdfObjectId(1), source).Resolve().Should().BeSameAs(PdfNull.Instance);
+        resolved.AsInteger().Should().Be(cut ? null : 7);
+        (resolved is PdfNull).Should().Be(cut);
+        source.Reads.Should().Be(cut ? PdfReference.MaxChainLength : links + 1);
+        source.Cut.Should().Equal(cut ? [new PdfObjectId(1)] : []);
+        new PdfReference(new PdfObjectId(1), source).ReachesNoValue().Should().Be(cut);
+    }
+
+    [Fact]
+    public void A_chain_resolved_from_a_value_read_before_it_counts_that_value_s_reference_among_its_32()
+    {
+        // A stream's /Length is resolved from the value its object holds, the reference the /Length gives counted among the 32
+        // a resolution follows: the source is told the chain from that reference was cut, and no object past the 32nd is read.
+        var source = new ChainSource(32, 0);
+        var first = (PdfReference)source.GetObject(new PdfObjectId(1));
+        var resolved = first.ResolveThrough(PdfReference.MaxChainLength - 1, new PdfReference(new PdfObjectId(1), source));
+
+        resolved.Should().BeSameAs(PdfNull.Instance);
+        source.Reads.Should().Be(PdfReference.MaxChainLength);
+        source.Cut.Should().Equal(new PdfObjectId(1));
     }
 
     [Fact]
@@ -508,5 +535,27 @@ public class ObjectModelTests
 
         new PdfException("outer", cause).InnerException.Should().BeSameAs(cause);
         new PdfFormatException("outer", cause).InnerException.Should().BeSameAs(cause);
+    }
+
+    /// <summary>
+    /// Serves a chain of objects whose values are references: objects 1 to <c>links</c> each name the next, or the last
+    /// names object <c>loopsBackTo</c> where it is not 0, and the one past them holds 7; counts what it reads, and what
+    /// resolutions told it of chains they cut.
+    /// </summary>
+    private sealed class ChainSource(int links, int loopsBackTo) : IPdfObjectSource, IPdfReferenceChainObserver
+    {
+        public int Reads { get; private set; }
+
+        public List<PdfObjectId> Cut { get; } = [];
+
+        public PdfObject GetObject(PdfObjectId id)
+        {
+            Reads++;
+            return id.Number > links ? PdfInteger.Create(7)
+                : id.Number == links && loopsBackTo > 0 ? new PdfReference(new PdfObjectId(loopsBackTo), this)
+                : new PdfReference(new PdfObjectId(id.Number + 1), this);
+        }
+
+        public void ChainCut(PdfReference start) => Cut.Add(start.Id);
     }
 }

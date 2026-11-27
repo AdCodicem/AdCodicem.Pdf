@@ -1804,6 +1804,175 @@ public class HostileInputTests
             .Which.Message.Should().Contain("names object 7 1, which the file lacks");
     }
 
+    [Theory]
+    [InlineData(1, 10, "loops back to object 10 0")]
+    [InlineData(2, 10, "loops back to object 10 0")]
+    [InlineData(5, 12, "loops back to object 12 0")]
+    [InlineData(32, 0, "leads from reference to reference past the 32 a resolution follows")]
+    [InlineData(31, 0, null)]
+    public void A_chain_of_references_reaches_its_value_through_32_references_or_reads_as_null_reported_once(int links, int loopsBackTo, string? end)
+    {
+        // Object 6 names object 10 twice; objects 10 on each hold a reference to the next — `links` of them —, the last to
+        // object 10 + links, which holds a string, or back to object `loopsBackTo`. A chain of 31 reads the string; a longer
+        // one, or one that loops, reads as null, reported once whatever reads it, the message saying how the chain ends.
+        // Either read as null with no report (#173).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(6, "<< /A 10 0 R /B 10 0 R >>");
+
+        for (var link = 0; link < links; link++)
+        {
+            var next = link == links - 1 && loopsBackTo > 0 ? loopsBackTo : 11 + link;
+            builder.WithObject(10 + link, string.Create(CultureInfo.InvariantCulture, $"{next} 0 R"));
+        }
+
+        using var document = PdfDocument.Open(builder.WithObject(10 + links, "(value)").BuildClassic(rootNumber: 1));
+        var holder = document.GetObject(6).AsDictionary().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            foreach (var key in new[] { "A", "B" })
+            {
+                var value = holder.Get(PdfName.Get(key));
+
+                if (end is null)
+                {
+                    value.AsText().Should().Be("value");
+                }
+                else
+                {
+                    value.Should().BeSameAs(PdfNull.Instance);
+                }
+            }
+        }
+
+        if (end is null)
+        {
+            document.Diagnostics.Should().BeEmpty();
+            return;
+        }
+
+        document.Diagnostics.Should().ContainSingle().Which.Should().Be(new PdfDiagnostic(
+            PdfDiagnosticSeverity.Warning,
+            PdfDiagnosticCodes.ObjectReferenceChainCut,
+            $"A reference names object 10 0, whose chain of references {end}: the reference reads as null."));
+    }
+
+    [Fact]
+    public void Chains_cut_from_more_objects_than_the_record_holds_are_noted_no_further_than_it()
+    {
+        // An array names 1,500 objects that each name themselves, each resolved twice: each chain is noted only while the
+        // record of diagnostics has room, and once full the record counts what it drops (#173).
+        const int Chains = 1_500;
+        var references = new StringBuilder("[");
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 10; number < 10 + Chains; number++)
+        {
+            references.Append(number).Append(" 0 R ");
+            builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"));
+        }
+
+        using var document = PdfDocument.Open(builder.WithObject(6, references.Append(']').ToString()).BuildClassic(rootNumber: 1));
+        var all = document.GetObject(6).AsArray().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var index = 0; index < all.Count; index++)
+            {
+                all.Resolved(index).Should().BeSameAs(PdfNull.Instance);
+            }
+        }
+
+        document.Diagnostics.Count.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut);
+        document.Reader.ChainsCutReported.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.SuppressedCount.Should().Be(2 * (Chains - document.Diagnostics.Capacity));
+    }
+
+    [Theory]
+    [InlineData("/Length", false, false)]
+    [InlineData("/Length", true, false)]
+    [InlineData("/Length", true, true)]
+    [InlineData("/Filter", false, false)]
+    [InlineData("/Filter", true, false)]
+    [InlineData("/Filter", true, true)]
+    public void A_value_whose_chain_is_one_object_too_long_reads_alike_whatever_a_guard_does_to_the_object_past_it(string key, bool guarded, bool throwing)
+    {
+        // Stream 4's /Length, or its /Filter, names object 100, which names the next, through object 131, the 32nd, which names
+        // object 132: 3,000 spaces, then what the value would be. The chain reaches no value within the 32 references a
+        // resolution follows, and object 132 is never read: MaxObjectLength cutting it reports nothing and throws nothing,
+        // where the 32nd object's value was read and dropped, and the 33rd loaded, reported and thrown for (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, key == "/Length" ? "<< /Length 100 0 R >>\nstream\nq Q\nendstream" : "<< /Length 3 /Filter 100 0 R >>\nstream\nq Q\nendstream"),
+        };
+
+        for (var number = 100; number < 132; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[132] = file.Object(132, new string(' ', 3_000) + (key == "/Length" ? "3" : "/FlateDecode"));
+        file.Table(133, rows, "/Size 133 /Root 1 0 R");
+        var options = new PdfReaderOptions
+        {
+            Limits = guarded ? PdfReaderLimits.Default with { MaxObjectLength = 1_024 } : PdfReaderLimits.Default,
+            ThrowOnLimit = throwing,
+        };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var stream = document.GetObject(4).AsStream().Required();
+        stream.Decode().ToArray().Should().Equal("q Q"u8.ToArray());
+
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut).Which.Message.Should().Be(
+            "A reference names object 100 0, whose chain of references leads from reference to reference past the 32 a resolution follows: the reference reads as null.");
+
+        if (key == "/Length")
+        {
+            document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().StartWith(
+                "The stream's /Length names object 100 0, whose chain of references reaches no value within the 32 a resolution follows;");
+        }
+    }
+
+    [Theory]
+    [InlineData("at its header")]
+    [InlineData("2 KB away")]
+    public void A_length_whose_chain_loops_is_reported_once_whatever_a_rebuild_withdrew(string row)
+    {
+        // Stream 3's /Length names object 7, which names itself; its row places it at its header, or 2 KB away in the padding,
+        // where loading the stream sets off a rebuild the load finishes after it. The chain is reported once, whatever the
+        // rebuild withdrew of what was reported while it ran, and the length says the chain reaches no value (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 0 R >>\nstream\nhello\nendstream"),
+        };
+        var padding = file.Padding(8, 4_000);
+        rows[8] = padding;
+        rows[7] = file.Object(7, "7 0 R");
+        rows[7] = row == "2 KB away" ? padding + 2_000 : rows[7];
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(3).AsStream().Required().Data.Length.Should().Be(5);
+
+        document.WasRepaired.Should().Be(row == "2 KB away");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut)
+            .Which.Message.Should().Contain("names object 7 0, whose chain of references loops back to object 7 0");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 7 0, whose chain of references reaches no value within the 32 a resolution follows");
+    }
+
     /// <summary>Gives <paramref name="bytes"/> with the classic table's row of object <paramref name="number"/> giving <paramref name="generation"/>.</summary>
     private static byte[] WithRowGeneration(byte[] bytes, int number, int generation)
     {

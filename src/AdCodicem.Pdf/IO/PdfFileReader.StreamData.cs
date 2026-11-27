@@ -995,13 +995,14 @@ internal sealed partial class PdfFileReader
         if (presence is not ObjectPresence.Unindexed and not ObjectPresence.Missing)
         {
             // The object is not loaded again unless its value leads further: the chain is resolved first, as the parse
-            // resolves it, so that the object it leads to is read when it is asked whether a guard cut it.
+            // resolves it — through as many references as any, the /Length's own counted —, so that the object it leads to
+            // is read when it is asked whether a guard cut it, and none past it (#173).
             if (value is PdfReference next)
             {
-                next.Resolve();
+                next.ResolveThrough(PdfReference.MaxChainLength - 1, reference);
             }
 
-            var target = value is PdfReference ? reference.Target(PdfReference.MaxChainLength) : id;
+            var target = value is PdfReference ? reference.Target() : id;
             presence = NamesAnotherGeneration(target) ? ObjectPresence.Missing
                 : IsCutAtLimit(target.Number) ? ObjectPresence.Cut
                 : target.Number != id.Number && GetPresence(target.Number) == ObjectPresence.Unindexed ? ObjectPresence.Unindexed

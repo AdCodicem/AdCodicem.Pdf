@@ -73,8 +73,11 @@ internal sealed class RootInvalidRule : IValidationRule
             ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation)
             : default;
         // /Root as it resolved when the document opened, through the chain's index, which a rebuild may have changed since.
-        ReportRoot(
-            context, structure.RootAsWritten, structure.RootResolved, "read as null through the cross-reference chain", trailer, "The trailer has no /Root.", Found(context, reader));
+        // A chain of references that reached no value is named, rather than the index (#173).
+        var asNull = structure.RootChainCut is { } chain
+            ? $"read as null: its chain of references {chain}"
+            : "read as null through the cross-reference chain";
+        ReportRoot(context, structure.RootAsWritten, structure.RootResolved, asNull, trailer, "The trailer has no /Root.", Found(context, reader));
     }
 
     /// <summary>
@@ -95,7 +98,10 @@ internal sealed class RootInvalidRule : IValidationRule
         var root = context.Document.Trailer.GetRaw(PdfName.Root);
         var resolved = root is PdfReference reference ? reference.Resolve() : null;
         var trailer = reader.TrailerLocation >= 0 ? PdfValidationLocation.AtPosition(reader.TrailerLocation) : default;
-        ReportRoot(context, root, resolved, "reads as null", trailer, "No trailer the reader read gives /Root.", Found(context, reader));
+        var asNull = root is PdfReference chained && resolved is PdfNull && reader.IsChainCut(chained.Id, out var loopsBackTo)
+            ? $"reads as null: its chain of references {PdfFileReader.DescribeChainCut(loopsBackTo)}"
+            : "reads as null";
+        ReportRoot(context, root, resolved, asNull, trailer, "No trailer the reader read gives /Root.", Found(context, reader));
     }
 
     /// <summary>

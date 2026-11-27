@@ -79,6 +79,7 @@ public class ValidatorTests
             PdfValidationRuleIds.XRefObjectPastSize,
             PdfValidationRuleIds.XRefCheckedInPart,
             PdfValidationRuleIds.ObjectReferenceMissing,
+            PdfValidationRuleIds.ObjectReferenceChainUnresolved,
             PdfValidationRuleIds.ObjectEndObjMissing,
             PdfValidationRuleIds.ObjectNameNullCharacter,
             PdfValidationRuleIds.ObjectKeyMissing,

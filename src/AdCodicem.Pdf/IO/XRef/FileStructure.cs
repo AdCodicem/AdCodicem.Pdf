@@ -133,6 +133,12 @@ internal sealed class FileStructure
     /// <summary>Gets what <see cref="RootAsWritten"/> resolved to when the document opened, or null when it is no reference.</summary>
     public PdfObject? RootResolved { get; set; }
 
+    /// <summary>
+    /// Gets, where <see cref="RootAsWritten"/> led through a chain of references that reached no value when the document
+    /// opened, how that chain ends (<see cref="PdfFileReader.DescribeChainCut"/>); null otherwise (#173).
+    /// </summary>
+    public string? RootChainCut { get; set; }
+
     /// <summary>Gets a value indicating whether <see cref="RootAsWritten"/> led to a catalog when the document opened.</summary>
     public bool RootUsable { get; set; } = true;
 

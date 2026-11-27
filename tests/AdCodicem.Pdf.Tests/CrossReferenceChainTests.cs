@@ -7857,8 +7857,8 @@ public class CrossReferenceChainTests
     public void A_prev_falling_inside_the_stream_its_xrefstm_read_takes_it_where_the_stream_s_own_prev_names_no_offset_in_the_file(string ownPrev)
     {
         // As above, the stream giving through its own /Prev an offset past the file's end, -1, a name, or a reference through
-        // a chain of 33 objects, one more than a section's offset is read through, the last object's place dropped: no offset
-        // in the file, which counts as another offset than the table's, the stream no stream that may be the table's own — -1
+        // a chain of 33 objects, one more than a section's offset is read through, the last object never read and the chain
+        // reported as cut (#173): no offset in the file, which counts as another offset than the table's, the stream no stream that may be the table's own — -1
         // no more than any, though it is the number the reader gives a /Prev that is not there. It is a section
         // the /Prev can mean, taken where it comes nearest, before the table farther off, and read whole, the /XRefStm
         // reported as naming what the /Prev read; its own /Prev is reported as the chain finds it, the older sections looked
@@ -7872,11 +7872,12 @@ public class CrossReferenceChainTests
             ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
         sections[3].Should().Match<XRefSectionRecord>(section => section.NamedBy == "/Prev" && section.State == XRefSectionState.NotFound);
+        string[] chainCut = ownPrev.EndsWith("33 objects", StringComparison.Ordinal) ? [PdfDiagnosticCodes.ObjectReferenceChainCut] : [];
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             ownPrev != "outside the file"
                 ?
                 [
-                    PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
+                    .. chainCut, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
                     PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined,
                 ]
                 :

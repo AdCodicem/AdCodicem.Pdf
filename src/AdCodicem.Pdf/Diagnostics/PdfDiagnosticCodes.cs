@@ -364,6 +364,19 @@ public static class PdfDiagnosticCodes
     public const string ObjectGenerationMismatch = "object.generation-mismatch";
 
     /// <summary>
+    /// A chain of objects whose values are references — which no valid file holds, an indirect object's value being one of
+    /// the eight basic types (ISO 32000-1, 7.3.1 and 7.3.10) — reaches no value: it loops back to an object it passed, or
+    /// leads from reference to reference past the 32 a resolution follows, the value of the 32nd object read still a
+    /// reference. The reference it starts from reads as null, and no object past the 32nd is read. A shorter chain is read
+    /// as the object it leads to, and not reported. Raised as a warning, with no position, by the read that cuts the chain —
+    /// a resolution, or the reads made while the cross-reference chain is read —: each object a cut chain starts from — the
+    /// one a reference names, or a stream's <c>/Length</c> names — is reported once, while the record has room; once it is
+    /// full, each read of a chain not reported before is counted with what it drops. The message names the object the chain
+    /// loops back to, or says it is too long.
+    /// </summary>
+    public const string ObjectReferenceChainCut = "object.reference-chain-cut";
+
+    /// <summary>
     /// The trailer's <c>/Root</c> did not lead to a document catalog, and the reader found the catalog among the
     /// file's objects: among those the file indexes when its index is sound, in a rebuilt index otherwise. A rebuild after
     /// opening that takes the same object again reports nothing more; one that takes another object reports it.
