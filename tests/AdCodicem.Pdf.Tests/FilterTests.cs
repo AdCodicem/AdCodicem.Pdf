@@ -383,6 +383,57 @@ public class FilterTests
         diagnostics.Contains(PdfDiagnosticCodes.LimitDecodedStream).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("text", 1)]
+    [InlineData("text", 0)]
+    [InlineData("incompressible", 1)]
+    [InlineData("a run filling the table", 1)]
+    public void Decodes_lzw_data_back_to_what_was_encoded_across_clear_codes_and_its_longest_entries(string data, int earlyChange)
+    {
+        // Text and random bytes, a megabyte each, are written with a clear code each time the table fills. A run of one byte
+        // fills the table with no clear code: its codes name entries of 2 to 3,839 bytes, the longest a table holds — the
+        // last defined by naming it as it is defined —, then name the longest again.
+        var plain = LzwData(data);
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.EarlyChange, PdfInteger.Create(earlyChange));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(FilterDamageTests.LzwEncode(plain, earlyChange, clearWhenFull: data != "a run filling the table"), PdfName.LZWDecode, parameters, diagnostics);
+
+        decoded.Span.SequenceEqual(plain).Should().BeTrue();
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("text")]
+    [InlineData("incompressible")]
+    [InlineData("a run filling the table")]
+    public void An_lzw_decode_allocates_its_output_and_nothing_for_each_code(string data)
+    {
+        // Each code names an entry of the table, which the decoder writes out without an array of its own: what a decode
+        // allocates is what the bounded output allocates for the same bytes, from the same first guess, its table rented.
+        var plain = LzwData(data);
+        var encoded = FilterDamageTests.LzwEncode(plain, clearWhenFull: data != "a run filling the table");
+        const int Bound = 16 * 1024 * 1024;
+
+        var decoding = Allocations.Least(() => LzwFilter.Decode(encoded, 1, out _, out _, out _, Bound), out var decoded);
+        var writing = Allocations.Least(
+            () =>
+            {
+                var output = new PdfBoundedOutput(Math.Max(1024, encoded.Length * 3L), Bound);
+                foreach (var value in plain)
+                {
+                    output.TryWrite([value]);
+                }
+
+                return output.ToArray();
+            },
+            out _);
+
+        decoded.Should().Equal(plain);
+        decoding.Should().BeLessThanOrEqualTo(writing);
+    }
+
     [Fact]
     public void Undoes_a_predictor_over_the_rows_of_a_bounded_output_and_the_part_of_the_last_it_holds()
     {
@@ -1746,6 +1797,34 @@ public class FilterTests
         }
 
         return new PdfStream(dictionary, PdfStreamData.FromMemory(data)).Decode(diagnostics);
+    }
+
+    /// <summary>
+    /// A megabyte of a content stream's text, or of random bytes; or a run of one byte long enough to fill an LZW table
+    /// with no clear code, its longest entry named twice more.
+    /// </summary>
+    private static byte[] LzwData(string data)
+    {
+        switch (data)
+        {
+            case "text":
+                var text = new StringBuilder();
+                for (var line = 0; text.Length < 1 << 20; line++)
+                {
+                    text.Append(CultureInfo.InvariantCulture, $"BT /F1 12 Tf 72 {720 - (line % 700)} Td (Line {line} of a content stream) Tj ET\n");
+                }
+
+                return Encoding.ASCII.GetBytes(text.ToString(0, 1 << 20));
+            case "incompressible":
+                var random = new byte[1 << 20];
+                new Random(42).NextBytes(random);
+                return random;
+            default:
+                // Entries of 2 to 3,839 bytes after the first byte: 3,839 × 3,840 / 2 bytes, then the longest twice more.
+                var run = new byte[(3839 * 3840 / 2) + (2 * 3839)];
+                run.AsSpan().Fill((byte)'A');
+                return run;
+        }
     }
 
     private static ReadOnlyMemory<byte> DecodeWithin(byte[] data, PdfName filter, int maxLength, PdfDiagnostics diagnostics)

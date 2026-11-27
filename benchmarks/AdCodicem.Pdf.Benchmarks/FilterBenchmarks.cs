@@ -8,7 +8,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures what decoding a Flate content stream costs, whole, cut short, and damaged; what a chain of two filters
-/// costs, its parameters read before its data; and what a predictor costs after Flate.
+/// costs, its parameters read before its data; what a predictor costs after Flate; and what decoding LZW costs, of text
+/// and of incompressible bytes (#192).
 /// </summary>
 /// <remarks>
 /// A whole stream is what nearly every document holds, and noticing a lost tail or a fault must cost it nothing. A
@@ -18,7 +19,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// it lost: its body as raw deflate, then — for a corrupt one — once more, one byte at a time through the input the
 /// fault was met in. Three readings at most, into the same output, on damaged streams only. The predictors are PNG's on
 /// rows of five bytes, each taking the row above, as a cross-reference stream gives them; and TIFF's on rows of
-/// 1,024 RGB pixels of eight bits, each sample taking the one before.
+/// 1,024 RGB pixels of eight bits, each sample taking the one before. The LZW streams hold a clear code each time the
+/// table fills: the content stream's text, whose codes name entries of a few bytes, and random bytes, which LZW expands
+/// and whose codes name entries of two. A decode allocates its output and nothing for each code, the table rented.
 /// </remarks>
 [MemoryDiagnoser]
 public class FilterBenchmarks
@@ -40,6 +43,8 @@ public class FilterBenchmarks
     private PdfStream _chain = null!;
     private PdfStream _pngRows = null!;
     private PdfStream _tiffSamples = null!;
+    private PdfStream _lzwText = null!;
+    private PdfStream _lzwIncompressible = null!;
 
     [Params(64 * 1024, 4 * 1024 * 1024)]
     public int DecodedLength { get; set; }
@@ -69,6 +74,11 @@ public class FilterBenchmarks
 
         _pngRows = PredictedStream(PngPredicted(DecodedLength / CrossReferenceRow), predictor: 12, colors: 1, columns: CrossReferenceRow);
         _tiffSamples = PredictedStream(TiffPredicted(DecodedLength / TiffRow), predictor: 2, colors: 3, columns: TiffRow / 3);
+
+        _lzwText = LzwStream(LzwEncode(content));
+        var incompressible = new byte[DecodedLength];
+        new Random(42).NextBytes(incompressible);
+        _lzwIncompressible = LzwStream(LzwEncode(incompressible));
     }
 
     [Benchmark(Baseline = true, Description = "Decode a whole Flate stream")]
@@ -94,6 +104,12 @@ public class FilterBenchmarks
 
     [Benchmark(Description = "Decode Flate samples a TIFF predictor took")]
     public int TiffSamples() => _tiffSamples.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode an LZW stream of text")]
+    public int LzwText() => _lzwText.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode an LZW stream of incompressible bytes")]
+    public int LzwIncompressible() => _lzwIncompressible.Decode(new PdfDiagnostics()).Length;
 
     private static byte[] Ascii85(byte[] data)
     {
@@ -121,6 +137,92 @@ public class FilterBenchmarks
 
         encoded.AddRange("~>"u8);
         return [.. encoded];
+    }
+
+    /// <summary>
+    /// Encodes <paramref name="data"/> as <c>LZWDecode</c> with <c>EarlyChange</c> 1, writing a clear code each time the
+    /// table fills, and the end-of-data code last.
+    /// </summary>
+    private static byte[] LzwEncode(byte[] data)
+    {
+        var table = new Dictionary<int, int>();
+        var encoded = new List<byte>(data.Length);
+        var buffer = 0;
+        var count = 0;
+        var next = 258;
+        var bits = 9;
+        var current = -1;
+
+        void Put(int code)
+        {
+            buffer = (buffer << bits) | code;
+            count += bits;
+
+            while (count >= 8)
+            {
+                encoded.Add((byte)(buffer >> (count - 8)));
+                count -= 8;
+                buffer &= (1 << count) - 1;
+            }
+        }
+
+        Put(256);
+
+        foreach (var value in data)
+        {
+            if (current < 0)
+            {
+                current = value;
+                continue;
+            }
+
+            var key = (current << 8) | value;
+
+            if (table.TryGetValue(key, out var code))
+            {
+                current = code;
+                continue;
+            }
+
+            Put(current);
+            table[key] = next++;
+
+            if (next + 1 > 1 << bits && bits < 12)
+            {
+                bits++;
+            }
+
+            if (next == 4095)
+            {
+                Put(256);
+                table.Clear();
+                next = 258;
+                bits = 9;
+            }
+
+            current = value;
+        }
+
+        if (current >= 0)
+        {
+            Put(current);
+        }
+
+        Put(257);
+
+        if (count > 0)
+        {
+            encoded.Add((byte)(buffer << (8 - count)));
+        }
+
+        return [.. encoded];
+    }
+
+    private static PdfStream LzwStream(byte[] data)
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.LZWDecode);
+        return new PdfStream(dictionary, PdfStreamData.FromMemory(data));
     }
 
     private static PdfStream FlateStream(ReadOnlyMemory<byte> data)

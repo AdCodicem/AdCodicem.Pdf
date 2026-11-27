@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace AdCodicem.Pdf.IO.Filters;
 
 /// <summary>Decodes the <c>LZWDecode</c> filter.</summary>
@@ -28,6 +30,10 @@ internal static class LzwFilter
     /// end-of-data code decodes to its end, as other readers decode it — qpdf among them —, and
     /// <paramref name="ending"/> says so, and whether it ends inside a code: on a whole byte past the last code, or on
     /// bits a padding to the byte would leave zero.
+    /// <para>
+    /// A decode allocates its output and nothing for each code it reads: the code table and the buffer an entry is spelled
+    /// into are rented from the shared pool, and returned when the decode ends.
+    /// </para>
     /// </remarks>
     /// <param name="data">The encoded data.</param>
     /// <param name="earlyChange">1 when the code width grows one code early, as by default; 0 otherwise.</param>
@@ -42,86 +48,126 @@ internal static class LzwFilter
         undefinedCode = -1;
         ending = DataEnding.Marked;
 
-        var table = new byte[MaxCodes][];
-        for (var i = 0; i < 256; i++)
+        // An entry past the 256 single bytes is kept as the code of the entry it extends and its last byte, which take three
+        // bytes where the entry whole takes as many as it denotes, up to 3,839, and an array for each code; it is spelled
+        // into the scratch buffer, from its last byte back, each time the data names it.
+        var prefixes = ArrayPool<ushort>.Shared.Rent(MaxCodes);
+        var lasts = ArrayPool<byte>.Shared.Rent(MaxCodes);
+        var scratch = ArrayPool<byte>.Shared.Rent(MaxCodes);
+
+        try
         {
-            table[i] = [(byte)i];
-        }
+            var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 3L), maxLength);
+            var next = FirstFreeCode;
+            var codeBits = 9;
+            var previous = -1;
+            byte previousFirst = 0;
+            var bitBuffer = 0;
+            var bitCount = 0;
 
-        var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 3L), maxLength);
-        var next = FirstFreeCode;
-        var codeBits = 9;
-        byte[]? previous = null;
-        var bitBuffer = 0;
-        var bitCount = 0;
-
-        foreach (var current in data)
-        {
-            bitBuffer = (bitBuffer << 8) | current;
-            bitCount += 8;
-
-            while (bitCount >= codeBits)
+            foreach (var current in data)
             {
-                var code = (bitBuffer >> (bitCount - codeBits)) & ((1 << codeBits) - 1);
-                bitCount -= codeBits;
-                bitBuffer &= (1 << bitCount) - 1;
+                bitBuffer = (bitBuffer << 8) | current;
+                bitCount += 8;
 
-                if (code == EndOfDataCode)
+                while (bitCount >= codeBits)
                 {
-                    return output.ToArray();
-                }
+                    var code = (bitBuffer >> (bitCount - codeBits)) & ((1 << codeBits) - 1);
+                    bitCount -= codeBits;
+                    bitBuffer &= (1 << bitCount) - 1;
 
-                if (code == ClearCode)
-                {
-                    next = FirstFreeCode;
-                    codeBits = 9;
-                    previous = null;
-                    continue;
-                }
+                    if (code == EndOfDataCode)
+                    {
+                        return output.ToArray();
+                    }
 
-                byte[] entry;
+                    if (code == ClearCode)
+                    {
+                        next = FirstFreeCode;
+                        codeBits = 9;
+                        previous = -1;
+                        continue;
+                    }
 
-                if (code < next && table[code] is { } known)
-                {
-                    entry = known;
-                }
-                else if (code == next && previous is not null)
-                {
-                    // The encoder used the code it was defining with this very sequence: the previous one,
-                    // followed by its own first byte.
-                    entry = [.. previous, previous[0]];
-                }
-                else
-                {
-                    // A code the table does not hold, and is not about to: past the next one to be defined, or
-                    // the next one with no sequence before it to define it from.
-                    undefinedCode = code;
-                    return output.ToArray();
-                }
+                    int start;
 
-                if (!output.TryWrite(entry))
-                {
-                    limited = true;
-                    return output.ToArray();
-                }
+                    if (code < next)
+                    {
+                        start = Spell(code, prefixes, lasts, scratch, MaxCodes);
+                    }
+                    else if (code == next && previous >= 0)
+                    {
+                        // The encoder used the code it was defining with this very sequence: the previous one,
+                        // followed by its own first byte.
+                        start = Spell(previous, prefixes, lasts, scratch, MaxCodes - 1);
+                        scratch[MaxCodes - 1] = previousFirst;
+                    }
+                    else
+                    {
+                        // A code the table does not hold, and is not about to: past the next one to be defined, or
+                        // the next one with no sequence before it to define it from.
+                        undefinedCode = code;
+                        return output.ToArray();
+                    }
 
-                if (previous is not null && next < MaxCodes)
-                {
-                    table[next++] = [.. previous, entry[0]];
-                }
+                    if (!output.TryWrite(scratch.AsSpan(start, MaxCodes - start)))
+                    {
+                        limited = true;
+                        return output.ToArray();
+                    }
 
-                previous = entry;
+                    var first = scratch[start];
 
-                if (codeBits < 12 && next + earlyChange >= 1 << codeBits)
-                {
-                    codeBits++;
+                    if (previous >= 0 && next < MaxCodes)
+                    {
+                        prefixes[next] = (ushort)previous;
+                        lasts[next] = first;
+                        next++;
+                    }
+
+                    previous = code;
+                    previousFirst = first;
+
+                    if (codeBits < 12 && next + earlyChange >= 1 << codeBits)
+                    {
+                        codeBits++;
+                    }
                 }
             }
+
+            // What is left is fewer bits than a code: an encoder pads the last code to the byte with zero bits, so a whole
+            // byte, or a bit that is set, is part of a code the data lost.
+            ending = bitCount >= 8 || bitBuffer != 0 ? DataEnding.UnmarkedInsideCode : DataEnding.Unmarked;
+            return output.ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratch);
+            ArrayPool<byte>.Shared.Return(lasts);
+            ArrayPool<ushort>.Shared.Return(prefixes);
+        }
+    }
+
+    /// <summary>
+    /// Writes the bytes <paramref name="code"/> denotes into <paramref name="scratch"/>, ending before
+    /// <paramref name="end"/>, and returns where they start.
+    /// </summary>
+    /// <remarks>
+    /// The walk ends: an entry is defined from the code before it, which the table held or was defining, so the code each
+    /// entry extends is less than its own, and the walk reaches a single byte within as many steps as entries were defined
+    /// since the last clear code — 3,838 at most, fewer than the scratch buffer holds.
+    /// </remarks>
+    private static int Spell(int code, ushort[] prefixes, byte[] lasts, byte[] scratch, int end)
+    {
+        var at = end;
+
+        while (code >= FirstFreeCode)
+        {
+            scratch[--at] = lasts[code];
+            code = prefixes[code];
         }
 
-        // What is left is fewer bits than a code: an encoder pads the last code to the byte with zero bits, so a whole byte,
-        // or a bit that is set, is part of a code the data lost.
-        ending = bitCount >= 8 || bitBuffer != 0 ? DataEnding.UnmarkedInsideCode : DataEnding.Unmarked;
-        return output.ToArray();
+        scratch[--at] = (byte)code;
+        return at;
     }
 }
