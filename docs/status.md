@@ -51,7 +51,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   brought forward as the maintainer chose on 2026-11-25, the rebuild's scan — [#387]'s time in the square of the lines,
   [#389] and [#438] —, in [#454]; the twenty-eighth, [#185], a reference under a generation its object does not carry,
   in [#457]; the twenty-ninth, [#173], a chain of references read through 32 and reported where it reaches no value, in
-  [#458]. Next, the other batches,
+  [#458]; the thirtieth, [#192] and [#374], LZW and strings decoded without needless arrays and the rebuild's scan
+  keeping its lexer inlined, in [#462]. Next, the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -64,7 +65,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
   to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]),
-  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]), its thirtieth ([#463]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
   eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -762,12 +763,13 @@ One pull request per batch, each design question put to the maintainer after mea
        and [#438] under M02 (journal of 2026-11-25).
    28. [#185] — done, in [#457] (journal of 2026-11-26), which filed [#455] and [#456] under M02.
    29. [#173] — done, in [#458] (journal of 2026-11-27), which filed [#459] under M02.
-   30. [#192], with [#374].
+   30. [#192], with [#374] — done, in [#462] (journal of 2026-11-27), which filed [#463] under M02.
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives. With [#381], which words
        the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
        two pull requests: the rules, [#107], [#111] and [#381]; the searches around a hybrid table's `/XRefStm`, [#321],
        [#330], [#332] and [#333].
-   32. What remains of [#158], with [#223], [#336], [#342] and [#426]: the tests' own debt.
+   32. What remains of [#158], with [#223], [#336], [#342] and [#426], and, which batch 30 filed, [#463]: the tests' own
+       debt, and the SDK a measurement is made with.
    33. [#362], [#361], [#363], [#365], [#366] and [#372]: the headers the rebuild's scan takes in stream data it cannot
        confirm, its memo's kinds and its read budget, the denial of service first — in two pull requests, as the
        maintainer chose on 2026-11-17: [#362] and [#361] in [#386] (journal of 2026-11-18), which filed [#387] to
@@ -1289,3 +1291,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
 [#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
 [#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
+[#462]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/462
+[#463]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/463
