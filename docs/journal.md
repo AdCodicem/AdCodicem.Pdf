@@ -157,6 +157,29 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 - **For callers.** No public API change. A damaged value with more than 64 placed headers inside it reads as ending at
   the first; a header that many rows part is none at its place.
 
+## 2026-11-25 — Dependabot's backlog taken in one pull request
+
+- **The question.** Sixteen Dependabot pull requests were open, the oldest from 2026-09-30, none of which had merged
+  (#439). The maintainer asked for the packages to be updated so that Dependabot starts again from a clean slate.
+- **What changed.** One pull request carries the updates: the GitHub Actions group (#334), the NuGet group (#408:
+  xunit.v3, Testcontainers, the coverage extension, FsCheck, JsonSchema.Net, PDFsharp, itext), the release tooling's
+  handlebars and undici (#242, #337), the website's transitive packages (#153, #233, #272, #285, #339, #340, #341,
+  #417, through `npm update`), and Pillow 13 for the corpus builder (#269). Each Dependabot pull request it covers
+  closes as its update lands on `main`.
+- **Left out.** #266, the preset `conventional-changelog-conventionalcommits` 10: with it, semantic-release's notes
+  generator throws, as the preset asks for `conventional-changelog-writer` 9 and the tooling ships 8 ([#446]). #246,
+  a pin of `System.Security.Cryptography.Pkcs` 8.0.2: `dotnet list package --vulnerable --include-transitive` finds
+  no vulnerable package without it. #444, the first grouped security pull request, left to show whether the bypass
+  merges it (#439).
+- **CodeQL.** #444, approved and green, still did not merge: CodeQL's default setup ran no analysis on it and
+  reported `neutral`, and the ruleset required code scanning results. The maintainer dropped that rule on 2026-11-26;
+  CodeQL still runs and alerts. #444 then showed `behind`: the ruleset asked a branch to be up to date with `main`,
+  and Dependabot rebases only a pull request in conflict. The maintainer dropped that requirement the same day, and
+  #444 was asked to rebase (`@dependabot rebase`).
+- **Checks.** Release build without warnings; the unit suite; the documentation site built and checked; actionlint
+  1.7.12. The release tooling classified commits and rendered notes before and after. Pillow 13 rebuilt the scanned
+  page of the corpus with the same JPEG bytes as 12.3, only ReportLab's dates differing.
+
 ## 2026-11-25 — Dependabot's security updates grouped, and its bypass of the approval ([#439], [#440])
 
 - **The question.** Dependabot pull requests queued for auto-merge never merged: the ruleset on `main` waits for a
@@ -1749,3 +1772,4 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#463]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/463
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
+[#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446
