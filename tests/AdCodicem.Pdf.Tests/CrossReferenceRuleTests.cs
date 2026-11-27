@@ -3518,7 +3518,8 @@ public class CrossReferenceRuleTests
     public void A_value_behind_as_many_references_as_a_reference_resolves_through_is_read_and_one_more_is_not(int links, bool malformed)
     {
         // /Index is object 5, which names object 10, which names the next, the last holding the array: 32 objects read in
-        // all with 31 links, 33 with 32. PdfReference.Resolve reads null past 32 (#173); the chain reads no further.
+        // all with 31 links, 33 with 32. PdfReference.Resolve reads null past 32 (#173); the chain reads no further, and
+        // reports the chain it cut.
         var placed = new Dictionary<int, string>();
 
         for (var number = 10; number < 10 + links; number++)
@@ -3532,6 +3533,7 @@ public class CrossReferenceRuleTests
         var report = new PdfValidator().Validate(document);
 
         document.WasRepaired.Should().Be(malformed);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut).Should().Be(malformed);
 
         if (malformed)
         {

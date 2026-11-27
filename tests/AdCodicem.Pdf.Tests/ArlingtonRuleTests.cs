@@ -1059,6 +1059,28 @@ public class ArlingtonRuleTests
         Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Contain("/S");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_value_whose_first_link_a_limit_cut_is_judged_as_cut_not_through_the_reference_the_cut_left(bool cut)
+    {
+        // The catalog's /Outlines names object 20, whose value, 21 0 R, MaxObjectLength cuts after the reference it left
+        // whole — or does not —, and object 21 is a string. Cut, object 20 is unknown, as any object a limit cut, and nothing
+        // is judged; whole, the chain leads to the string, which an outline tree is not (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Outlines 20 0 R >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(20, "21 0 R" + (cut ? "\n%" + new string('=', 1_100) : string.Empty))
+            .WithObject(21, "(outlines)")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1_024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.ObjectValueTypeWrong).Should().Be(!cut, string.Join("; ", report.Findings));
+    }
+
     [Fact]
     public void The_parameters_of_a_filter_named_through_a_chain_of_references_are_typed_by_that_filter()
     {
