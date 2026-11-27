@@ -8654,6 +8654,7 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("the first revision's stream")]
     [InlineData("a reference")]
+    [InlineData("a chain that loops")]
     [InlineData("another offset")]
     [InlineData("the table's /Prev, as a real")]
     public void A_first_revision_s_stream_near_a_hybrid_table_s_prev_is_taken_where_it_comes_nearest_whatever_prev_the_table_s_own_stream_gives(
@@ -8662,8 +8663,9 @@ public class CrossReferenceChainTests
         // The first revision's cross-reference stream, stream 8, gives no /Prev, as a first revision's does (ISO 32000-1, Table
         // 17); the update's table names its own stream, stream 9, through /XRefStm, and through /Prev a place 12 bytes into
         // stream 8's object. Read as possibly the table's own for giving no /Prev, stream 8 was passed over for stream 9,
-        // farther off, whose own /Prev — stream 8's offset, a reference to an object no section places, another offset, or
-        // the table's /Prev written as a real — read as naming another offset than the table's: the /XRefStm was reported as
+        // farther off, whose own /Prev — stream 8's offset, a reference to an object no section places, a chain of references
+        // that loops, which is weighed without being reported (#173), another offset, or the table's /Prev written as a
+        // real — read as naming another offset than the table's: the /XRefStm was reported as
         // naming what the /Prev read, the validator gave an Error, and the chain went on through stream 9's /Prev, to stream
         // 8, nowhere, or back to the place the table's names. Under updates appended to the file, the table's own stream lies
         // past every older revision's section: stream 8, before stream 9, is no stream of the table's revision, and is taken

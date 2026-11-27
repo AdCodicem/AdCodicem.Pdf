@@ -1808,6 +1808,7 @@ public class HostileInputTests
     [InlineData(1, 10, "loops back to object 10 0")]
     [InlineData(2, 10, "loops back to object 10 0")]
     [InlineData(5, 12, "loops back to object 12 0")]
+    [InlineData(32, 10, "loops back to object 10 0")]
     [InlineData(32, 0, "leads from reference to reference past the 32 a resolution follows")]
     [InlineData(31, 0, null)]
     public void A_chain_of_references_reaches_its_value_through_32_references_or_reads_as_null_reported_once(int links, int loopsBackTo, string? end)

@@ -1387,7 +1387,8 @@ internal static class HybridFiles
     /// 5 again, <c>(new five)</c>, and the cross-reference stream of its own revision, stream 9, at <c>Stream</c>,
     /// which indexes it and itself and gives through <c>/Prev</c> <paramref name="streamPrev"/>:
     /// <c>"the first revision's stream"</c>, the offset of stream 8; <c>"a reference"</c>, <c>99 0 R</c>, which no
-    /// section places; <c>"another offset"</c>, offset 9, where the catalog's object starts; or
+    /// section places; <c>"a chain that loops"</c>, <c>20 0 R</c>, object 20 naming itself, which the update's table
+    /// places; <c>"another offset"</c>, offset 9, where the catalog's object starts; or
     /// <c>"the table's /Prev, as a real"</c>, the offset the update's table names, written as a real with no fractional
     /// part. The update's table, at <c>Newest</c>, frees object 7, names stream 9 through <c>/XRefStm</c>, and through
     /// <c>/Prev</c> the place 12 bytes into stream 8's object: a search near it comes to stream 8, and to stream 9
@@ -1409,13 +1410,15 @@ internal static class HybridFiles
         {
             "the first revision's stream" => Invariant($"/Prev {first} "),
             "a reference" => "/Prev 99 0 R ",
+            "a chain that loops" => "/Prev 20 0 R ",
             "another offset" => "/Prev 9 ",
             _ => Invariant($"/Prev {named}.0 "),
         };
         var ownRows = StreamRows((1, five, 0), (1, stream, 0));
         file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [5 1 9 1] {prev}/Length {ownRows.Length} >>\nstream\n{ownRows}\nendstream"));
+        var twenty = streamPrev == "a chain that loops" ? Invariant($"20 1\n{Row(file.Object(20, "20 0 R"))}") : string.Empty;
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n7 1\n0000000000 00001 f \n9 1\n{Row(stream)}trailer\n<< /Size 10 /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n7 1\n0000000000 00001 f \n9 1\n{Row(stream)}{twenty}trailer\n<< /Size {(twenty.Length > 0 ? 21 : 10)} /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, first, stream, newest);
     }
 
