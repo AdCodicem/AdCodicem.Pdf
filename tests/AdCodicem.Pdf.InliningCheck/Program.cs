@@ -7,7 +7,8 @@ namespace AdCodicem.Pdf.InliningCheck;
 
 /// <summary>
 /// Opens, again and again, a file whose index is rebuilt, until the rebuild's scan for objects has its final optimized
-/// compile, and fails when one of its compiles other than the quick tiers left the lexer out of the scan's loop (#374).
+/// compile, and fails when one of its compiles other than the quick and instrumented tiers left the lexer out of the scan's
+/// loop (#374).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,8 +21,9 @@ namespace AdCodicem.Pdf.InliningCheck;
 /// The file is that benchmark's: 4 MB of lines of a string holding a <c>%</c> before a number and a comment, each followed
 /// by a line <c>0 obj</c>, so that the profile the compiler gathers sees the lexer called. The compiles are those of the
 /// default tiers — on-stack replacement while the first rebuilds run, then the instrumented and final tiers — and each one
-/// but the quick tiers must inline <c>PdfLexer.Read</c> into the scan, a compile with minimal optimization failing. The
-/// runtime reports its inlining decisions as events, which this process reads from itself.
+/// but the quick and instrumented tiers, which the runtime replaces, must inline <c>PdfLexer.Read</c> into the scan, a
+/// compile with minimal optimization failing. The runtime reports its inlining decisions as events, which this process
+/// reads from itself.
 /// </para>
 /// <para>
 /// What the runtime inlines depends on the code the C# compiler writes as much as on the runtime: the compilers of the

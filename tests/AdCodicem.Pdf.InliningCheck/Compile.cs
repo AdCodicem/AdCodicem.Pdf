@@ -19,8 +19,8 @@ internal sealed class Compile
     public string Tier { get; private set; } = "unknown";
 
     /// <summary>
-    /// Gets a value indicating whether the compile must inline the lexer: any tier but the quick ones, which the runtime
-    /// replaces once the method runs long; a tier it does not name included.
+    /// Gets a value indicating whether the compile must inline the lexer: any tier but the quick and the instrumented ones,
+    /// which the runtime replaces once the method runs long and its profile is gathered; a tier it does not name included.
     /// </summary>
     public bool Checked { get; private set; }
 
@@ -37,7 +37,7 @@ internal sealed class Compile
         : _tier == MinimalTier ? "minimally optimized, which inlines nothing"
         : _tier == UnknownTier ? "PdfLexer.Read not inlined, at a tier the runtime does not name"
         : Checked ? "PdfLexer.Read not considered: the call that reaches it was not inlined"
-        : "not optimized";
+        : "not checked: a tier the runtime replaces";
 
     /// <summary>Records a decision of the compile on the lexer.</summary>
     public void Decide(bool inlined, string reason)
@@ -68,7 +68,7 @@ internal sealed class Compile
             4 => ("final tier", true, true),
             5 => ("on-stack replacement", true, false),
             6 => ("quick and instrumented", false, false),
-            7 => ("optimized and instrumented", true, false),
+            7 => ("optimized and instrumented", false, false),
             _ => ("unknown", true, false),
         };
     }

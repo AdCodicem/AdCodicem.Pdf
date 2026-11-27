@@ -358,6 +358,30 @@ end)"u8.ToArray());
     }
 
     [Fact]
+    public void Decodes_an_escaped_string_of_256_bytes_on_the_stack_and_borrows_nothing_from_the_pool()
+    {
+        // Before each measure the shared pool's arrays of 256 bytes are taken until it allocates one more, so that a decode
+        // renting such an array would allocate it: one of 256 bytes allocates its result alone.
+        var raw = Encoding.ASCII.GetBytes(new string('a', 255) + "\r");
+        var taken = new List<byte[]>(100_000);
+
+        try
+        {
+            var allocated = Allocations.Least(() => TakePooledArrays(taken), _ => PdfStringDecoder.DecodeLiteral(raw), out _, out var decoded);
+
+            decoded.Length.Should().Be(256);
+            allocated.Should().Be(Allocations.Least(() => new byte[256], out _));
+        }
+        finally
+        {
+            foreach (var array in taken)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+    }
+
+    [Fact]
     public void Drops_a_backslash_that_ends_a_literal_string()
     {
         // An unterminated string can end in the middle of an escape.
@@ -387,5 +411,22 @@ end)"u8.ToArray());
 
             kinds.Add(token.Kind);
         }
+    }
+
+    /// <summary>Takes arrays of 256 bytes from the shared pool, into <paramref name="taken"/>, until it allocates one.</summary>
+    private static int TakePooledArrays(List<byte[]> taken)
+    {
+        for (var i = 0; i < 10_000; i++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            taken.Add(System.Buffers.ArrayPool<byte>.Shared.Rent(256));
+
+            if (GC.GetAllocatedBytesForCurrentThread() != before)
+            {
+                break;
+            }
+        }
+
+        return taken.Count;
     }
 }
