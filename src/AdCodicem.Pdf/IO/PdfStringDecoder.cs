@@ -5,7 +5,9 @@ namespace AdCodicem.Pdf.IO;
 /// <summary>Turns the raw bytes of a string token into the bytes the string actually denotes.</summary>
 internal static class PdfStringDecoder
 {
-    /// <summary>The most bytes a working buffer takes on the stack; a longer token's is rented.</summary>
+    /// <summary>
+    /// The most bytes a working buffer takes on the stack; a longer token's is rented, up to <see cref="PooledBytes"/>.
+    /// </summary>
     private const int StackBytes = 256;
 
     /// <summary>
@@ -51,8 +53,8 @@ internal static class PdfStringDecoder
     /// </summary>
     /// <remarks>
     /// The digits are decoded into a working buffer and the bytes copied out of it into the result, of the string's exact
-    /// length. The buffer is on the stack or rented, so that the result is the one array a call allocates, but for a string
-    /// past 64 KB, whose buffer is an array of its own.
+    /// length. The buffer holds half the token's bytes and one more, on the stack or rented, so that the result is the one
+    /// array a call allocates, but for a buffer past 64 KB, which is an array of its own.
     /// </remarks>
     /// <param name="raw">The bytes between the angle brackets.</param>
     /// <param name="firstStray">Where the first byte that is neither a hexadecimal digit nor white space lies, or -1.</param>

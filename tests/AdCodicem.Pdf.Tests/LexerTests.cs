@@ -333,15 +333,15 @@ end)"u8.ToArray());
     {
         // A string decodes into a working buffer — on the stack up to 256 bytes, rented up to 64 KB, an array of its own past
         // that — and its bytes are copied out once: the result is the one array the string allocates, but past 64 KB. The
-        // rows written several times sit on each side of those sizes, a hexadecimal string's buffer holding half its digits
-        // and one byte more.
+        // rows written several times sit on each side of those sizes, a hexadecimal string's buffer holding half its bytes
+        // and one more. Each measure follows a decode, so that a rented buffer the pool did not get back is measured anew.
         var raw = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(written, times)) + ending);
         var expected = Enumerable.Repeat(Convert.FromHexString(bytes), times).SelectMany(unit => unit).Concat(Convert.FromHexString(endingBytes)).ToArray();
         var hexadecimal = opening == "<";
         var buffer = hexadecimal ? (raw.Length / 2) + 1 : raw.Length;
         Func<byte[]> decode = hexadecimal ? () => PdfStringDecoder.DecodeHex(raw, out _, out _) : () => PdfStringDecoder.DecodeLiteral(raw);
 
-        var allocated = Allocations.Least(decode, out var decoded);
+        var allocated = Allocations.Least(decode, _ => decode(), out _, out var decoded);
 
         decoded.Should().Equal(expected);
         allocated.Should().Be(Allocations.Least(Arrays, out _));
