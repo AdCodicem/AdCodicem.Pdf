@@ -2540,7 +2540,7 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>
     /// The objects a chain loads one after the other from an object written in the file, or held by an object stream that
-    /// decodes alike, each a reference to the next and none a stream — 33 at most, as many as the longest chain loads —, and
+    /// decodes alike, each a reference to the next and none a stream — 32 at most, as many as the longest chain loads —, and
     /// the object it loads after them.
     /// </summary>
     /// <param name="numbers">The objects, in the order the chain loads them.</param>

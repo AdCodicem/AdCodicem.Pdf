@@ -390,7 +390,8 @@ internal sealed class ObjectGraph
     /// — of two generations, only reading it says which one names it —, and the references counted so far are told with it.
     /// Once the reader has read the object, each reference is told when it is met: one that names a generation the object
     /// does not carry is counted as one to an object the file lacks, and resolved, as resolving it asks for it; one that
-    /// names the generation it carries leads the walk to it where only references naming another did.
+    /// names the generation it carries leads the walk to it where only references naming another did, and is counted as one
+    /// to a chain that reaches no value where the object starts one (#173).
     /// </summary>
     private void ClaimAgain(PdfReference reference, int owner, Role role)
     {
@@ -485,8 +486,9 @@ internal sealed class ObjectGraph
     /// <summary>
     /// Tells, once waiting object <paramref name="number"/> is read before the walk reaches it and found to carry
     /// <paramref name="carried"/>, the references counted while it waited under the claim's generation,
-    /// <paramref name="claimedUnder"/>: references to an object the file lacks where that generation is not the object's, and
-    /// nothing otherwise. Their counts are let go; the claim itself is told when the walk reaches the object.
+    /// <paramref name="claimedUnder"/>: references to an object the file lacks where that generation is not the object's;
+    /// references to a chain that reaches no value where it is, and the object starts one (#173); nothing otherwise. Their
+    /// counts are let go; the claim itself is told when the walk reaches the object.
     /// </summary>
     private void TellWaiting(int number, int claimedUnder, int carried)
     {

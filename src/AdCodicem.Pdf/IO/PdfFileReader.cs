@@ -1833,9 +1833,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// references as the parse resolves a <c>/Length</c> through (<see cref="MaxReferenceLinks"/>), each read with
     /// <see cref="ReadWithoutLoading"/>; null when one of them cannot be read — no section read so far places it, or a guard
     /// cut it —: a value whose chain leads there waits for the chain, as one the first reference cannot read does. A value
-    /// still a reference past them is one the parse reads as null.
+    /// still a reference past them is one the parse reads as null, reported where <paramref name="report"/> says so.
     /// </summary>
-    private PdfObject? ReadThroughWithoutLoading(PdfObjectId id)
+    private PdfObject? ReadThroughWithoutLoading(PdfObjectId id, bool report = true)
     {
         var read = ReadWithoutLoading(id);
 
@@ -1846,7 +1846,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         // A chain still a reference past them is one the parse reads as null, reported as a resolution that cuts it reports
         // it (#173).
-        if (read is PdfReference)
+        if (report && read is PdfReference)
         {
             ((IPdfReferenceChainObserver)this).ChainCut(new PdfReference(id, this));
         }

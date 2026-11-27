@@ -35,7 +35,7 @@ internal sealed class ReferenceChainUnresolvedRule : IValidationRule
 
         foreach (var finding in findings)
         {
-            context.Report(this, finding.Location, finding.Message, "Write the value the chain leads to in the object the reference names.");
+            context.Report(this, finding.Location, finding.Message, "Give the object the reference names a value of its own, not another reference.");
         }
 
         // What the analysis counted past the room the report had when it was made, which it did not write (#168).

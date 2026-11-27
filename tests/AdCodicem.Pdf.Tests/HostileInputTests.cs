@@ -1815,7 +1815,7 @@ public class HostileInputTests
         // Object 6 names object 10 twice; objects 10 on each hold a reference to the next — `links` of them —, the last to
         // object 10 + links, which holds a string, or back to object `loopsBackTo`. A chain of 31 reads the string; a longer
         // one, or one that loops, reads as null, reported once whatever reads it, the message saying how the chain ends.
-        // Either read as null with no report (#173).
+        // Once, either read as null with no report (#173).
         var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -1904,8 +1904,8 @@ public class HostileInputTests
     {
         // Stream 4's /Length, or its /Filter, names object 100, which names the next, through object 131, the 32nd, which names
         // object 132: 3,000 spaces, then what the value would be. The chain reaches no value within the 32 references a
-        // resolution follows, and object 132 is never read: MaxObjectLength cutting it reports nothing and throws nothing,
-        // where the 32nd object's value was read and dropped, and the 33rd loaded, reported and thrown for (#173).
+        // resolution follows, and object 132 is never read: MaxObjectLength cutting it reports nothing and throws nothing.
+        // Once, the /Length's parse loaded object 132, its value dropped, and reported and threw for its cut (#173).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

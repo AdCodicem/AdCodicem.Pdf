@@ -122,6 +122,30 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData("/A 5 0 R /B 5 0 R /C 5 1 R", "/A", "/C")]
+    [InlineData("/A 5 1 R /B 5 0 R /C 5 0 R", "/B", "/A")]
+    public void References_to_a_chain_met_while_it_waits_are_counted_whatever_reference_had_it_read_first(string entries, string first, string missing)
+    {
+        // Object 5 names itself; the catalog names it under generation 0 twice and under generation 1, which has it read before
+        // the walk reaches it: references under 0 met while it waited, counted by holder, and those met once it was read,
+        // under a claim of generation 1, are each counted as references to a chain that reaches no value (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "5 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceChainUnresolved).Message.Should().Be(
+            $"Object 1 holds 2 references whose chains of references reach no value, which read as null; the first refers to object 5 0 under {first}, whose chain of references loops back to object 5 0.");
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().StartWith($"Object 1 refers to object 5 1 under {missing}");
+    }
+
+    [Theory]
     [InlineData("10 0 R", "11 0 R", "<< /Type /Pages /Kids [] /Count 0 >>", null)]
     [InlineData("10 0 R", "11 0 R", "(pages)", PdfValidationRuleIds.ObjectValueTypeWrong)]
     [InlineData("10 0 R", "10 0 R", "(unused)", PdfValidationRuleIds.ObjectReferenceChainUnresolved)]
@@ -2969,8 +2993,7 @@ public class ObjectRuleTests
     {
         // As above, 100 heading a chain of 32 references, the 33rd object being the parameters that run past MaxObjectLength:
         // no resolution reads past the 32nd object, whose value it examines (#173), and the guard is never reached. The chain
-        // reaches no value: the first step reads no parameters, the second 5, which the stream holds. The 33rd object was
-        // loaded, its value dropped, by a resolution that took the 32nd's.
+        // reaches no value: the first step reads no parameters, the second 5, which the stream holds.
         var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
         {
             Five = "<< /Predictor 1 >>",

@@ -1468,22 +1468,22 @@ internal sealed partial class PdfFileReader
             return NoStreamPrevious;
         }
 
-        // Read as the chain reads it: an object that is itself a reference is resolved, through GetObject, which reads
-        // without loading while the chain is read. A negative offset names a position before the file's start, as given
-        // (PositionOf).
-        var read = given is PdfReference reference ? ReadThrough(reference) : given;
+        // Read as the chain reads it, nothing reported: a chain cut is the stream's own reading's to report, where the chain
+        // takes the stream. A negative offset names a position before the file's start, as given (PositionOf).
+        var read = given is PdfReference reference ? ReadThrough(reference, report: false) : given;
         return read.AsInteger() is { } offset && IsInFile(PositionOf(offset)) ? offset : StreamPreviousNoOffset;
     }
 
     /// <summary>
-    /// Reads what <paramref name="reference"/>, a section's <c>/Prev</c> or <c>/XRefStm</c>, leads to while the chain is read:
-    /// the object it names, read without loading, and the chain of references from there resolved through as many as any
-    /// resolution follows, the one the entry gives counted (#173); null where the object it names cannot be read so.
+    /// Reads what <paramref name="reference"/>, a section's <c>/Prev</c> or <c>/XRefStm</c>, leads to while the chain is read,
+    /// through as many references as any resolution follows, the one the entry gives counted, each read without loading
+    /// (<see cref="ReadThroughWithoutLoading"/>): null where one of them cannot be read so, and null, the chain cut — and
+    /// reported where <paramref name="report"/> says so —, where it reaches no value (#173).
     /// </summary>
-    private PdfObject? ReadThrough(PdfReference reference)
+    private PdfObject? ReadThrough(PdfReference reference, bool report = true)
     {
-        var read = ReadWithoutLoading(reference.Id);
-        return read is PdfReference next ? next.ResolveThrough(PdfReference.MaxChainLength - 1, reference) : read;
+        var read = ReadThroughWithoutLoading(reference.Id, report);
+        return read is PdfReference ? PdfNull.Instance : read;
     }
 
     /// <summary>
