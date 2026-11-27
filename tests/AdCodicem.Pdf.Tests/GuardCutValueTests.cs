@@ -3392,7 +3392,7 @@ public class GuardCutValueTests
     public void A_length_whose_chain_ends_at_its_last_object_a_guard_cut_is_the_guard_s(int objects)
     {
         // Content stream 4's /Length names object 100, which names the next, the last, after 3,000 spaces, holding 4: the
-        // parse resolves a /Length through 32 objects, one more than a reference, and the last it reads, cut, is the guard's
+        // parse resolves a /Length through 32 objects, the one it names counted, and the last it reads, cut, is the guard's
         // — the 31st no longer taken for the target unread, nor the 32nd left past it (#224).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>

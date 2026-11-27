@@ -330,11 +330,12 @@ internal sealed class PageTreeWalk
             {
                 if (InvalidSlot(frame, out var page))
                 {
+                    _ = _reader.IsChainCut(reference.Id, out var loopsBackTo);
                     KeepInvalidSlot(
                         frame,
                         index,
                         page,
-                        Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null"));
+                        Invariant($"names object {reference.Id.Number}, whose chain of references {PdfFileReader.DescribeChainCut(loopsBackTo)}, which reads as null"));
                 }
 
                 return;

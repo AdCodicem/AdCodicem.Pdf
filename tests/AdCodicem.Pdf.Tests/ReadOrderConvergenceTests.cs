@@ -183,7 +183,7 @@ public class ReadOrderConvergenceTests
     {
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream && !stream.HasImageFilter())
+            if (document.GetObject(number) is PdfStream stream && !stream.HasImageFilter())
             {
                 stream.Decode(document.Diagnostics);
             }

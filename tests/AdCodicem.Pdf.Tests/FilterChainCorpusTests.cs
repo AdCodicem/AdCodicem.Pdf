@@ -71,7 +71,7 @@ public class FilterChainCorpusTests
 
         foreach (var number in document.ObjectNumbers.Order())
         {
-            if (document.GetObject(new PdfObjectId(number)) is not PdfStream stream || !Chains(stream.Dictionary))
+            if (document.GetObject(number) is not PdfStream stream || !Chains(stream.Dictionary))
             {
                 continue;
             }

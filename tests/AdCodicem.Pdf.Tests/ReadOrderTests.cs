@@ -2308,6 +2308,35 @@ public class ReadOrderTests
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
     }
 
+    [Theory]
+    [InlineData("/Ref 9 0 R", "Object 5 refers to an object whose chain of references reaches no value: the reference reads as null.")]
+    [InlineData("/Ref 9 0 R /Ref2 9 0 R", "Object 5 holds 2 references whose chains of references reach no value, which read as null.")]
+    public void The_object_graph_says_what_it_counted_of_references_to_a_chain_in_an_object_a_rebuild_redefined_since(string fault, string message)
+    {
+        // As above, object 5 referring to object 9, which names itself, and its later definition to page 3: the finding says
+        // what the walk counted, without where (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 5 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Object(5, "<< " + fault + " /Info 7 0 R >>"),
+            [9] = file.Object(9, "9 0 R"),
+        };
+        rows[6] = file.Padding(6);
+        rows[7] = rows[6] + 600;
+        file.Object(7, "<< /Title (info) >>");
+        file.Object(5, "<< /Ref 3 0 R >>");
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        document.WasRepaired.Should().BeTrue();
+        graph.CutChains.Should().ContainSingle().Which.Message.Should().Be(message);
+    }
+
     [Fact]
     public void The_object_graph_names_no_name_of_an_object_a_rebuild_redefined_since_as_a_sound_name()
     {

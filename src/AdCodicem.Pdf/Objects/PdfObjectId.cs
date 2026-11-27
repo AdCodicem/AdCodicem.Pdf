@@ -6,7 +6,11 @@ namespace AdCodicem.Pdf.Objects;
 /// Identifies an indirect object inside a PDF file by its object number and generation number.
 /// </summary>
 /// <param name="Number">The object number. Object numbers start at 1; zero identifies the head of the free list.</param>
-/// <param name="Generation">The generation number, almost always zero but never safe to ignore in a key.</param>
+/// <param name="Generation">
+/// The generation number, almost always zero but never safe to ignore in a key: a reference whose generation is not the one
+/// its object carries names an object the file does not define, and reads as null
+/// (<see cref="Diagnostics.PdfDiagnosticCodes.ObjectGenerationMismatch"/>).
+/// </param>
 public readonly record struct PdfObjectId(int Number, int Generation = 0)
 {
     /// <summary>The largest object number the reader accepts from a file.</summary>

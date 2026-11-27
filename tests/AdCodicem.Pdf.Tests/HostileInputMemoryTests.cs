@@ -255,6 +255,88 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
+    [Theory]
+    [InlineData("under its own generation")]
+    [InlineData("under every generation")]
+    public void References_met_to_an_object_waiting_to_be_read_cost_the_walk_what_they_cost_once_it_is_read(string shape)
+    {
+        // The catalog names object 5, then object 6, which names object 5 200,000 times, under its own generation or under
+        // each of 1 to 65,535 in turn: read last claimed first, object 6 is walked while object 5 waits. Each reference met to
+        // it then was kept until it was read, to tell its generation — one entry each, then one for each generation —, growing
+        // with the references; those under the claim's generation are counted by the object that holds them, one under another
+        // is told at once, the object read for it, and the walk allocates about what it allocates with the keys the other way
+        // round, object 5 read first (#185).
+        var references = new StringBuilder();
+
+        for (var k = 0; k < 200_000; k++)
+        {
+            references.Append("5 ").Append(shape == "under its own generation" ? 0 : 1 + (k % 65_535)).Append(" R ");
+        }
+
+        var waiting = Allocated("/A 5 0 R /B 6 0 R");
+        var read = Allocated("/B 6 0 R /A 5 0 R");
+
+        waiting.Should().BeLessThan(read + (512 * 1024), $"read first, the walk allocated {read:N0} bytes");
+
+        long Allocated(string entries)
+        {
+            var file = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(5, "(five)")
+                .WithObject(6, "[" + references + "]")
+                .BuildClassic(rootNumber: 1);
+            using var document = PdfDocument.Open(file);
+            document.Reader.SettleIndex();
+            var pages = Validation.PageTreeWalk.Run(document);
+            _ = document.GetObject(6);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            Validation.ObjectGraph.Run(document, pages).MissingReferences.Total.Should().Be(shape == "under its own generation" ? 0 : 1);
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+    }
+
+    [Fact]
+    public void References_from_many_holders_to_many_objects_waiting_to_be_read_cost_the_walk_what_they_cost_once_they_are_read()
+    {
+        // The catalog names 800 objects, then 800 holders, each naming every one of the 800: read last claimed first, the
+        // holders are walked while the 800 objects wait. A count was kept for each holder and object, as many as the
+        // references; past ObjectGraph.MaxWaitingCounts counts, an object is read at the next reference to it from a holder
+        // that has no count yet, and the walk allocates about what it allocates with the holders named first, the objects read
+        // first (#185).
+        const int Objects = 800;
+        var objects = string.Join(' ', Enumerable.Range(10, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var holders = string.Join(' ', Enumerable.Range(1_000, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+
+        var waiting = Allocated("/W [" + objects + "] /H [" + holders + "]");
+        var read = Allocated("/H [" + holders + "] /W [" + objects + "]");
+
+        waiting.Should().BeLessThan(read + (6 * 1024 * 1024), $"objects read first, the walk allocated {read:N0} bytes");
+
+        long Allocated(string entries)
+        {
+            var builder = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+            for (var k = 0; k < Objects; k++)
+            {
+                builder.WithObject(10 + k, "(object)").WithObject(1_000 + k, "[" + objects + "]");
+            }
+
+            using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+            document.Reader.SettleIndex();
+            var pages = Validation.PageTreeWalk.Run(document);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            Validation.ObjectGraph.Run(document, pages).MissingReferences.Total.Should().Be(0);
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+    }
+
     [Fact]
     public void Walking_a_deep_page_tree_whose_nodes_carry_large_values_holds_what_the_reader_keeps_whatever_its_depth()
     {

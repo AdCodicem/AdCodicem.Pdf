@@ -10,9 +10,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done: the
   engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object, page
-  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's forty-five batches of
-  reader and validation debts, thirty-two settled with the maintainer on 2026-10-01, five on 2026-11-17 and eight on
-  2026-11-25, the first
+  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's forty-six batches of
+  reader and validation debts, thirty-two settled with the maintainer on 2026-10-01, five on 2026-11-17, eight on
+  2026-11-25 and one on 2026-11-26, the first
   four of which, [#117], [#187],
   [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the fifth, [#157] and
   [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on 2026-10-03, the seventh,
@@ -47,9 +47,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   and what a read keeps by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the
   parser at its guards, [#262], [#279], [#282] and [#294], with [#415], in [#419] that day, the third, the chain at its
   guards, [#289], [#295], [#328], [#329], [#292] and [#324], in [#427] on 2026-11-25, the fourth, a hidden end's
-  proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], in [#436] that day. Next, batch 38, the
-  rebuild's scan with [#387]'s time in the square of the lines, brought forward as the maintainer chose on 2026-11-25;
-  then the other batches,
+  proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], in [#436] that day; the thirty-eighth,
+  brought forward as the maintainer chose on 2026-11-25, the rebuild's scan — [#387]'s time in the square of the lines,
+  [#389] and [#438] —, in [#454]; the twenty-eighth, [#185], a reference under a generation its object does not carry,
+  in [#457]; the twenty-ninth, [#173], a chain of references read through 32 and reported where it reaches no value, in
+  [#458]. Next, the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -62,7 +64,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
   to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]),
-  its third ([#428] to [#435]) and its fourth ([#437], [#438]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
   eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -72,7 +74,16 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
+- **Tests**: 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
+  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
+  the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 146 green on its code.
+  Before it, 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
+  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 802 reads;
+  the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145 green on its code.
+  Before it, 13,639 unit on [#454]'s branch at `cbaed88`, with 235 of the 242 remote documents fetched, 13,636 passed
+  and 3 skipped; the 69 timing and memory tests and the 623 of `HostileInputTests` and `WindowEdgeTests` alone; the
+  corpus differential against `main` identical over 802 reads; the integration suite green in CI; `Remote corpus` run
+  144 green on its code. Before it, 10,703 unit on [#436]'s branch at `91c3fde`, without the remote documents, 10,679 passed and 24 skipped;
   the 69 timing and memory tests, the 359 of `HostileInputTests` and the 252 of `FilterTests` alone; `Remote corpus`
   run 142 green on its code. Before it, 10,627 unit on [#427]'s branch at `8e75b8e`, without the remote documents,
   10,603 passed and 24 skipped; the 69 timing and memory tests and the 359 of `HostileInputTests` alone; `Remote
@@ -115,7 +126,16 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#436]'s branch at `91c3fde`, as Codecov counts it, 97.95 % of the patch, 143 of its 146 coverable
+- **Coverage**: on [#458]'s branch at `5bbccdf`, as Codecov counts it, 98.97 % of the patch, 193 of its 195 coverable
+  lines whole; the other two, partial, are the `?.` on `_chains` in `ObjectGraph.AddCuts` and `CountCut`, which run only
+  once the walk has read a link of a chain, the table then held. Before it, on [#457]'s branch at `ef9121e`, as Codecov
+  counts it, 99.43 % of the patch, 175 of its 176 coverable lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
+  catalog search reads a candidate, which notes the generation it carries, before it takes it. Before it, on [#454]'s
+  branch at `4e6aa4f`, as Codecov counts it, 98.10 % of the patch, 103 of its 105 coverable
+  lines whole; the other two, partial, are in `NoteNoHeader` (`PdfFileReader.Loading.cs`): the `??=` that creates the
+  memo of cut headers, which the load's `NoteHeaderCut` always created before, and the `Math.Min` that keeps the
+  smallest window found to hold no header, which only a second such reading at the place in a smaller window takes,
+  under another bound — [#453]'s input. Before it, on [#436]'s branch at `91c3fde`, as Codecov counts it, 97.95 % of the patch, 143 of its 146 coverable
   lines whole; the other three, in `PdfFileReader.Scan.cs`, are arms no input takes: the `objAt < 0` arm of
   `TellNoValueFromPiece`, whose callers that pass it give an empty piece and return first, and `TellNoValue`'s check of
   a header's tokens with its `return false`, which every header the scan took passes, only a source whose bytes change
@@ -654,9 +674,10 @@ One pull request per batch, each design question put to the maintainer after mea
 3. [#56], with [#134] — done, merged with [#147] on 2026-09-30 (*Earlier, in brief*): what a damaged Flate stream
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
-4. The reader and validation debts, in forty-five batches: thirty-two settled with the maintainer on 2026-10-01
-   (journal of 2026-10-01), five added on 2026-11-17 for the debts batches 21 and 22 filed (journal of 2026-11-17), and
-   eight on 2026-11-25 for the thirty-three that batches 26, 27 and 33 filed and no batch held (journal of 2026-11-25).
+4. The reader and validation debts, in forty-six batches: thirty-two settled with the maintainer on 2026-10-01
+   (journal of 2026-10-01), five added on 2026-11-17 for the debts batches 21 and 22 filed (journal of 2026-11-17),
+   eight on 2026-11-25 for the thirty-three that batches 26, 27 and 33 filed and no batch held (journal of 2026-11-25),
+   and one on 2026-11-26 for two that batch 38 filed and no batch held (journal of 2026-11-26).
    The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
    twenty-five the threat model filed under M02 and the nine of M01's review join them where they share code or where
    their dependencies let them, the denial-of-service debts brought forward. A batch is one pull request; its design
@@ -744,8 +765,8 @@ One pull request per batch, each design question put to the maintainer after mea
        (journal of 2026-11-25); then a hidden end's proofs and the definition a rebuild keeps, [#287], [#293], [#290]
        and [#351], in [#436], merged on 2026-11-25, `Remote corpus` run 142 green on its branch, which filed [#437]
        and [#438] under M02 (journal of 2026-11-25).
-   28. [#185].
-   29. [#173].
+   28. [#185] — done, in [#457] (journal of 2026-11-26), which filed [#455] and [#456] under M02.
+   29. [#173] — done, in [#458] (journal of 2026-11-27), which filed [#459] under M02.
    30. [#192], with [#374].
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives. With [#381], which words
        the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
@@ -767,23 +788,30 @@ One pull request per batch, each design question put to the maintainer after mea
    38. [#387], [#389] and [#438]: the rebuild's scan — values a window cuts, among headers in comment lines or strings,
        regrowing every load's window, in time the square of the lines; a header a stream's data hides once the
        confirming reads are spent; the verdict on a definition that holds no value. Brought forward as the maintainer
-       chose on 2026-11-25: it opens before batch 28.
+       chose on 2026-11-25, before batch 28 — done, in [#454] (journal of 2026-11-26), which filed [#449] to [#453]
+       under M02.
    39. [#391], [#393] and [#405]: the indirect lengths a rebuild reads — one its scan does not find, one an object
        stream holds, as Ghostscript writes them — and the members an expansion takes in through a definition a later
        stream replaces.
-   40. [#411], [#424], [#425] and [#416]: an object stream's `/N`, `/First` and `/Type`, and a stream's `/Length`,
-       `/Filter` and `/DecodeParms`, that a cut object holds whole or a nesting cut hides, and a member read through a
-       stack cut.
-   41. [#412], [#413], [#410] and [#414]: the nesting guards under `ThrowOnLimit`, the validator's walk and probe of
-       object streams, and the mutants of the nesting defenses [#409] left.
-   42. [#420], [#421], [#422] and [#423]: the parser at a guard's edge — a string or a delimiter left undecided, a whole
-       token's syntax report, a signed generation — and a trailer `/Root` the guard parts.
-   43. [#428], [#429], [#430], [#431] and [#435]: the chain and the loads at guards — white space before a header, a
-       trailer cut not taken for a section, the chain's own stop, a deferred `/Length` after a rebuild, the first
-       section's report.
+   40. [#411], [#424], [#425], [#416] and [#456]: an object stream's `/N`, `/First` and `/Type`, and a stream's
+       `/Length`, `/Filter` and `/DecodeParms`, that a cut object holds whole or a nesting cut hides, a member read through
+       a stack cut, and, which batch 28 filed, a member under another generation taken for one a guard cut.
+   41. [#412], [#413], [#410], [#414], [#455] and [#459]: the nesting guards under `ThrowOnLimit`, the validator's walk
+       and probe of object streams, the mutants of the nesting defenses [#409] left, and, which batch 28 filed, the
+       validator's walks that key references by number, and, which batch 29 filed, the mutants of the chain-of-references
+       defenses no test tells apart yet.
+   42. [#420], [#421], [#422], [#423], [#450] and [#451]: the parser at a guard's edge — a string or a delimiter left
+       undecided, a whole token's syntax report, a signed generation —, a trailer `/Root` the guard parts, and, which
+       batch 38 filed, the headers settling reads and a guard reported at a place several rows share.
+   43. [#428], [#429], [#430], [#431], [#435] and [#449]: the chain and the loads at guards — white space before a
+       header, a trailer cut not taken for a section, the chain's own stop, a deferred `/Length` after a rebuild, the
+       first section's report — and, which batch 38 filed, the chain's stale rows a load counts after a rebuild.
    44. [#433], [#434] and [#437]: classic tables read on past a fault, and the tally of the rows the chain does not take.
    45. [#401], [#402] and [#403]: filter reports — two that depend on how much was decoded, the retake of a deferred
        cross-reference stream's data, an object stream whose filters decode nothing.
+   46. [#452] and [#453]: the edges of [#387]'s bound — a header whose `obj` touches the window's edge, and the mutants
+       of the memo of cut headers no test of batch 38 kills —, opened on 2026-11-26 for the two batch 38 filed and no
+       batch held.
 
    Slice 4's blockers, [#141] and [#144], are paid in [#254]; nothing else filed blocks it. The four defects the
    planning found outside every issue, [#199] to [#202], and the four batch 2 found, [#207] to [#210], are filed under
@@ -887,7 +915,14 @@ One pull request per batch, each design question put to the maintainer after mea
    placed those twenty-one on 2026-11-25, with the six batch 33 filed, [#387] to [#389] and [#391] to [#393], and the
    six batch 27's first pull request filed, [#410] to [#414] and [#416], by the code they share: [#426] in batch 32,
    with the tests' own debt; [#392] in batch 34, with the search near a row; [#388] and [#432] in batch 35, with where
-   the scan's pieces start; the twenty-nine others in batches 38 to 45 above.
+   the scan's pieces start; the twenty-nine others in batches 38 to 45 above. Batch 38 filed five under M02, placed
+   by the code they share as it filed them: [#449], the chain's stale rows that count toward [#387]'s bound after a
+   rebuild, in batch 43; [#450], the headers settling reads, which neither the rows' refusal nor the memo of cut headers
+   reaches, and [#451], a guard at a place several rows share reported once, naming the object read there first, in
+   batch 42; [#452], a header whose `obj` touches the window's edge, and [#453], four mutants of the memo, in batch 46.
+   Batch 28 filed two under M02, placed likewise: [#455], the validator's walks of the page tree, the object streams and
+   the Arlington model, which key references by number, in batch 41; [#456], a member named under another generation
+   taken for one a guard cut while its object stream is unread, in batch 40.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1248,4 +1283,15 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#438]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/438
 [#439]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/439
 [#440]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/440
+[#449]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/449
+[#450]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/450
+[#451]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/451
+[#452]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/452
+[#453]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/453
+[#455]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/455
+[#456]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/456
+[#454]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/454
+[#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
+[#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
+[#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
 [#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446

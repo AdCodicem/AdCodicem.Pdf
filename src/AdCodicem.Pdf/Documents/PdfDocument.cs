@@ -345,6 +345,13 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Returns the object with the given identifier, reading it if it is not already in memory.</summary>
+    /// <remarks>
+    /// The identifier is read as a reference reads it: an object is named by its number and its generation together, and one
+    /// whose generation is not the one the object carries — its header's, or 0 for an object an object stream holds — names an
+    /// object the file does not define, and reads as null, which
+    /// <see cref="PdfDiagnosticCodes.ObjectGenerationMismatch"/> reports. To read the object a number holds, whatever its
+    /// generation, as <see cref="ObjectNumbers"/> lists them, use <see cref="GetObject(int)"/>.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     /// <exception cref="PdfLimitExceededException">
     /// Reading it reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
@@ -353,6 +360,27 @@ public sealed class PdfDocument : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return _reader.GetObject(id);
+    }
+
+    /// <summary>
+    /// Returns the object the index holds under <paramref name="number"/>, whatever generation it carries, reading it if it is
+    /// not already in memory: the object <see cref="ObjectNumbers"/> lists, read by its number alone rather than as a
+    /// reference names it.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is compared and nothing reported of a generation: a number the index holds no object under reads as null, as a
+    /// reference to an object the file does not define does. A reference is read through <see cref="GetObject(PdfObjectId)"/>,
+    /// which compares its generation with the object's.
+    /// </remarks>
+    /// <param name="number">The object number.</param>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    /// <exception cref="PdfLimitExceededException">
+    /// Reading it reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
+    public PdfObject GetObject(int number)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _reader.GetIndexedObject(number);
     }
 
     /// <summary>

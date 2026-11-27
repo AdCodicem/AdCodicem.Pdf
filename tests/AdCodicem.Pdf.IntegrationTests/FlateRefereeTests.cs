@@ -229,7 +229,7 @@ public partial class FlateRefereeTests(RefereeContainer referee)
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream && !stream.HasImageFilter())
+            if (document.GetObject(number) is PdfStream stream && !stream.HasImageFilter())
             {
                 stream.Decode(document.Diagnostics);
             }
@@ -265,7 +265,7 @@ public partial class FlateRefereeTests(RefereeContainer referee)
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is not PdfStream stream || stream.HasImageFilter())
+            if (document.GetObject(number) is not PdfStream stream || stream.HasImageFilter())
             {
                 continue;
             }
