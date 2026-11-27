@@ -408,19 +408,24 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Codecov**: uploaded without a token; the Codecov GitHub App is installed since 2026-09-27, and reports on each
   pull request as `codecov[bot]` (#40, formerly T14).
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
-  approval and every review thread resolved, linear history, CodeQL and coverage of at least 61 %; it
+  approval and every review thread resolved, linear history and coverage of at least 61 %; it
   requires the checks `Build and unit tests`, `Integration tests`, `Conventional commits` and `workflows` by name
-  (confirmed by the maintainer on 2026-11-25), and only administrators and Dependabot bypass it, for pull requests
-  only. CodeQL runs as GitHub's default setup
-  since 2026-09-22; the repository's own workflow and configuration, disabled since then, were deleted on
+  (confirmed by the maintainer on 2026-11-25), without asking the branch to be up to date with `main` since
+  2026-11-26 — Dependabot rebases only a pull request in conflict, so one merely behind waited for ever —, and only
+  administrators and Dependabot bypass it, for pull requests only. CodeQL runs as GitHub's default setup
+  since 2026-09-22, and no longer blocks a merge since 2026-11-26: it ran no analysis on Dependabot's pull requests
+  and reported `neutral`, which held #444 even approved and green, so the maintainer dropped its rule; the repository's own workflow and configuration, disabled since then, were deleted on
   2026-09-26 at the maintainer's choice (T35).
 - **Dependabot auto-merge** runs on `pull_request` since 2026-11-25, as GitHub blocks `pull_request_target` by
   default from 2026-12-02; its job raises the read-only token Dependabot's runs get. It queues patches and minors, but
   none had merged for weeks: the ruleset waits for a code-owner approval ([#439]). Dependabot is on the ruleset's
-  bypass list since 2026-11-25, the maintainer's choice over dropping the approval for everyone, CodeQL staying
-  required (`docs/releasing.md`); whether the merge auto-merge performs counts as Dependabot's, and whether the bypass
+  bypass list since 2026-11-25, the maintainer's choice over dropping the approval for everyone
+  (`docs/releasing.md`); whether the merge auto-merge performs counts as Dependabot's, and whether the bypass
   waives the required checks, is not yet observed. Each
   Dependabot entry batches its minor and patch security updates into one pull request since then ([#440]).
+  The backlog Dependabot had opened was taken in one pull request on 2026-11-25: every update but two, the preset
+  `conventional-changelog-conventionalcommits` 10, which breaks the release notes ([#446]), and the first grouped
+  security pull request, #444, left to show whether the bypass merges it.
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
@@ -1289,3 +1294,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
 [#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
 [#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
+[#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446
