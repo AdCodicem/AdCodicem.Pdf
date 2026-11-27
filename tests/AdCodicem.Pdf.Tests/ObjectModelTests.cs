@@ -400,6 +400,19 @@ public class ObjectModelTests
         new PdfReference(new PdfObjectId(7, 2)).Target().Should().Be(new PdfObjectId(7, 2));
         new PdfReference(new PdfObjectId(1), source).Target().Should().Be(new PdfObjectId(2, 4));
         new PdfReference(new PdfObjectId(1), source).Resolve().Should().BeSameAs(PdfNull.Instance);
+        new PdfReference(new PdfObjectId(7, 2)).ReachesNoValue().Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_chain_of_references_that_loops_through_a_source_a_caller_supplied_reads_as_null_and_tells_no_one()
+    {
+        // A source a caller supplies is not told of a chain a resolution cut: only a document's reports it (#173).
+        var source = Substitute.For<IPdfObjectSource>();
+        source.GetObject(new PdfObjectId(1)).Returns(new PdfReference(new PdfObjectId(2), source));
+        source.GetObject(new PdfObjectId(2)).Returns(new PdfReference(new PdfObjectId(1), source));
+
+        new PdfReference(new PdfObjectId(1), source).Resolve().Should().BeSameAs(PdfNull.Instance);
+        new PdfReference(new PdfObjectId(1), source).ReachesNoValue().Should().BeTrue();
     }
 
     [Fact]
