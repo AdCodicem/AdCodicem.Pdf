@@ -42,7 +42,7 @@ When you use the same data more than once, keep what one call gave you rather th
 ```csharp
 using AdCodicem.Pdf.Objects;
 
-if (document.GetObject(new PdfObjectId(12)) is PdfStream stream)
+if (document.GetObject(12) is PdfStream stream)
 {
     var data = stream.Decode();   // read and decoded once
 

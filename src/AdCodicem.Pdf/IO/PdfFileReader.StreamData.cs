@@ -987,11 +987,12 @@ internal sealed partial class PdfFileReader
         var value = GetObject(id);
 
         // A null a guard against re-entry gave says nothing of the object: it could not be read from here.
-        presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(id.Number);
+        presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetReferencePresence(id);
 
         // What the object holds, or the one a chain of references from it leads to, is the guard's when a guard cut it or
-        // left it out of the index: a value the cut left, null or an integer it left whole, is none the file gave (#224).
-        if (presence != ObjectPresence.Unindexed)
+        // left it out of the index: a value the cut left, null or an integer it left whole, is none the file gave (#224). A
+        // reference that names a generation its object does not carry leads to no object, whatever a guard did (#185).
+        if (presence is not ObjectPresence.Unindexed and not ObjectPresence.Missing)
         {
             // The object is not loaded again unless its value leads further: the chain is resolved first, as the parse
             // resolves it, so that the object it leads to is read when it is asked whether a guard cut it.
@@ -1000,9 +1001,10 @@ internal sealed partial class PdfFileReader
                 next.Resolve();
             }
 
-            var target = value is PdfReference ? reference.Target(PdfReference.MaxChainLength).Number : id.Number;
-            presence = IsCutAtLimit(target) ? ObjectPresence.Cut
-                : target != id.Number && GetPresence(target) == ObjectPresence.Unindexed ? ObjectPresence.Unindexed
+            var target = value is PdfReference ? reference.Target(PdfReference.MaxChainLength) : id;
+            presence = NamesAnotherGeneration(target) ? ObjectPresence.Missing
+                : IsCutAtLimit(target.Number) ? ObjectPresence.Cut
+                : target.Number != id.Number && GetPresence(target.Number) == ObjectPresence.Unindexed ? ObjectPresence.Unindexed
                 : presence;
         }
 

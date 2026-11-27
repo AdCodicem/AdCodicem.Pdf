@@ -255,7 +255,7 @@ public class FuzzingTests
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream && !stream.HasImageFilter())
+            if (document.GetObject(number) is PdfStream stream && !stream.HasImageFilter())
             {
                 decoded += stream.Decode(document.Diagnostics).Length;
             }

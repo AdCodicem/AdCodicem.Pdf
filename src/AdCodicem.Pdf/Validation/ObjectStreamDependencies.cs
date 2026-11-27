@@ -546,7 +546,7 @@ internal sealed class ObjectStreamDependencies
     /// </remarks>
     private static PdfObject Read(PdfDocument document, PdfObjectId id, XRefEntry entry) =>
         (document.Reader.ChainIndex is null ? null : document.Reader.ReadWhereChainPlaces(id.Number, entry)) ??
-        document.GetObject(id);
+        document.Reader.GetIndexedObject(id.Number);
 
     /// <summary>
     /// Determines whether the index the reader reads with now places object <paramref name="number"/> as the chain's does:
@@ -1017,10 +1017,12 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
-        /// Follows <paramref name="written"/> as <see cref="PdfReference.Resolve"/> does — through
-        /// <paramref name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last dropped
-        /// (#173) —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the reader
-        /// reads.
+        /// Follows <paramref name="written"/> as <see cref="PdfReference.Resolve"/> does — through <paramref
+        /// name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last dropped
+        /// (#173) —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the
+        /// reader reads. It follows the numbers its references give, though: a reference under a generation its object
+        /// does not carry, which the reader reads as null (#185), is followed to the object of its number, whose value
+        /// it gives, a hand-made shape left to #455.
         /// </summary>
         /// <param name="written">The value as the file wrote it.</param>
         /// <param name="key">The key of the stream's dictionary the value is read for, as a finding quotes it.</param>
@@ -2452,7 +2454,7 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         private PdfObject Fetch(int number, XRefEntry entry) =>
             entry.Kind == XRefEntryKind.Compressed
-                ? document.GetObject(new PdfObjectId(number))
+                ? document.Reader.GetIndexedObject(number)
                 : Read(document, new PdfObjectId(number, entry.Generation), entry);
 
         /// <summary>Keeps what object <paramref name="number"/>, which is not kept yet, gives the walks.</summary>

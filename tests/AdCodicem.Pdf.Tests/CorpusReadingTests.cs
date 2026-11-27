@@ -282,7 +282,7 @@ public class CorpusReadingTests
 
         foreach (var number in Enumerable.Range(1, 15))
         {
-            document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString(), $"object {number}");
+            document.GetObject(number).ToString().Should().Be(sound.GetObject(number).ToString(), $"object {number}");
         }
 
         new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong);
@@ -307,7 +307,7 @@ public class CorpusReadingTests
 
         foreach (var number in (int[])[55, 57, 63, 64])
         {
-            document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString(), $"object {number}");
+            document.GetObject(number).ToString().Should().Be(sound.GetObject(number).ToString(), $"object {number}");
         }
     }
 
@@ -324,7 +324,7 @@ public class CorpusReadingTests
         using var document = PdfDocument.Open(Damaged(Corpus.Read(file), "startxref named off by seven bytes"));
 
         document.WasRepaired.Should().BeTrue();
-        document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString());
+        document.GetObject(number).ToString().Should().Be(sound.GetObject(number).ToString());
     }
 
     [Theory]
@@ -553,7 +553,7 @@ public class CorpusReadingTests
         using var document = PdfDocument.Open(Corpus.Read(file));
         var diagnostics = new PdfDiagnostics();
 
-        var decoded = document.GetObject(new PdfObjectId(number)).AsStream().Required().Decode(diagnostics);
+        var decoded = document.GetObject(number).AsStream().Required().Decode(diagnostics);
 
         decoded.Length.Should().Be(kept);
         var report = diagnostics.Should().ContainSingle().Which;
@@ -765,7 +765,7 @@ public class CorpusReadingTests
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream && !stream.HasImageFilter())
+            if (document.GetObject(number) is PdfStream stream && !stream.HasImageFilter())
             {
                 decoded += stream.Decode(document.Diagnostics).Length;
             }
@@ -785,7 +785,7 @@ public class CorpusReadingTests
 
         foreach (var (number, _) in walk.PageIndexes)
         {
-            if (document.GetObject(new PdfObjectId(number)).AsDictionary() is { } page)
+            if (document.GetObject(number).AsDictionary() is { } page)
             {
                 ResolvePageEntries(page);
             }

@@ -7,6 +7,45 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-26 — Batch 28: a reference under a generation its object does not carry ([#457])
+
+- **The question.** Measured on `main` at `1792237`: lookups compared the object number only, so `5 1 R` and `5 7 R`
+  read `5 0 obj`, `7 0 R` read `7 2 obj` and `8 3 R` an object stream's member, with no diagnostic and no finding
+  ([#185]). Over the corpus — 381 documents opened, 844,676 references walked — no reference names a generation other
+  than its object's header, nor a member under a non-zero one.
+- **Settled with the maintainer** on 2026-11-26, each as recommended: such a reference reads as null (ISO 32000-1,
+  7.3.10); the reader reports it under a new `object.generation-mismatch` (Warning), once per distinct reference; the
+  validator counts it under `object.reference-missing`, its message naming the generation the object carries; a new
+  `PdfDocument.GetObject(int)` reads an object by its number, the pair of `ObjectNumbers` (a breaking change of
+  `GetObject(PdfObjectId)`, `fix!:`); and the walk's threshold `ObjectGraph.MaxWaitingCounts` is an internal constant
+  under a third kind ADR 34 now recognizes — a threshold that changes only when the library reads an object.
+- **What changed.** The reader notes the generation each object it reads carries and compares every reference with
+  it, what it keeps by number included; its own and the validator's reads of what an entry places go by number. A
+  catalog found by its type is named under its generation; a `/Length`, a deferred one and an `/Encrypt` under another
+  generation name what the file lacks, whatever a guard did. The validator's walk tells each reference at its holder,
+  walks an object only through one naming its generation, and keeps of references to objects it has yet to read
+  counts by holder, bounded, reading an object early past the bound.
+- **Review** (ADR 54): four rounds. Four blockers, all E1 on the reader's or the walk's memory, each confirmed by a
+  refuter and fixed: the set of reported references (round 1), then references to an object the walk has yet to read,
+  kept per reference (round 1), per generation (round 2) and per holder and object (round 3, on a valid file). No
+  major. Three minors: two fixed (a guard's cut taking precedence over another generation, in `/Length` and
+  `/Encrypt`), one filed ([#456]); about thirty nits, the validator's other walks by number filed ([#455]). The
+  real-damage lens compared `main` and the branch over about 8,300 variants: no difference but the decided one.
+- **Mutation** (ADR 53 amended): 33 mutants over the reported set's bound, the reader's checks of a `/Length`, a
+  deferred length, an `/Encrypt` and a free entry, the reports mark, and the walk's counts, claims and early reads. 31
+  killed, by the suite and by tests the step added; 2 equivalent, confirmed by a second agent: the mark's union in
+  `BringForward`, which no read reaches between the mark and it, and `ResolveLength`'s skip of a missing presence,
+  whose value reads as null either way.
+- **The issues.** Closes [#185]. Filed under M02: [#455] (batch 41), [#456] (batch 40).
+- **Checks.** The batch check at `ab02627`: 13,674 unit tests, with 235 of the 242 remote documents, 13,671 passed
+  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 802
+  reads; the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145 green; the
+  site. Patch coverage 99.43 %, 175 of 176 lines whole: the partial one is `TakeCatalog`'s generation of 0, which no
+  input takes, a catalog the search took having been read, and its generation noted, first. Benchmarks against
+  `main`, alternating: time within noise; allocation up 8 % reading every page of 1,000, 11.5 % validating them.
+- **For callers.** `GetObject(PdfObjectId)` reads as null an identifier whose generation is not the object's, reported;
+  `GetObject(int)` reads by number. No committed or fetched document reads otherwise.
+
 ## 2026-11-26 — Batch 38: the rebuild's scan — values a window cuts among placed headers, and a header's verdict ([#454])
 
 - **The question.** Measured on `main` at `1d4f0a5`. A value a window cuts, with headers the indexes place inside it
@@ -1627,5 +1666,8 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#452]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/452
 [#453]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/453
 [#454]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/454
+[#455]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/455
+[#456]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/456
+[#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424

@@ -647,9 +647,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// The objects read, by object number. The generation is left out of the key on purpose: the index holds one
     /// entry per number, so every generation of a number loads the same object, and keying by both would parse and
-    /// keep it once per generation a file cares to reference.
+    /// keep it once per generation a file cares to reference. Which generation a reference may name it under is
+    /// <see cref="_carriedGenerations"/>'s, which <see cref="GetObject"/> asks before it serves what is kept.
     /// </summary>
     private readonly Dictionary<int, (PdfObject Value, ReadDepth Depth)> _cache = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The generation each object read carries, by object number: its header's, or 0 for an object an object stream holds
+    /// (ISO 32000-1, 7.5.7). Noted each time the object is read, whatever generation asked for it, and let go of with what
+    /// was read for an index a rebuild or an expansion changes. It holds an entry for each object read, unlike the cache,
+    /// which lets objects go: about 20 bytes each, within what the index holds of it, which
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> bounds.
+    /// </summary>
+    private readonly Dictionary<int, int> _carriedGenerations = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The references reported as naming an object under a generation it does not carry, each reported once while the record
+    /// of diagnostics has room (<see cref="PdfDiagnosticCodes.ObjectGenerationMismatch"/>): no more of them than it holds.
+    /// </summary>
+    private readonly HashSet<PdfObjectId> _otherGenerationsReported = [];
     private readonly Queue<int> _cacheOrder = new();
     /// <summary>
     /// The object streams decoded, null for one that cannot be read, each with how deep its decoding went, by number and, for
@@ -1385,8 +1401,85 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreams.TryGet(DepthKey(number, -1), out var kept) && kept.Contents is not null ? kept.Contents.Data : default;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A reference names an object by its number and its generation together (ISO 32000-1, 7.3.10): one whose generation is
+    /// not the one the object carries — its header's, or 0 for an object an object stream holds — names an object the file
+    /// does not define, and reads as null, which <see cref="PdfDiagnosticCodes.ObjectGenerationMismatch"/> reports. The object
+    /// is read and kept by its number all the same: what it carries is known once it is read, whatever generation asked
+    /// first, and named under many generations it is parsed once.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfObject GetObject(PdfObjectId id)
+    {
+        var value = Resolve(id);
+
+        // Asked of what was just read and of what the cache served alike: the cache is keyed by number.
+        return _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation
+            ? ReadAsAnotherGeneration(id, carried)
+            : value;
+    }
+
+    /// <summary>
+    /// Gets object <paramref name="number"/> as the index holds it, whatever generation it carries: the reader's own reads of
+    /// an object an entry places, and the validator's, which name it by its number rather than through a reference.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    internal PdfObject GetIndexedObject(int number) =>
+        Resolve(new PdfObjectId(number, _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0));
+
+    /// <summary>
+    /// Gives the generation object <paramref name="number"/> carries, once read: its header's, or 0 for an object an object
+    /// stream holds; false for an object not read, or read as null for want of a definition.
+    /// </summary>
+    internal bool TryGetCarriedGeneration(int number, out int generation) => _carriedGenerations.TryGetValue(number, out generation);
+
+    /// <summary>Gets how many references to another generation the reader holds as reported, no more than its record holds.</summary>
+    internal int OtherGenerationsReported => _otherGenerationsReported.Count;
+
+    /// <summary>
+    /// Says whether the object reference <paramref name="id"/> names is in the file, as <see cref="GetPresence"/> says of its
+    /// number, but for a reference that names a generation the object, once read, does not carry, which names an object the
+    /// file lacks.
+    /// </summary>
+    internal ObjectPresence GetReferencePresence(PdfObjectId id) =>
+        NamesAnotherGeneration(id) ? ObjectPresence.Missing : GetPresence(id.Number);
+
+    /// <summary>
+    /// Reads reference <paramref name="id"/>, which names an object under a generation other than <paramref name="carried"/>,
+    /// the one it carries, as null, reporting each such reference once while the record of diagnostics has room.
+    /// </summary>
+    private PdfNull ReadAsAnotherGeneration(PdfObjectId id, int carried)
+    {
+        // Noted only while the record has room: once full, it counts what it drops, each reading of such a reference among
+        // them, no message written for it, and the set grows no larger than the record — one of every reference a file names
+        // would grow with what its object streams decode.
+        if (!_otherGenerationsReported.Contains(id))
+        {
+            var room = _diagnostics.Count < _diagnostics.Capacity;
+
+            if (room)
+            {
+                _otherGenerationsReported.Add(id);
+            }
+
+            _diagnostics.Warn(
+                PdfDiagnosticCodes.ObjectGenerationMismatch,
+                room
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"A reference names object {id.Number} under generation {id.Generation}, but the object numbered {id.Number} carries generation {carried}: the reference names an object the file does not define, and reads as null.")
+                    : string.Empty);
+        }
+
+        return PdfNull.Instance;
+    }
+
+    /// <summary>
+    /// Reads object <paramref name="id"/> by its number, as the index places it, through what the reader kept of it: the
+    /// generation is <see cref="GetObject"/>'s to compare, the chain's reading aside, which reads what a section placed under
+    /// the generation its row gives (<see cref="ReadWithoutLoading"/>).
+    /// </summary>
+    private PdfObject Resolve(PdfObjectId id)
     {
         // First, before the cache: what a reference taken from a disposed document answers does not depend on what was
         // read before, nor on what the cache kept.
@@ -1579,7 +1672,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         if (_unfinishedRebuild is not null && _loading.Count == 0 && _objectStreamsLoading.Count == 0)
         {
             FinishUnfinishedRebuild();
-            return GetObject(id);
+            return Resolve(id);
         }
 
         return value;
@@ -2123,12 +2216,23 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Determines whether the object <paramref name="reference"/> leads to — through a chain of references too, as
     /// <see cref="PdfReference.Resolve"/> follows it — is one a guard cut, or left out of the index: what it holds may lie
     /// past the cut, or is unknown, and is the guard's until the guard is lifted, rather than a value the file gave
-    /// (#224, #263). Call it once the reference is resolved.
+    /// (#224, #263). Call it once the reference is resolved. A chain that ends at a reference naming a generation its object
+    /// does not carry leads to no object, whatever a guard did to the object of that number (#185).
     /// </summary>
     /// <param name="reference">The reference, as the file wrote it.</param>
     /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
-    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1) =>
-        IsLeftByGuard(reference.Target(objects).Number);
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1)
+    {
+        var target = reference.Target(objects);
+        return !NamesAnotherGeneration(target) && IsLeftByGuard(target.Number);
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="id"/> names a generation other than the one the object of its number carries, once
+    /// read: a reference to an object the file does not define.
+    /// </summary>
+    internal bool NamesAnotherGeneration(PdfObjectId id) =>
+        _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/> is one a guard cut, or left out of the index: what
@@ -2324,6 +2428,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _source = PdfFileSource.FromMemory(ReadOnlyMemory<byte>.Empty);
         _cache.Clear();
         _cache.TrimExcess();
+        _carriedGenerations.Clear();
+        _carriedGenerations.TrimExcess();
+        _otherGenerationsReported.Clear();
+        _otherGenerationsReported.TrimExcess();
         _cacheOrder.Clear();
         _cacheOrder.TrimExcess();
         _objectStreams.Clear();

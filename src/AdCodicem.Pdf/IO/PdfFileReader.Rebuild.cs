@@ -135,6 +135,7 @@ internal sealed partial class PdfFileReader
         _walkLoads = null;
         _cache.Clear();
         _cacheOrder.Clear();
+        _carriedGenerations.Clear();
         ForgetCutReads();
         _objectStreams.Clear();
         _objectStreamsHiddenByGuard.Clear();
@@ -329,7 +330,8 @@ internal sealed partial class PdfFileReader
         new HashSet<(PdfLimit Limit, long Position)>(_limitsReached, SeededComparer.Instance),
         new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
         new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
-        _objectStreamReports.Copy());
+        _objectStreamReports.Copy(),
+        new HashSet<PdfObjectId>(_otherGenerationsReported));
 
     /// <summary>
     /// Brings <paramref name="mark"/> to where the document's reports stand now, for a mark nothing was withdrawn past
@@ -346,6 +348,7 @@ internal sealed partial class PdfFileReader
         mark.MemberLimits.UnionWith(_memberLimitsReached);
         mark.NeedingThemselves.UnionWith(_objectStreamsNeedingThemselves);
         mark.ObjectStreams.TakeIn(_objectStreamReports);
+        mark.OtherGenerations.UnionWith(_otherGenerationsReported);
         return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports() };
     }
 
@@ -363,6 +366,7 @@ internal sealed partial class PdfFileReader
         Restore(_memberLimitsReached, mark.MemberLimits);
         Restore(_objectStreamsNeedingThemselves, mark.NeedingThemselves);
         _objectStreamReports.RestoreFrom(mark.ObjectStreams);
+        Restore(_otherGenerationsReported, mark.OtherGenerations);
     }
 
     /// <summary>Brings <paramref name="set"/> back to what <paramref name="copy"/> holds.</summary>
@@ -709,7 +713,7 @@ internal sealed partial class PdfFileReader
                 continue;
             }
 
-            if (NamesUnindexed(((PdfStream)GetObject(new PdfObjectId(stream.Number))).Dictionary, depth: 0))
+            if (NamesUnindexed(((PdfStream)GetIndexedObject(stream.Number)).Dictionary, depth: 0))
             {
                 (deferred ??= new(SeededComparer.Instance)).Add(stream.Number);
                 continue;
@@ -880,7 +884,7 @@ internal sealed partial class PdfFileReader
     {
         try
         {
-            var loaded = GetObject(new PdfObjectId(number));
+            var loaded = GetIndexedObject(number);
 
             if (loaded is not PdfStream stream)
             {
@@ -919,7 +923,7 @@ internal sealed partial class PdfFileReader
 
         try
         {
-            var stream = (PdfStream)GetObject(new PdfObjectId(number));
+            var stream = (PdfStream)GetIndexedObject(number);
             contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out var hidden);
 
             if (contents is null && hidden)
@@ -963,6 +967,7 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
+        _carriedGenerations.Remove(number);
         _cutCache.RemoveAll(number);
 
         // No load is in flight as the expansion replaces a definition, and what the last read noted of its cut reads was let
@@ -994,6 +999,7 @@ internal sealed partial class PdfFileReader
         ForgetThrows();
         _cache.Clear();
         _cacheOrder.Clear();
+        _carriedGenerations.Clear();
         _walkLoads = null;
         ForgetCutReads();
         _objectStreams.Clear();
@@ -1214,14 +1220,14 @@ internal sealed partial class PdfFileReader
 
     /// <summary>Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>.</summary>
     private bool IsCatalogCandidate(int number) =>
-        GetObject(new PdfObjectId(number)).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+        GetIndexedObject(number).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
 
     /// <summary>Makes object <paramref name="number"/>, a catalog the search found, the trailer's <c>/Root</c>.</summary>
     private void TakeCatalog(int number)
     {
-        // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way gives the
-        // header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
-        var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
+        // The reference names the catalog under the generation it carries, read once the catalog is: a header of 1 1 makes
+        // 1 1 R, not 1 0 R, whatever generation its entry gives (#118, #185).
+        var generation = _carriedGenerations.TryGetValue(number, out var carried) ? carried : 0;
         Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
         _catalogFoundAs = number;
 
@@ -1294,7 +1300,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
-    /// length, an object stream's fault —, so that what was reported since can be withdrawn and reported again.
+    /// length, an object stream's fault, a reference to another generation —, so that what was reported since can be
+    /// withdrawn and reported again.
     /// </summary>
     /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
     /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>
@@ -1304,6 +1311,7 @@ internal sealed partial class PdfFileReader
     /// <param name="MemberLimits">The object stream members whose cut was reported.</param>
     /// <param name="NeedingThemselves">The object streams reported as needing an object they hold.</param>
     /// <param name="ObjectStreams">What the object streams' reports said.</param>
+    /// <param name="OtherGenerations">The references reported as naming a generation their object does not carry.</param>
     private sealed record ReportsMark(
         PdfDiagnosticsMark Diagnostics,
         HashSet<long> LengthFaults,
@@ -1312,7 +1320,8 @@ internal sealed partial class PdfFileReader
         HashSet<(PdfLimit Limit, long Position)> Limits,
         HashSet<(long DataStart, int Number)> MemberLimits,
         HashSet<int> NeedingThemselves,
-        ObjectStreamReports ObjectStreams);
+        ObjectStreamReports ObjectStreams,
+        HashSet<PdfObjectId> OtherGenerations);
 
     /// <summary>
     /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept

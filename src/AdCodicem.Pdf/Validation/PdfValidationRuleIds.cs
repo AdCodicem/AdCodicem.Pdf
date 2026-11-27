@@ -224,8 +224,9 @@ public static class PdfValidationRuleIds
     public const string XRefCheckedInPart = "xref.checked-in-part";
 
     /// <summary>
-    /// An object reachable from the trailer refers to an object the file lacks — none in its index, or a free
-    /// entry —, which reads as null. <see cref="PdfValidationSeverity.Warning"/>.
+    /// An object reachable from the trailer refers to an object the file lacks — none in its index, a free entry, or a
+    /// generation other than the one the object of that number carries: its header's, or 0 for one an object stream
+    /// holds —, which reads as null. <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
     public const string ObjectReferenceMissing = "object.reference-missing";
 

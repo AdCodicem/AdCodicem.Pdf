@@ -44,6 +44,152 @@ public class ObjectRuleTests
             "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 5 0 under /Annots[0].");
     }
 
+    [Theory]
+    [InlineData("/Annots [1 1 R]", "Object 3 refers to object 1 1 under /Annots[0], which the file lacks: the object numbered 1 carries generation 0, and the reference reads as null.")]
+    [InlineData("/Annots [2 1 R 2 1 R 2 3 R]", "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 2 1 under /Annots[0], the object numbered 2 carrying generation 0.")]
+    [InlineData("/Annots [9 0 R 2 1 R]", "Object 3 holds 2 references to objects the file lacks, which read as null; the first refers to object 9 0 under /Annots[0].")]
+    public void A_reference_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(string annots, string message)
+    {
+        // An object is named by its number and its generation together (ISO 32000-1, 7.3.10): the catalog and the page tree's
+        // root are written under generation 0, and a reference naming either under another names an object the file does not
+        // define, which reads as null. The message names the generation the file defines it under (#185).
+        Single(Validate(PdfTemplate.SoundWith("/Resources << >>", "/Resources << >> " + annots)), PdfValidationRuleIds.ObjectReferenceMissing)
+            .Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
+    [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", true)]
+    [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", false)]
+    [InlineData("/A [5 1 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", false)]
+    [InlineData("/A [5 1 R 5 1 R 5 0 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
+    public void An_object_named_under_another_generation_is_walked_only_through_a_reference_naming_its_own(string entries, string message, bool walked)
+    {
+        // Object 5, written under generation 0, refers to object 99, which the file lacks, and lacks its endobj. The catalog
+        // names it under generation 1 before it is read, with its own generation while it waits or once it is read — object 6
+        // naming it, read first —, or only under 1: the walk counts each reference under 1 at the catalog, and reads object 5,
+        // and judges it, only where a reference names it as it is written (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Object(6, "<< /C 5 0 R >>"),
+        };
+        rows[5] = file.Position;
+        file.Raw("5 0 obj\n<< /M 99 0 R >>\n6 1 obj (six) endobj\n");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var report = Validate(file.Bytes);
+
+        var missing = report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).ToList();
+        missing.Should().Contain(finding => finding.Location.Object == new PdfObjectId(1)).Which.Message.Should().Be(message);
+        missing.Any(finding => finding.Location.Object == new PdfObjectId(5)).Should().Be(walked);
+        report.Findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing).Should().Be(walked);
+    }
+
+    [Fact]
+    public void A_reference_read_to_tell_its_generation_is_read_once()
+    {
+        // The catalog names object 5 under generations 0 to 3; object 5 is written under 0, and nothing reads it before the
+        // walk. Each reference met under another generation than the claim's has the object read for it, which reads the
+        // reference: it read it again, a second read the full record counted with what it drops (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /A [5 0 R 5 1 R 5 2 R 5 3 R] >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0 });
+
+        _ = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(3);
+    }
+
+    [Fact]
+    public void A_reference_under_the_claim_s_generation_met_once_its_object_is_read_is_told_when_met()
+    {
+        // The catalog names object 5 under generation 1, then 0, which has it read, then 1 again; object 5 is written under
+        // 0, and nothing reads it before the walk. Read, the third reference is told when it is met — read, as resolving it
+        // reads it —, rather than kept to be told with the first, a read the full record counts with what it drops (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /A [5 1 R 5 0 R 5 1 R] >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0 });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(2);
+        report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().StartWith("Object 1 holds 2 references");
+    }
+
+    [Fact]
+    public void References_from_many_holders_to_objects_waiting_to_be_read_are_counted_within_the_walk_s_bound()
+    {
+        // The catalog names 200 objects, then 100 holders, each naming all 200: read last claimed first, the holders are walked
+        // while the 200 wait, 20,000 pairs of holder and object. The walk keeps no more counts than its bound at once, reads an
+        // object early only once it keeps that many, lets go of an object's counts when it reads it so, and keeps none once
+        // done (#185).
+        const int Objects = 200;
+        var objects = string.Join(' ', Enumerable.Range(10, Objects).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var holders = string.Join(' ', Enumerable.Range(1_000, 100).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /W [" + objects + "] /H [" + holders + "] >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var k = 0; k < Objects; k++)
+        {
+            builder.WithObject(10 + k, "(object)");
+        }
+
+        for (var k = 0; k < 100; k++)
+        {
+            builder.WithObject(1_000 + k, "[" + objects + "]");
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        document.Reader.SettleIndex();
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        graph.MissingReferences.Total.Should().Be(0);
+        graph.MostWaitingCounts.Should().Be(ObjectGraph.MaxWaitingCounts);
+        graph.ReadEarly.Should().Be(37);
+        graph.WaitingCountsLeft.Should().Be(0);
+    }
+
+    [Fact]
+    public void A_reference_another_rule_judges_met_to_an_object_the_walk_has_yet_to_read_is_not_counted()
+    {
+        // A caller puts in the trailer /A and /Root, both naming object 4 under generation 1, which it carries 0 — /Root with
+        // no source, so that the page tree walk does not read object 4 through it. The walk meets /Root, a reference another
+        // rule judges, while object 4 waits, and counts /A alone (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+            [4] = file.Object(4, "<< /X 1 >>"),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var trailer = document.Trailer;
+        trailer.Remove(PdfName.Root);
+        trailer.Set(PdfName.Get("A"), new PdfReference(new PdfObjectId(4, 1)));
+        trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(4, 1)));
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "The trailer refers to object 4 1 under /A, which the file lacks: the object numbered 4 carries generation 0, and the reference reads as null.");
+    }
+
     [Fact]
     public void A_reference_to_a_free_entry_names_an_object_the_file_lacks()
     {
@@ -55,6 +201,12 @@ public class ObjectRuleTests
 
         Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
             "Object 1 refers to object 4 0 under /Outlines, which the file lacks: the reference reads as null.");
+
+        // Named under a generation other than 0, a free entry still defines nothing, and carries no generation (#185).
+        using var document = PdfDocument.Open(PdfTemplate.Build(template.Replace("/Outlines 4 0 R", "/Outlines 4 1 R", StringComparison.Ordinal)));
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 1 refers to object 4 1 under /Outlines, which the file lacks: the reference reads as null.");
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
     }
 
     [Fact]

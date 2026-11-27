@@ -135,7 +135,12 @@ internal sealed partial class PdfFileReader
 
             if (resolved.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
-                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
+                // The link of a chain that names a generation its object does not carry is the one the file lacks (#185).
+                var target = new PdfReference(deferred.Length, this).Target(PdfReference.MaxChainLength);
+                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced
+                    : NamesAnotherGeneration(target) ? ObjectPresence.Missing
+                    : GetReferencePresence(deferred.Length);
+                (number, generation) = presence == ObjectPresence.Missing && NamesAnotherGeneration(target) ? (target.Number, target.Generation) : (number, generation);
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",

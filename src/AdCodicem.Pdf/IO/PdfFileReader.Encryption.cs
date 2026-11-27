@@ -47,9 +47,11 @@ internal sealed partial class PdfFileReader
         var resolved = ResolveEncrypt(out var named);
 
         // An object a guard kept the reader from reading is the reader's limit, not the file's fault: the file's /Encrypt
-        // stands, unread.
+        // stands, unread — but for a reference that names a generation its object does not carry, which names no object
+        // whatever a guard did to the object of its number (#185).
         _encryptGivenAtOpening = Trailer.ContainsKey(PdfName.Encrypt);
-        _encrypted = resolved is PdfDictionary || (named > 0 && resolved is PdfNull && IsLeftByGuard(named));
+        _encrypted = resolved is PdfDictionary ||
+            (named > 0 && resolved is PdfNull && Trailer.GetRaw(PdfName.Encrypt) is PdfReference encrypt && LeftByGuard(encrypt, objects: 1));
         _encryptionDecided = true;
 
         if (!_encryptGivenAtOpening || _encrypted)

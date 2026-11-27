@@ -271,6 +271,7 @@
               "syntax.name-escape-invalid",
               "syntax.key-repeated",
               "object.redefined",
+              "object.generation-mismatch",
               "trailer.root-recovered",
               "trailer.encrypt-invalid",
               "trailer.encrypt-late",

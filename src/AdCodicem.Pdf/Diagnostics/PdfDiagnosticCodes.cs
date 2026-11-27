@@ -351,6 +351,19 @@ public static class PdfDiagnosticCodes
     public const string ObjectRedefined = "object.redefined";
 
     /// <summary>
+    /// A reference names an object under a generation other than the one the object carries — the generation its header
+    /// gives, or 0 for an object an object stream holds (ISO 32000-1, 7.5.7) —, and reads as null: an object is named by
+    /// its number and its generation together, and a reference to an object the file does not define is null (7.3.10).
+    /// The generation is compared on every read of a reference, what the reader keeps of the object included; the entry's
+    /// generation plays no part, a disagreement of the entry with the header being the validator's
+    /// (<see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/>). Raised as a warning, with no position: each
+    /// distinct reference — number and generation — is reported once, on its first read, while the record has room; once it
+    /// is full, each read of a reference not reported before is counted with what it drops. The object itself is read once,
+    /// by its number, whatever generations name it.
+    /// </summary>
+    public const string ObjectGenerationMismatch = "object.generation-mismatch";
+
+    /// <summary>
     /// The trailer's <c>/Root</c> did not lead to a document catalog, and the reader found the catalog among the
     /// file's objects: among those the file indexes when its index is sound, in a rebuilt index otherwise. A rebuild after
     /// opening that takes the same object again reports nothing more; one that takes another object reports it.
