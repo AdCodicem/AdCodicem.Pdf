@@ -1004,6 +1004,126 @@ public class ArlingtonRuleTests
         walk.Checked.Should().BeLessThan(3 * nodes, "each destination and its array are checked once, however many nodes name the array");
     }
 
+    [Fact(Timeout = 60_000)]
+    public async Task A_tree_node_many_chains_of_references_lead_to_is_expanded_once()
+    {
+        // The catalog's /PageLabels lists, as its kids, 400 objects that each hold the reference 4 0 R, and object 4 itself:
+        // node 4, with 400 page labels, is expanded once, as the object every chain leads to, and its labels checked once —
+        // where it was expanded for each chain, its labels checked 400 times over (#173).
+        const int Links = 400;
+        var labels = new StringBuilder("[");
+
+        for (var index = 0; index < Links; index++)
+        {
+            labels.Append(CultureInfo.InvariantCulture, $"{index} << /S /D >> ");
+        }
+
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Kids [" +
+                string.Join(' ', Enumerable.Range(10, Links).Select(static number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"))) + " 4 0 R] >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(4, "<< /Nums " + labels.Append(']') + " >>");
+
+        for (var number = 10; number < 10 + Links; number++)
+        {
+            builder.WithObject(number, "4 0 R");
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+
+        var walk = await Task.Run(() => Walk(file), TestContext.Current.CancellationToken);
+
+        walk.Checked.Should().BeLessThan(2 * Links, "node 4 and each of its labels are checked once, however many chains lead to it");
+    }
+
+    [Theory]
+    [InlineData("4 0 R")]
+    [InlineData("10 0 R")]
+    public void A_tree_node_reached_through_a_chain_the_walk_judged_before_is_expanded_as_that_chain_leads(string ten)
+    {
+        // The catalog's /Legal names object 10, which names node 4 — or itself —, judged before /PageLabels, whose kids list
+        // object 10: the tree takes the chain as the walk found it, node 4 expanded and its label's /S judged, or a chain that
+        // reaches no value expanded to nothing (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Legal 10 0 R /PageLabels << /Kids [10 0 R] >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(4, "<< /Nums [0 << /S 5 >>] >>")
+            .WithObject(10, ten)
+            .BuildClassic(rootNumber: 1);
+
+        var report = Validate(file);
+
+        report.Findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong && finding.Message.Contains("/S", StringComparison.Ordinal))
+            .Should().Be(ten == "4 0 R", string.Join("; ", report.Findings));
+    }
+
+    [Theory]
+    [InlineData("[11 0 R 20 0 R]")]
+    [InlineData("[20 0 R 11 0 R]")]
+    public void A_tree_node_named_directly_is_expanded_though_a_link_a_limit_cut_also_names_it(string kids)
+    {
+        // The catalog's /PageLabels lists node 11 and object 20, whose value, 11 0 R, MaxObjectLength cuts after the reference
+        // it left whole: object 20 is judged as cut, and not expanded; node 11, named directly, is expanded whatever the order,
+        // its label's /S judged — where the walk took node 11 for entered through object 20 (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Kids " + kids + " >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(11, "<< /Nums [0 << /S 5 >>] >>")
+            .WithObject(20, "11 0 R\n%" + new string('=', 1_100))
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1_024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Contain("/S");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_value_whose_first_link_a_limit_cut_is_judged_as_cut_not_through_the_reference_the_cut_left(bool cut)
+    {
+        // The catalog's /Outlines names object 20, whose value, 21 0 R, MaxObjectLength cuts after the reference it left
+        // whole — or does not —, and object 21 is a string. Cut, object 20 is unknown, as any object a limit cut, and nothing
+        // is judged; whole, the chain leads to the string, which an outline tree is not (#173).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Outlines 20 0 R >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(20, "21 0 R" + (cut ? "\n%" + new string('=', 1_100) : string.Empty))
+            .WithObject(21, "(outlines)")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1_024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.ObjectValueTypeWrong).Should().Be(!cut, string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void The_parameters_of_a_filter_named_through_a_chain_of_references_are_typed_by_that_filter()
+    {
+        // A metadata stream's /Filter names object 9, which names object 10, /FlateDecode: its /DecodeParms are Flate's,
+        // whose /Predictor is an integer, as they are where /Filter names object 10 itself; the walk typed none, the chain's
+        // first link holding a reference (#173).
+        var file = Pdf(
+            "<< /Type /Catalog /Pages 2 0 R /Metadata 4 0 R >>",
+            Root,
+            Page,
+            "<< /Type /Metadata /Subtype /XML /Length 0 /Filter 9 0 R /DecodeParms << /Predictor (bad) >> >>\nstream\n\nendstream",
+            "null",
+            "null",
+            "null",
+            "null",
+            "10 0 R",
+            "/FlateDecode");
+
+        Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Contain("/Predictor");
+    }
+
     [Fact]
     public void Two_validations_give_the_same_findings_in_the_same_order()
     {

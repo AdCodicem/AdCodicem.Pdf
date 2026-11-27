@@ -188,7 +188,8 @@ internal sealed partial class PdfFileReader
     /// Determines whether the object whose header starts at <paramref name="at"/> holds no value: past its <c>obj</c>
     /// keyword, the white space and comments there lead to nothing that starts a value — the end of the file, a closing
     /// delimiter, a byte none of a value's, a brace, a keyword other than <c>true</c>, <c>false</c> and <c>null</c>, which a
-    /// load reads as null —, or to another object's header, whose number a load reads as the value (#351).
+    /// load reads as null —, or to another object's header, whose number a load reads as the value (#351): two integers and
+    /// <c>obj</c>, the number and the generation in the range the scan takes a header's in.
     /// </summary>
     /// <remarks>
     /// Told from the first <see cref="NoValueReach"/> bytes from the header, within <see cref="PdfReaderLimits.MaxObjectLength"/>:
@@ -270,6 +271,11 @@ internal sealed partial class PdfFileReader
             }
         }
 
+        if (StartsCompositeValue(span, lexer.Position))
+        {
+            return false;
+        }
+
         var next = lexer.Read();
 
         if (!toEnd && next.End >= span.Length)
@@ -291,7 +297,8 @@ internal sealed partial class PdfFileReader
 
             case PdfTokenKind.Integer:
                 // An integer is a value but where it starts another object's header, two integers and obj, which a load
-                // reads its number of as the value: no value this definition wrote.
+                // reads its number of as the value: no value this definition wrote. A pair the scan would take for no header
+                // (ReadHeaderBackwards) is the definition's value.
                 var generation = lexer.Read();
                 var keyword = generation.Kind == PdfTokenKind.Integer ? lexer.Read() : generation;
 
@@ -300,11 +307,27 @@ internal sealed partial class PdfFileReader
                     return null;
                 }
 
-                return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword);
+                return generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword(ObjKeyword) &&
+                    next.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration;
 
             default:
                 return true;
         }
+    }
+
+    /// <summary>
+    /// Determines whether the first byte past the white space at <paramref name="at"/> opens a string, a name, an array or a
+    /// dictionary: a value however it goes on, which that byte tells without lexing it, for <see cref="TellNoValue"/>, and
+    /// for the scan for the memo, which asks whether every header it takes holds no value (#438).
+    /// </summary>
+    private static bool StartsCompositeValue(ReadOnlySpan<byte> span, int at)
+    {
+        while (at < span.Length && PdfCharacters.IsWhitespace(span[at]))
+        {
+            at++;
+        }
+
+        return at < span.Length && span[at] is (byte)'(' or (byte)'/' or (byte)'[' or (byte)'<';
     }
 
     /// <summary>
@@ -487,7 +510,12 @@ internal sealed partial class PdfFileReader
                         at, number, generation, redefinitions!, ref reached, piece: span, pieceStart: windowStart, pieceEndsData: endsData, objAt: windowStart + objAt);
                 }
                 else if (!memo.TryAddHeader(
-                    at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom, TellNoValueFromPiece(at, span, windowStart, endsData, windowStart + objAt)))
+                    at,
+                    number,
+                    generation,
+                    KindAt(span, windowStart, at, ref scan, ahead: false),
+                    scan.TokensFrom,
+                    StartsCompositeValue(span, objAt + ObjKeyword.Length) ? false : TellNoValueFromPiece(at, span, windowStart, endsData, windowStart + objAt)))
                 {
                     return reached;
                 }

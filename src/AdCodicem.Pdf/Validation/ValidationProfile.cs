@@ -75,6 +75,7 @@ public sealed class ValidationProfile
             new ObjectPastSizeRule(),
             new CheckedInPartRule(),
             new ReferenceMissingRule(),
+            new ReferenceChainUnresolvedRule(),
             new EndObjMissingRule(),
             new NameNullCharacterRule(),
             new ObjectKeyMissingRule(),

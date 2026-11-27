@@ -2278,9 +2278,10 @@ public class StreamLengthTests
         // of the one endstream a megabyte on, read three times through a cache of four objects. Once the searches read as
         // much as they may, a length is kept without a search, which is said; one so kept before the reader counted lengths
         // taken unread counts once parsed again, past what such lengths may keep, and its data reads empty: that is said once,
-        // though its place was reported before (#280).
+        // though its place was reported before (#280). Each dictionary closes within the window its load starts with, which
+        // reads it whole whatever rows it holds (#387).
         const int Streams = 200;
-        var file = HostileInputTests.NestedInStrings(Streams, 1024 * 1024, shortBy: 1);
+        var file = HostileInputTests.NestedInStrings(Streams, 1024 * 1024, shortBy: 1, lengthDigits: 7);
         using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 4 });
         var first = Read();
         var again = Read();

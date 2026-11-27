@@ -27,9 +27,37 @@ namespace AdCodicem.Pdf.IO;
 /// holder of one may close the document's file. The document closes it, through <see cref="Close"/>.
 /// </para>
 /// </remarks>
-internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, IPdfReferenceChainObserver
 {
     internal const int InitialObjectWindow = 8 * 1024;
+
+    /// <summary>
+    /// How many rows an index places inside an object a load reads the value may run past before its data is read as ending
+    /// at the first of them (#387): rows past the end of the header's <c>obj</c>, the object's own aside — in the comments
+    /// before its value, in a comment or a string the value holds, or where no header starts; a header its parse meets ends
+    /// the value already.
+    /// </summary>
+    /// <remarks>
+    /// A load whose parse runs to the edge of its window still open asks how many such rows the window holds. Past this
+    /// many, with <see cref="HeaderCheckWindow"/> bytes after the row past the bound, room for a header the parse would meet
+    /// there, the object is parsed again as if the file ended at the first: what was cut short there is reported under
+    /// <see cref="PdfDiagnosticCodes.SyntaxTruncatedObject"/>, which names that place, and the object's <c>endobj</c> is
+    /// missing. Short of it, the window grows no further than that room past the row that would pass the bound, so that a
+    /// load reads about as many bytes as that many rows span. A whole value only <c>endobj</c> or <c>stream</c> is looked
+    /// for after is kept as read where more rows than this lie past it, as where a header lexes past it
+    /// (<see cref="WindowHoldsPlacedHeader"/>); and a header whose tokens more rows than this part, counted from the byte
+    /// past the place, is none there, the load reading no object at the place — one whose number the window holds whole
+    /// and names another object than the one asked for is not read on at all. What loads learn of a header a window's edge
+    /// cut answers the loads after them at the same place (<see cref="_headerCuts"/>). Without the bound, each object a run of comment or string lines
+    /// places read every line after its own, and a rebuild or a validation, which load every object, took time in the
+    /// square of the lines. The rule asks only the window that runs to its edge still open: a value that closes inside the
+    /// window it is first read through is read whole, whatever rows it holds. At the largest window
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> allows, the bound is not asked, and the guard is reached and reported.
+    /// Not a guard a valid file reaches: the rows of a valid file's index each place a header written between objects, none
+    /// inside another object's value.
+    /// </remarks>
+    internal const int MaxPlacedHeadersInValue = 64;
+
     internal const int XRefWindow = 64 * 1024;
 
     /// <summary>What the codes of the faults of the object syntax start with.</summary>
@@ -399,19 +427,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     }
 
     /// <summary>
-    /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does — it fetches
-    /// one more, and reads null whatever that one holds (#173) —: a value still a reference past them reads as null there,
-    /// and cannot be read here. No valid file reaches it: a valid file never chains references.
+    /// How many references the reads made while the chain is read follow from a value — <see cref="Follow"/>, a stream's
+    /// <c>/Length</c>, a trailer's <c>/Prev</c> and <c>/XRefStm</c> —, as many as <see cref="PdfReference.Resolve"/> does,
+    /// the first object a value read from names counted among them (#173): a value still a reference past them reads as null
+    /// there, and cannot be read here. No valid file reaches it: a valid file never chains references
+    /// (<see cref="PdfReference.MaxChainLength"/>).
     /// </summary>
-    private const int MaxReferenceLinks = 31;
-
-    /// <summary>
-    /// How many references are followed from a value read from the object a reference names and then resolved, as a stream's
-    /// <c>/Length</c> is parsed and a trailer's <c>/Prev</c> and <c>/XRefStm</c> are read: one more than
-    /// <see cref="MaxReferenceLinks"/>, the first object's value resolving through as many as a reference does. No valid file
-    /// reaches it either.
-    /// </summary>
-    private const int LengthLinks = MaxReferenceLinks + 1;
+    private const int MaxReferenceLinks = PdfReference.MaxChainLength;
 
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
@@ -619,9 +641,31 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// The objects read, by object number. The generation is left out of the key on purpose: the index holds one
     /// entry per number, so every generation of a number loads the same object, and keying by both would parse and
-    /// keep it once per generation a file cares to reference.
+    /// keep it once per generation a file cares to reference. Which generation a reference may name it under is
+    /// <see cref="_carriedGenerations"/>'s, which <see cref="GetObject"/> asks before it serves what is kept.
     /// </summary>
     private readonly Dictionary<int, (PdfObject Value, ReadDepth Depth)> _cache = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The generation each object read carries, by object number: its header's, or 0 for an object an object stream holds
+    /// (ISO 32000-1, 7.5.7). Noted each time the object is read, whatever generation asked for it, and let go of with what
+    /// was read for an index a rebuild or an expansion changes. It holds an entry for each object read, unlike the cache,
+    /// which lets objects go: about 20 bytes each, within what the index holds of it, which
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> bounds.
+    /// </summary>
+    private readonly Dictionary<int, int> _carriedGenerations = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The references reported as naming an object under a generation it does not carry, each reported once while the record
+    /// of diagnostics has room (<see cref="PdfDiagnosticCodes.ObjectGenerationMismatch"/>): no more of them than it holds.
+    /// </summary>
+    private readonly HashSet<PdfObjectId> _otherGenerationsReported = [];
+
+    /// <summary>
+    /// The objects a chain of references a resolution cut starts from, each reported once while the record of diagnostics has
+    /// room (<see cref="PdfDiagnosticCodes.ObjectReferenceChainCut"/>): no more of them than it holds.
+    /// </summary>
+    private readonly HashSet<PdfObjectId> _chainsCutReported = [];
     private readonly Queue<int> _cacheOrder = new();
     /// <summary>
     /// The object streams decoded, null for one that cannot be read, each with how deep its decoding went, by number and, for
@@ -789,6 +833,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// decides as any load does, or a rebuild drops them (<see cref="IsCutAtLimit"/>, #292). Null while there is none.
     /// </summary>
     private HashSet<int>? _cutAtStop;
+
+    /// <summary>
+    /// What loads learned of a header a window's edge cut at a place, by the place (<see cref="HeaderCut"/>): a load there
+    /// answers from it what reading the header again would, once its first window is read, rather than grow its window over
+    /// the same header again, once for each row that places an object there (#387). Null while there is none.
+    /// </summary>
+    private Dictionary<long, HeaderCut>? _headerCuts;
 
     /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
@@ -1350,8 +1401,165 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreams.TryGet(DepthKey(number, -1), out var kept) && kept.Contents is not null ? kept.Contents.Data : default;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A reference names an object by its number and its generation together (ISO 32000-1, 7.3.10): one whose generation is
+    /// not the one the object carries — its header's, or 0 for an object an object stream holds — names an object the file
+    /// does not define, and reads as null, which <see cref="PdfDiagnosticCodes.ObjectGenerationMismatch"/> reports. The object
+    /// is read and kept by its number all the same: what it carries is known once it is read, whatever generation asked
+    /// first, and named under many generations it is parsed once.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfObject GetObject(PdfObjectId id)
+    {
+        var value = Resolve(id);
+
+        // Asked of what was just read and of what the cache served alike: the cache is keyed by number.
+        return _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation
+            ? ReadAsAnotherGeneration(id, carried)
+            : value;
+    }
+
+    /// <summary>
+    /// Gets object <paramref name="number"/> as the index holds it, whatever generation it carries: the reader's own reads of
+    /// an object an entry places, and the validator's, which name it by its number rather than through a reference.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    internal PdfObject GetIndexedObject(int number) =>
+        Resolve(new PdfObjectId(number, _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0));
+
+    /// <summary>
+    /// Gives the generation object <paramref name="number"/> carries, once read: its header's, or 0 for an object an object
+    /// stream holds; false for an object not read, or read as null for want of a definition.
+    /// </summary>
+    internal bool TryGetCarriedGeneration(int number, out int generation) => _carriedGenerations.TryGetValue(number, out generation);
+
+    /// <summary>Gets how many references to another generation the reader holds as reported, no more than its record holds.</summary>
+    internal int OtherGenerationsReported => _otherGenerationsReported.Count;
+
+    /// <summary>Gets how many objects a cut chain of references starts from the reader noted as reported: no more than the record holds.</summary>
+    internal int ChainsCutReported => _chainsCutReported.Count;
+
+    /// <summary>
+    /// Says whether the object reference <paramref name="id"/> names is in the file, as <see cref="GetPresence"/> says of its
+    /// number, but for a reference that names a generation the object, once read, does not carry, which names an object the
+    /// file lacks.
+    /// </summary>
+    internal ObjectPresence GetReferencePresence(PdfObjectId id) =>
+        NamesAnotherGeneration(id) ? ObjectPresence.Missing : GetPresence(id.Number);
+
+    /// <inheritdoc/>
+    void IPdfReferenceChainObserver.ChainCut(PdfReference start)
+    {
+        // Noted only while the record has room, as the references under another generation are: once full, it counts what
+        // it drops, no message written. The chain is described first: reading it again may throw, at a guard, or fill the
+        // record, and the start is noted only once its report is made (#173).
+        if (_chainsCutReported.Contains(start.Id))
+        {
+            return;
+        }
+
+        var message = string.Empty;
+
+        if (_diagnostics.Count < _diagnostics.Capacity)
+        {
+            _ = IsChainCut(start.Id, out var loopsBackTo);
+            message = string.Create(
+                CultureInfo.InvariantCulture,
+                $"A reference names object {start.Id.Number} {start.Id.Generation}, whose chain of references {DescribeChainCut(loopsBackTo)}: the reference reads as null.");
+        }
+
+        var room = _diagnostics.Count < _diagnostics.Capacity;
+
+        if (room)
+        {
+            _chainsCutReported.Add(start.Id);
+        }
+
+        _diagnostics.Warn(PdfDiagnosticCodes.ObjectReferenceChainCut, room ? message : string.Empty);
+    }
+
+    /// <summary>
+    /// Determines whether the chain of references from object <paramref name="start"/> is one <see cref="PdfReference.Resolve"/>
+    /// cuts — its value a reference, and so on past <see cref="PdfReference.MaxChainLength"/> references, or back to an object
+    /// it passed —, and gives the object it loops back to: the first it names again, or one numbered 0 for a chain that
+    /// only runs too long. It reads the objects the resolution read.
+    /// </summary>
+    internal bool IsChainCut(PdfObjectId start, out PdfObjectId loopsBackTo)
+    {
+        Span<PdfObjectId> named = stackalloc PdfObjectId[PdfReference.MaxChainLength + 1];
+        named[0] = start;
+        loopsBackTo = default;
+
+        for (var link = 1; link <= PdfReference.MaxChainLength; link++)
+        {
+            if (GetObject(named[link - 1]) is not PdfReference next)
+            {
+                return false;
+            }
+
+            if (named[..link].Contains(next.Id))
+            {
+                loopsBackTo = next.Id;
+                return true;
+            }
+
+            named[link] = next.Id;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Says of an object a value names that the chain of references from it reaches no value, as a stream's
+    /// <c>/Length</c> is described when its chain is cut (#173).
+    /// </summary>
+    internal static readonly string ChainReachesNoValue = string.Create(
+        CultureInfo.InvariantCulture, $"whose chain of references reaches no value within the {PdfReference.MaxChainLength} a resolution follows");
+
+    /// <summary>
+    /// Says how a chain <see cref="IsChainCut"/> finds cut ends: it loops back to <paramref name="loopsBackTo"/>, or, for one
+    /// numbered 0, leads on past the references a resolution follows.
+    /// </summary>
+    internal static string DescribeChainCut(PdfObjectId loopsBackTo) => loopsBackTo.Number == 0
+        ? string.Create(CultureInfo.InvariantCulture, $"leads from reference to reference past the {PdfReference.MaxChainLength} a resolution follows")
+        : string.Create(CultureInfo.InvariantCulture, $"loops back to object {loopsBackTo.Number} {loopsBackTo.Generation}");
+
+    /// <summary>
+    /// Reads reference <paramref name="id"/>, which names an object under a generation other than <paramref name="carried"/>,
+    /// the one it carries, as null, reporting each such reference once while the record of diagnostics has room.
+    /// </summary>
+    private PdfNull ReadAsAnotherGeneration(PdfObjectId id, int carried)
+    {
+        // Noted only while the record has room: once full, it counts what it drops, each reading of such a reference among
+        // them, no message written for it, and the set grows no larger than the record — one of every reference a file names
+        // would grow with what its object streams decode.
+        if (!_otherGenerationsReported.Contains(id))
+        {
+            var room = _diagnostics.Count < _diagnostics.Capacity;
+
+            if (room)
+            {
+                _otherGenerationsReported.Add(id);
+            }
+
+            _diagnostics.Warn(
+                PdfDiagnosticCodes.ObjectGenerationMismatch,
+                room
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"A reference names object {id.Number} under generation {id.Generation}, but the object numbered {id.Number} carries generation {carried}: the reference names an object the file does not define, and reads as null.")
+                    : string.Empty);
+        }
+
+        return PdfNull.Instance;
+    }
+
+    /// <summary>
+    /// Reads object <paramref name="id"/> by its number, as the index places it, through what the reader kept of it: the
+    /// generation is <see cref="GetObject"/>'s to compare, the chain's reading aside, which reads what a section placed under
+    /// the generation its row gives (<see cref="ReadWithoutLoading"/>).
+    /// </summary>
+    private PdfObject Resolve(PdfObjectId id)
     {
         // First, before the cache: what a reference taken from a disposed document answers does not depend on what was
         // read before, nor on what the cache kept.
@@ -1544,7 +1752,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         if (_unfinishedRebuild is not null && _loading.Count == 0 && _objectStreamsLoading.Count == 0)
         {
             FinishUnfinishedRebuild();
-            return GetObject(id);
+            return Resolve(id);
         }
 
         return value;
@@ -1621,19 +1829,27 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     }
 
     /// <summary>
-    /// Reads, while the chain is read, what the <c>/Length</c> object <paramref name="id"/> leads to through as many
-    /// references as the parse resolves a <c>/Length</c> through (<see cref="LengthLinks"/>), each read with
-    /// <see cref="ReadWithoutLoading"/>; null when one of them cannot be read — no section read so far places it, or a guard
-    /// cut it —: a value whose chain leads there waits for the chain, as one the first reference cannot read does. A value
-    /// still a reference past them is one the parse reads as null.
+    /// Reads, while the chain is read, what object <paramref name="id"/> — a <c>/Length</c>, or a section's <c>/Prev</c> or
+    /// <c>/XRefStm</c> (<see cref="ReadThrough"/>) — leads to through as many references as a resolution follows, the one
+    /// the value gives counted (<see cref="MaxReferenceLinks"/>), each read with <see cref="ReadWithoutLoading"/>; null when
+    /// one of them cannot be read — no section read so far places it, or a guard cut it —: a <c>/Length</c> whose chain leads
+    /// there waits for the chain, as one the first reference cannot read does. A value
+    /// still a reference past them is one the parse reads as null, reported where <paramref name="report"/> says so.
     /// </summary>
-    private PdfObject? ReadThroughWithoutLoading(PdfObjectId id)
+    private PdfObject? ReadThroughWithoutLoading(PdfObjectId id, bool report = true)
     {
         var read = ReadWithoutLoading(id);
 
-        for (var link = 1; read is PdfReference next && link < LengthLinks; link++)
+        for (var link = 1; read is PdfReference next && link < MaxReferenceLinks; link++)
         {
             read = ReadWithoutLoading(next.Id);
+        }
+
+        // A chain still a reference past them is one the parse reads as null, reported as a resolution that cuts it reports
+        // it (#173).
+        if (report && read is PdfReference)
+        {
+            ((IPdfReferenceChainObserver)this).ChainCut(new PdfReference(id, this));
         }
 
         return read;
@@ -2088,12 +2304,23 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Determines whether the object <paramref name="reference"/> leads to — through a chain of references too, as
     /// <see cref="PdfReference.Resolve"/> follows it — is one a guard cut, or left out of the index: what it holds may lie
     /// past the cut, or is unknown, and is the guard's until the guard is lifted, rather than a value the file gave
-    /// (#224, #263). Call it once the reference is resolved.
+    /// (#224, #263). Call it once the reference is resolved. A chain that ends at a reference naming a generation its object
+    /// does not carry leads to no object, whatever a guard did to the object of that number (#185).
     /// </summary>
     /// <param name="reference">The reference, as the file wrote it.</param>
     /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
-    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1) =>
-        IsLeftByGuard(reference.Target(objects).Number);
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength)
+    {
+        var target = reference.Target(objects);
+        return !NamesAnotherGeneration(target) && IsLeftByGuard(target.Number);
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="id"/> names a generation other than the one the object of its number carries, once
+    /// read: a reference to an object the file does not define.
+    /// </summary>
+    internal bool NamesAnotherGeneration(PdfObjectId id) =>
+        _carriedGenerations.TryGetValue(id.Number, out var carried) && carried != id.Generation;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/> is one a guard cut, or left out of the index: what
@@ -2289,6 +2516,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _source = PdfFileSource.FromMemory(ReadOnlyMemory<byte>.Empty);
         _cache.Clear();
         _cache.TrimExcess();
+        _carriedGenerations.Clear();
+        _carriedGenerations.TrimExcess();
+        _otherGenerationsReported.Clear();
+        _otherGenerationsReported.TrimExcess();
+        _chainsCutReported.Clear();
+        _chainsCutReported.TrimExcess();
         _cacheOrder.Clear();
         _cacheOrder.TrimExcess();
         _objectStreams.Clear();
@@ -2310,6 +2543,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         Release(_unproduced);
         Release(_cutAtLimit);
         _cutAtStop = null;
+        _headerCuts = null;
         _endObjMissing.Clear();
         _endObjMissing.TrimExcess();
         _streamLengthFaults.Clear();

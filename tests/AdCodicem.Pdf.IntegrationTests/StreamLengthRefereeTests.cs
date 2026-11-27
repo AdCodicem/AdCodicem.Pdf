@@ -131,7 +131,7 @@ public class StreamLengthRefereeTests(RefereeContainer referee)
 
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream)
+            if (document.GetObject(number) is PdfStream stream)
             {
                 streams[stream.Data.Position] = (number, stream.Data.Length);
             }

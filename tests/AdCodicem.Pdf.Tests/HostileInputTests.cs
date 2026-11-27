@@ -476,7 +476,8 @@ public class HostileInputTests
         // taken without a search; or where one object placed inside every stream's data, near its end, let each keep nearly
         // all of it. Each length is counted once for each object and place its data starts at, whatever the indexes place:
         // past what such streams may keep whole, the data ends at a header placed inside it while what it keeps fits a
-        // second allowance, or reads empty, and says so (#280).
+        // second allowance, or reads empty, and says so (#280). Headers nested in strings are written short enough that each
+        // dictionary closes within the window its load starts with, which reads it whole whatever rows it holds (#387).
         const int Streams = 200;
         const int Filler = 1024 * 1024;
         var first = 10;
@@ -486,9 +487,9 @@ public class HostileInputTests
         var file = shape switch
         {
             "rows past the file, so that a rebuild places the streams" => OverlappingRebuilt(Streams, Filler),
-            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler),
-            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1),
-            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100),
+            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler, lengthDigits: 7),
+            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1, lengthDigits: 7),
+            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100, lengthDigits: 7),
             "headers on one comment line before one body" => HeadersOnOneCommentLine(Streams, Filler),
             _ when guarded => NestedInStrings(Streams, Filler, lengthObject: "5" + new string(' ', 20_000)),
             _ => OverlappingLengthened(Streams, Filler, out first, out junk),
@@ -1603,8 +1604,9 @@ public class HostileInputTests
     [Fact]
     public void An_object_referenced_under_many_generations_is_read_once()
     {
-        // The index holds one entry per object number, so every generation of a number is the same object: it is
-        // parsed once and kept once, however many generations a file references it under.
+        // The index holds one entry per object number, and the object is parsed once and kept once, however many generations
+        // a file references it under: a reference under a generation other than its header's names an object the file does
+        // not define, and reads as null, each reported once (#185).
         const int Integers = 10_000;
         const int Generations = 1_000;
         var array = new StringBuilder("[");
@@ -1639,10 +1641,405 @@ public class HostileInputTests
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        same.Should().Be(Generations);
+        same.Should().Be(1);
         allocated.Should().BeLessThan(4L * 1024 * 1024, "the array is parsed once, not once per generation");
         first.AsArray().Required().Count.Should().Be(Integers);
-        document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(first);
+        document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(Generations - 1);
+    }
+
+    [Theory]
+    [InlineData("a direct object, named under a higher generation", false)]
+    [InlineData("a direct object, named under a higher generation", true)]
+    [InlineData("a direct object written under generation 2, named under 0", false)]
+    [InlineData("a direct object written under generation 2, named under 0", true)]
+    [InlineData("a member of an object stream, named under 3", false)]
+    [InlineData("a member of an object stream, named under 3", true)]
+    [InlineData("an object 5 bytes past its row, named under 4", false)]
+    [InlineData("an object 5 bytes past its row, named under 4", true)]
+    public void A_reference_under_a_generation_its_object_does_not_carry_reads_as_null_in_either_order(string shape, bool otherFirst)
+    {
+        // An object is named by its number and its generation together, and a reference to an object the file does not define
+        // is null (ISO 32000-1, 7.3.10): one naming a generation other than the object's header gives, or than 0 for an object
+        // an object stream holds, read it all the same, unreported. Asked first or once the object is kept by its number, the
+        // reference reads as null, reported once; the generation the object carries reads it (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        byte[] bytes;
+        (PdfObjectId Other, PdfObjectId Own) asked;
+
+        switch (shape)
+        {
+            case "a member of an object stream, named under 3":
+                var ten = file.ObjectStream(10, [(8, "(eight)")]);
+                file.CrossReferenceStream(11, 12, new() { [1] = (1, rows[1], 0), [2] = (1, rows[2], 0), [8] = (2, 10, 0), [10] = (1, ten, 0) }, "/Root 1 0 R");
+                bytes = file.Bytes;
+                asked = (new PdfObjectId(8, 3), new PdfObjectId(8));
+                break;
+            case "an object 5 bytes past its row, named under 4":
+                rows[8] = file.Position - 5;
+                file.Object(8, "(eight)");
+                file.Table(9, rows, "/Size 9 /Root 1 0 R");
+                bytes = file.Bytes;
+                asked = (new PdfObjectId(8, 4), new PdfObjectId(8));
+                break;
+            default:
+                var written = shape.StartsWith("a direct object written under generation 2", StringComparison.Ordinal) ? 2 : 0;
+                rows[8] = file.Object(8, "(eight)", written);
+                file.Table(9, rows, "/Size 9 /Root 1 0 R");
+                bytes = written == 0 ? file.Bytes : WithRowGeneration(file.Bytes, 8, written);
+                asked = written == 0 ? (new PdfObjectId(8, 1), new PdfObjectId(8)) : (new PdfObjectId(8), new PdfObjectId(8, 2));
+                break;
+        }
+
+        using var document = PdfDocument.Open(bytes);
+        var first = otherFirst ? asked.Other : asked.Own;
+        var second = otherFirst ? asked.Own : asked.Other;
+        var reads = new[] { document.GetObject(first), document.GetObject(second), document.GetObject(asked.Other) };
+
+        (otherFirst ? reads[1] : reads[0]).AsText().Should().Be("eight");
+        (otherFirst ? reads[0] : reads[1]).Should().BeSameAs(PdfNull.Instance);
+        reads[2].Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(8).AsText().Should().Be("eight");
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle()
+            .Which.Message.Should().Be(string.Create(
+                CultureInfo.InvariantCulture,
+                $"A reference names object 8 under generation {asked.Other.Generation}, but the object numbered 8 carries generation {asked.Own.Generation}: the reference names an object the file does not define, and reads as null."));
+    }
+
+    [Fact]
+    public void An_entry_whose_generation_disagrees_with_the_header_reads_the_object_the_references_and_the_header_name()
+    {
+        // As in iPRES t03-010: the row of object 8 gives generation 10000, its header and the references 0. The generation a
+        // reference is told from is the header's, and the entry's plays no part (ADR 45, #185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 8 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [8] = file.Object(8, "(eight)"),
+        };
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var document = PdfDocument.Open(WithRowGeneration(file.Bytes, 8, 10000));
+
+        document.Catalog!.GetRaw(PdfName.Get("Extra")).Should().BeOfType<PdfReference>().Which.Resolve().AsText().Should().Be("eight");
+        document.GetObject(new PdfObjectId(8, 10000)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(1);
+    }
+
+    [Fact]
+    public void References_under_more_generations_than_the_record_holds_are_noted_no_further_than_it()
+    {
+        // An array names object 5 under 1,500 generations it does not carry, each read twice. Each was noted for the life of
+        // the document, a set that grew with what a file names, past what the record of diagnostics keeps; it is noted only
+        // while the record has room, and once full the record counts what it drops (#185).
+        const int Generations = 1_500;
+        var references = new StringBuilder("[");
+
+        for (var generation = 1; generation <= Generations; generation++)
+        {
+            references.Append("5 ").Append(generation).Append(" R ");
+        }
+
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "(five)")
+            .WithObject(6, references.Append(']').ToString())
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file);
+        var all = document.GetObject(6).AsArray().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var index = 0; index < all.Count; index++)
+            {
+                all.Resolved(index).Should().BeSameAs(PdfNull.Instance);
+            }
+        }
+
+        document.Diagnostics.Count.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
+        document.Reader.OtherGenerationsReported.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.SuppressedCount.Should().Be(2 * (Generations - document.Diagnostics.Capacity));
+    }
+
+    [Theory]
+    [InlineData("at its header")]
+    [InlineData("2 KB away")]
+    [InlineData("at its header, cut by the guard")]
+    public void A_length_under_a_generation_its_object_does_not_carry_names_an_object_the_file_lacks(string row)
+    {
+        // Stream 3's /Length names object 7 under generation 1, written 7 0 obj; its row places it at its header, or 2 KB away
+        // in the padding, where loading the stream sets off a rebuild the load finishes after it, or at its header with
+        // MaxObjectLength cutting it. The length names an object the file lacks, whatever a guard did to object 7, and the
+        // reference is reported, once, whatever the rebuild withdrew of what was reported while it ran (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 1 R >>\nstream\nhello\nendstream"),
+        };
+        var padding = file.Padding(8, 4_000);
+        rows[8] = padding;
+        rows[7] = file.Object(7, row.EndsWith("guard", StringComparison.Ordinal) ? "5 " + new string(' ', 300) : "5");
+        rows[7] = row == "2 KB away" ? padding + 2_000 : rows[7];
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var limits = row.EndsWith("guard", StringComparison.Ordinal) ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(3).AsStream().Required();
+        stream.Data.Length.Should().Be(5);
+        stream.Data.CutByGuard.Should().BeFalse();
+
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject).Should().Be(row.EndsWith("guard", StringComparison.Ordinal));
+        document.WasRepaired.Should().Be(row == "2 KB away");
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().ContainSingle();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 7 1, which the file lacks");
+    }
+
+    [Theory]
+    [InlineData(1, 10, "loops back to object 10 0")]
+    [InlineData(2, 10, "loops back to object 10 0")]
+    [InlineData(5, 12, "loops back to object 12 0")]
+    [InlineData(32, 10, "loops back to object 10 0")]
+    [InlineData(32, 0, "leads from reference to reference past the 32 a resolution follows")]
+    [InlineData(31, 0, null)]
+    public void A_chain_of_references_reaches_its_value_through_32_references_or_reads_as_null_reported_once(int links, int loopsBackTo, string? end)
+    {
+        // Object 6 names object 10 twice; objects 10 on each hold a reference to the next — `links` of them —, the last to
+        // object 10 + links, which holds a string, or back to object `loopsBackTo`. A chain of 31 reads the string; a longer
+        // one, or one that loops, reads as null, reported once whatever reads it, the message saying how the chain ends.
+        // Once, either read as null with no report (#173).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(6, "<< /A 10 0 R /B 10 0 R >>");
+
+        for (var link = 0; link < links; link++)
+        {
+            var next = link == links - 1 && loopsBackTo > 0 ? loopsBackTo : 11 + link;
+            builder.WithObject(10 + link, string.Create(CultureInfo.InvariantCulture, $"{next} 0 R"));
+        }
+
+        using var document = PdfDocument.Open(builder.WithObject(10 + links, "(value)").BuildClassic(rootNumber: 1));
+        var holder = document.GetObject(6).AsDictionary().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            foreach (var key in new[] { "A", "B" })
+            {
+                var value = holder.Get(PdfName.Get(key));
+
+                if (end is null)
+                {
+                    value.AsText().Should().Be("value");
+                }
+                else
+                {
+                    value.Should().BeSameAs(PdfNull.Instance);
+                }
+            }
+        }
+
+        if (end is null)
+        {
+            document.Diagnostics.Should().BeEmpty();
+            return;
+        }
+
+        document.Diagnostics.Should().ContainSingle().Which.Should().Be(new PdfDiagnostic(
+            PdfDiagnosticSeverity.Warning,
+            PdfDiagnosticCodes.ObjectReferenceChainCut,
+            $"A reference names object 10 0, whose chain of references {end}: the reference reads as null."));
+    }
+
+    [Fact]
+    public void Chains_cut_from_more_objects_than_the_record_holds_are_noted_no_further_than_it()
+    {
+        // An array names 1,500 objects that each name themselves, each resolved twice: each chain is noted only while the
+        // record of diagnostics has room, and once full the record counts what it drops (#173).
+        const int Chains = 1_500;
+        var references = new StringBuilder("[");
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 10; number < 10 + Chains; number++)
+        {
+            references.Append(number).Append(" 0 R ");
+            builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"));
+        }
+
+        using var document = PdfDocument.Open(builder.WithObject(6, references.Append(']').ToString()).BuildClassic(rootNumber: 1));
+        var all = document.GetObject(6).AsArray().Required();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var index = 0; index < all.Count; index++)
+            {
+                all.Resolved(index).Should().BeSameAs(PdfNull.Instance);
+            }
+        }
+
+        document.Diagnostics.Count.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut);
+        document.Reader.ChainsCutReported.Should().Be(document.Diagnostics.Capacity);
+        document.Diagnostics.SuppressedCount.Should().Be(2 * (Chains - document.Diagnostics.Capacity));
+    }
+
+    [Theory]
+    [InlineData("/Length", false, false)]
+    [InlineData("/Length", true, false)]
+    [InlineData("/Length", true, true)]
+    [InlineData("/Filter", false, false)]
+    [InlineData("/Filter", true, false)]
+    [InlineData("/Filter", true, true)]
+    public void A_value_whose_chain_is_one_object_too_long_reads_alike_whatever_a_guard_does_to_the_object_past_it(string key, bool guarded, bool throwing)
+    {
+        // Stream 4's /Length, or its /Filter, names object 100, which names the next, through object 131, the 32nd, which names
+        // object 132: 3,000 spaces, then what the value would be. The chain reaches no value within the 32 references a
+        // resolution follows, and object 132 is never read: MaxObjectLength cutting it reports nothing and throws nothing.
+        // Once, the /Length's parse loaded object 132, its value dropped, and reported and threw for its cut (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, key == "/Length" ? "<< /Length 100 0 R >>\nstream\nq Q\nendstream" : "<< /Length 3 /Filter 100 0 R >>\nstream\nq Q\nendstream"),
+        };
+
+        for (var number = 100; number < 132; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[132] = file.Object(132, new string(' ', 3_000) + (key == "/Length" ? "3" : "/FlateDecode"));
+        file.Table(133, rows, "/Size 133 /Root 1 0 R");
+        var options = new PdfReaderOptions
+        {
+            Limits = guarded ? PdfReaderLimits.Default with { MaxObjectLength = 1_024 } : PdfReaderLimits.Default,
+            ThrowOnLimit = throwing,
+        };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var stream = document.GetObject(4).AsStream().Required();
+        stream.Decode().ToArray().Should().Equal("q Q"u8.ToArray());
+
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut).Which.Message.Should().Be(
+            "A reference names object 100 0, whose chain of references leads from reference to reference past the 32 a resolution follows: the reference reads as null.");
+
+        if (key == "/Length")
+        {
+            document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().StartWith(
+                "The stream's /Length names object 100 0, whose chain of references reaches no value within the 32 a resolution follows;");
+        }
+    }
+
+    [Theory]
+    [InlineData("at its header")]
+    [InlineData("2 KB away")]
+    public void A_length_whose_chain_loops_is_reported_once_whatever_a_rebuild_withdrew(string row)
+    {
+        // Stream 3's /Length names object 7, which names itself; its row places it at its header, or 2 KB away in the padding,
+        // where loading the stream sets off a rebuild the load finishes after it. The chain is reported once, whatever the
+        // rebuild withdrew of what was reported while it ran, and the length says the chain reaches no value (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 0 R >>\nstream\nhello\nendstream"),
+        };
+        var padding = file.Padding(8, 4_000);
+        rows[8] = padding;
+        rows[7] = file.Object(7, "7 0 R");
+        rows[7] = row == "2 KB away" ? padding + 2_000 : rows[7];
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(3).AsStream().Required().Data.Length.Should().Be(5);
+
+        document.WasRepaired.Should().Be(row == "2 KB away");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut)
+            .Which.Message.Should().Contain("names object 7 0, whose chain of references loops back to object 7 0");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 7 0, whose chain of references reaches no value within the 32 a resolution follows");
+    }
+
+    [Theory]
+    [InlineData("6 0 R", false)]
+    [InlineData("6 0 R", true)]
+    [InlineData("5 0 R", false)]
+    public void An_encrypt_entry_reached_through_a_chain_of_references_is_read_as_the_dictionary_it_leads_to(string five, bool guarded)
+    {
+        // The trailer's /Encrypt names object 5, which names object 6, an encryption dictionary — past 300 spaces, which
+        // MaxObjectLength, lowered to 128, cuts —, or names itself. The document is encrypted where the chain leads to the
+        // dictionary, or to an object a guard cut, as a reference resolves through a chain to the value it leads to; the
+        // reader read object 5 alone, and opened the document as unencrypted, its /Encrypt "read as null". A chain that loops
+        // reads as null, and the document is unencrypted (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, five),
+            [6] = file.Object(6, (guarded ? new string(' ', 300) : string.Empty) + "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R /Encrypt 5 0 R /ID [<01> <02>]");
+        var limits = guarded ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        var encrypted = five == "6 0 R";
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false, Limits = limits });
+        document.IsEncrypted.Should().Be(encrypted);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid).Should().Be(!encrypted);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectReferenceChainCut).Should().Be(!encrypted);
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_catalog_search_takes_the_catalog_itself_not_an_object_whose_chain_of_references_leads_to_it(int links)
+    {
+        // The trailer's /Root names object 90, which the file lacks; object 3 names object 4, and so on through `links`
+        // objects to object 3 + links, the catalog. The search takes the catalog: an object whose value is a reference is
+        // none, whatever its chain leads to. It took object 3, which /Root then read through its chain — to no catalog past
+        // 32 references (#173).
+        var file = new HandWrittenFile();
+        var catalog = 3 + links;
+        var rows = new Dictionary<int, long>
+        {
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < catalog; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[catalog] = file.Object(catalog, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Table(catalog + 1, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {catalog + 1} /Root 90 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Catalog.Should().NotBeNull();
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(catalog));
+    }
+
+    /// <summary>Gives <paramref name="bytes"/> with the classic table's row of object <paramref name="number"/> giving <paramref name="generation"/>.</summary>
+    private static byte[] WithRowGeneration(byte[] bytes, int number, int generation)
+    {
+        var text = Encoding.Latin1.GetString(bytes);
+        var table = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+        var row = text.IndexOf('\n', text.IndexOf('\n', table) + 1) + 1 + (number * 20);
+        return Encoding.Latin1.GetBytes(
+            text[..(row + 11)] + generation.ToString("D5", CultureInfo.InvariantCulture) + text[(row + 16)..]);
     }
 
     [Fact]
@@ -2725,6 +3122,59 @@ public class HostileInputTests
         document.IsEncrypted.Should().BeFalse();
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
             .Which.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void An_encrypt_entry_under_a_generation_its_object_does_not_carry_opens_unencrypted_whatever_a_guard_cut()
+    {
+        // The trailer's /Encrypt names object 9 under generation 1; it is written 9 0 obj, its dictionary past 300 spaces
+        // MaxObjectLength, lowered to 128, cuts. A reference to an object the guard cut is the guard's, and left the document
+        // encrypted; this one names an object the file does not define, whatever the guard did (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [9] = file.Object(9, new string(' ', 300) + "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
+        };
+        file.Table(10, rows, "/Size 10 /Root 1 0 R /Encrypt 9 1 R /ID [<01> <02>]");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+
+        document.IsEncrypted.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
+            .Which.Message.Should().Be("The trailer's /Encrypt names object 9, which reads as null, not an encryption dictionary; the document is read as unencrypted.");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_length_whose_chain_ends_at_a_reference_under_another_generation_names_that_reference(bool cut)
+    {
+        // Stream 3's /Length names object 7, which holds 8 1 R, and object 8 is written 8 0 obj — 300 spaces after its value,
+        // which MaxObjectLength, lowered to 128, cuts: what the file lacks is the chain's last link, which the report names,
+        // not the object the /Length names, whatever a guard did to object 8 (#185).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /Length 7 0 R >>\nstream\nhello\nendstream"),
+            [7] = file.Object(7, "8 1 R"),
+            [8] = file.Object(8, cut ? "4" + new string(' ', 300) : "4"),
+        };
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var limits = cut ? PdfReaderLimits.Default with { MaxObjectLength = 128 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(3).AsStream().Required();
+        stream.Data.Length.Should().Be(5);
+        stream.Data.CutByGuard.Should().BeFalse();
+
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject).Should().Be(cut);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Contain("names object 8 1, which the file lacks");
     }
 
     [Fact]
@@ -5491,6 +5941,23 @@ public class HostileInputTests
     [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
     [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "", "null")]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " (abc", "\"abc\\n% \"")]
+    [InlineData(CommentHeadersPlacedBy.Table, "", "null", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " (abc", "\"abc\\n% \"", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " [1 2 3", "[array of 3]", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, " (abc", "\"abc\\n% \"", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3]", "<<dictionary of 1>>", CommentLine)]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.TableByteEarly, " (abc", "\"abc\\n%\"")]
     public void Objects_whose_headers_a_run_of_comment_lines_holds_are_read_without_reading_the_lines_after_each(
         CommentHeadersPlacedBy shape, string body, string read, string gap = " ")
     {
@@ -5498,7 +5965,10 @@ public class HostileInputTests
         // its value, its window grown eight times over, and opening, which loads every object a rebuild places, or
         // validating, which loads every object, took time in the square of the lines. A whole value is kept as read where
         // the window holds the next line's header, however much white space parts its tokens, and a row past the value that
-        // starts no header does not keep it from counting (#362).
+        // starts no header does not keep it from counting (#362); or where more rows than the bound lie past it, a byte
+        // early on the next lines' headers. A value left open — missing, a dictionary, an array or a string that runs on —
+        // whose window holds more rows than the bound, however much white space or comment parts their headers' tokens,
+        // ends at the first of them (#387).
         const int Lines = 1_000;
 
         var small = ReadHeaderLines(shape, body, read, gap, Lines);
@@ -5526,7 +5996,7 @@ public class HostileInputTests
             for (var k = 0; k < lines; k++)
             {
                 file.Raw("% ");
-                rows[100 + k] = file.Position;
+                rows[100 + k] = file.Position - (shape == CommentHeadersPlacedBy.TableByteEarly ? 1 : 0);
                 var line = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj{body}");
 
                 if (shape == CommentHeadersPlacedBy.TableWithDecoys)
@@ -5558,7 +6028,7 @@ public class HostileInputTests
             using var source = new StrictCountingSource(file.Bytes);
             using var document = PdfDocument.Open(source, options: null, ownsSource: false);
 
-            if (shape == CommentHeadersPlacedBy.Table)
+            if (shape is CommentHeadersPlacedBy.Table or CommentHeadersPlacedBy.TableByteEarly)
             {
                 _ = new PdfValidator().Validate(document);
             }
@@ -5583,8 +6053,264 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("one comment line")]
+    [InlineData("a comment line each, then obj")]
+    [InlineData("a comment line each, then 0 obj")]
+    public void Headers_whose_tokens_a_run_of_placed_rows_parts_are_read_without_reading_the_run_for_each(string shape)
+    {
+        // Rows that each place a header whose tokens a comment parts from the next ones, "10 0 %11 0 %12 0 % ... obj" on one
+        // line, or on a line each: each row's load read the run of comments after it for the obj that would end its header,
+        // its window grown eight times over, and reading every object took time in the square of the rows. A header whose
+        // tokens more rows than the bound part is none there (#387).
+        const int Headers = 1_000;
+
+        var small = Read(Headers);
+        var large = Read(4 * Headers);
+
+        large.Should().BeLessThan(8 * small, "four times the rows must cost about four times the bytes read ({0:N0} for {1:N0})", small, Headers);
+
+        long Read(int headers)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var k = 0; k < headers; k++)
+            {
+                rows[10 + k] = file.Position;
+                file.Raw(shape switch
+                {
+                    "one comment line" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %"),
+                    "a comment line each, then obj" => string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 %\n"),
+                    _ => string.Create(CultureInfo.InvariantCulture, $"{10 + k} %\n"),
+                });
+            }
+
+            file.Raw((shape == "one comment line" ? "\n" : string.Empty) + (shape.EndsWith("then 0 obj", StringComparison.Ordinal) ? "0 obj" : "obj") + " << >>\nendobj\n");
+            file.Table(10 + headers, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + headers} /Root 1 0 R"));
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            for (var k = 0; k < headers; k++)
+            {
+                _ = document.GetObject(new PdfObjectId(10 + k));
+            }
+
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("3 0, comment lines, obj", false)]
+    [InlineData("3 0, comment lines, obj", true)]
+    [InlineData("comment lines, 3 0 obj", false)]
+    [InlineData("comment lines, 3 0 obj", true)]
+    [InlineData("white space, 3 0 obj", false)]
+    [InlineData("leading zeros, 3 0 obj", false)]
+    [InlineData("leading signs, 3 0 obj", false)]
+    [InlineData("comment lines past the guard, 3 0 obj", false)]
+    [InlineData("comment lines holding rows, 3 0 obj", false)]
+    [InlineData("comment lines, a name", false)]
+    [InlineData("comment lines, 0 0 obj", false)]
+    public void Rows_that_place_many_objects_at_one_long_header_of_another_are_read_without_reading_it_for_each(string shape, bool validate)
+    {
+        // Rows that place a thousand objects at one header whose tokens, or what comes before its number, run on for lines,
+        // which a trailer padded past MaxTrailerLength keeps through the rebuild: each object's load read the header in
+        // windows grown until they held its obj, to find it names object 3, and loading or validating every object took time
+        // in the square of the file. A header whose number the window holds whole and names another object is not the one
+        // asked for, and what loads learn of a header a window cut at a place — its number, the guard's cut, or that no header
+        // is there — serves the loads after them (#387).
+        var small = Read(250, 200);
+        var large = Read(1_000, 800);
+
+        large.Should().BeLessThan(8 * small, "four times the rows and the header's lines must cost about four times the bytes read ({0:N0})", small);
+
+        long Read(int objects, int lines)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+            var at = file.Position;
+            var run = new StringBuilder();
+
+            for (var k = 0; k < lines; k++)
+            {
+                if (shape == "comment lines holding rows, 3 0 obj" && k % 3 == 0)
+                {
+                    // A row past the place on every third line, for an object of its own: more of them part the header than the
+                    // bound allows.
+                    rows[3 + objects + (k / 3)] = at + run.Length + 2;
+                }
+
+                run.Append(shape switch
+                {
+                    "white space, 3 0 obj" => new string(' ', 251),
+                    "leading zeros, 3 0 obj" => new string('0', 251),
+                    "leading signs, 3 0 obj" => new string('+', 251),
+                    _ => "\n%" + new string('y', 250),
+                });
+            }
+
+            file.Raw(shape switch
+            {
+                "3 0, comment lines, obj" => "3 0" + run + "\nobj (three)\nendobj\n",
+                "comment lines, a name" => run + "\n/Name null\nendobj\n",
+                "comment lines, 0 0 obj" => run + "\n0 0 obj null\nendobj\n",
+                "leading zeros, 3 0 obj" or "leading signs, 3 0 obj" => run + "3 0 obj (three)\nendobj\n",
+                _ => run + "\n3 0 obj (three)\nendobj\n",
+            });
+
+            for (var k = 0; k < objects; k++)
+            {
+                rows[3 + k] = at;
+            }
+
+            var size = 3 + objects + lines;
+            file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+            var options = shape.Contains("past the guard", StringComparison.Ordinal)
+                ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+                : null;
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+            if (validate)
+            {
+                _ = new PdfValidator().Validate(document);
+            }
+            else
+            {
+                for (var k = 0; k < objects; k++)
+                {
+                    _ = document.GetObject(new PdfObjectId(3 + k));
+                }
+            }
+
+            // The header's own object reads where its row places it: the rows of the other objects at its place part nothing.
+            if (shape is not ("comment lines past the guard, 3 0 obj" or "comment lines holding rows, 3 0 obj" or "comment lines, a name" or "comment lines, 0 0 obj"))
+            {
+                document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+            }
+
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("9 0, comment lines past the guard, obj")]
+    [InlineData("comment lines past the guard, 9 0 obj")]
+    [InlineData("9 0, comment lines, obj")]
+    [InlineData("comment lines within the guard, 9 0 obj")]
+    public void Objects_placed_at_one_header_a_window_cuts_read_alike_whatever_order_they_are_read_in(string shape)
+    {
+        // Rows place objects 4 to 9 at one header a window's edge cuts, under MaxObjectLength 32 KB, which it runs past or
+        // not. What a load learns of that header serves the loads after it, and must answer each as reading the header again
+        // would: the objects, and the codes and places reported, are the same whether object 9, whose header it is, is read
+        // first or last (#387).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var lines = string.Concat(Enumerable.Repeat("\n%" + new string('y', 250), shape.Contains("past the guard", StringComparison.Ordinal) ? 200 : shape.Contains("within", StringComparison.Ordinal) ? 80 : 40));
+        file.Raw(shape.StartsWith("9 0", StringComparison.Ordinal) ? "9 0" + lines + "\nobj (nine)\nendobj\n" : lines + "\n9 0 obj (nine)\nendobj\n");
+
+        for (var number = 4; number <= 9; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } };
+
+        Read([9, 4, 5, 6, 7, 8]).Should().Equal(Read([4, 5, 6, 7, 8, 9]));
+
+        List<string> Read(int[] order)
+        {
+            using var document = PdfDocument.Open(file.Bytes, options);
+            var seen = new List<string>();
+
+            foreach (var number in order)
+            {
+                seen.Add(string.Create(CultureInfo.InvariantCulture, $"{number}: {document.GetObject(new PdfObjectId(number))}"));
+            }
+
+            // A guard reached at one place is reported once, naming the object whose load reached it first.
+            seen.AddRange(document.Diagnostics.Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Code} at {entry.Position}")));
+            return [.. seen.Order(StringComparer.Ordinal)];
+        }
+    }
+
+    [Theory]
+    [InlineData("rows inside it")]
+    [InlineData("past the guard")]
+    [InlineData("a header past the first window")]
+    [InlineData("a name at the guard's window")]
+    public void Loads_at_a_place_whose_cut_header_a_load_read_before_read_their_first_window_and_little_more(string shape)
+    {
+        // Rows place two hundred objects at one header that a run of comment lines precedes, rows inside that run, or the run
+        // past MaxObjectLength 32 KB, or 20 KB of it, then the header or a name that rules one out. The first load, of an object
+        // the header does not name, reads it as far as its refusal, its guard, the number it gives or what rules a header out;
+        // what it learned answers every load after it once its first window is read, which, with the search near the place,
+        // is all each reads (#387).
+        const int Objects = 200;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var run = new StringBuilder();
+
+        for (var k = 0; k < (shape.StartsWith("rows", StringComparison.Ordinal) || shape.StartsWith("past", StringComparison.Ordinal) ? 400 : 80); k++)
+        {
+            if (shape == "rows inside it" && k % 3 == 0)
+            {
+                rows[3 + Objects + (k / 3)] = at + run.Length + 2;
+            }
+
+            run.Append("\n%").Append('y', 250);
+        }
+
+        file.Raw(run + (shape == "a name at the guard's window" ? "\n/Name null\nendobj\n" : "\n3 0 obj null\nendobj\n"));
+
+        for (var k = 0; k < Objects; k++)
+        {
+            rows[3 + k] = at;
+        }
+
+        var size = 3 + Objects + 400;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R /Pad ({new string('p', 70_000)})"));
+        var options = shape is "past the guard" or "a name at the guard's window"
+            ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 * 1024 } }
+            : null;
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        for (var k = 1; k < Objects; k++)
+        {
+            _ = document.GetObject(new PdfObjectId(3 + k));
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            2L * Objects * PdfFileReader.InitialObjectWindow, "each load after the first reads its first window and the search near the place");
+    }
+
     /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
     private const string Spaces70 = "                                                                      ";
+
+    /// <summary>What parts the tokens of a header written with a comment line between them.</summary>
+    private const string CommentLine = "\n% x\n";
 
     /// <summary>What places the headers a run of lines holds.</summary>
     public enum CommentHeadersPlacedBy
@@ -5600,6 +6326,36 @@ public class HostileInputTests
 
         /// <summary>A table as <see cref="Table"/>, with a row past each value that starts no header.</summary>
         TableWithDecoys,
+
+        /// <summary>A table whose rows each place a header a byte early, on the white space before its number.</summary>
+        TableByteEarly,
+    }
+
+    [Fact]
+    public void A_number_an_object_stream_lists_many_times_is_asked_once_whether_its_later_direct_definition_holds_a_value()
+    {
+        // Object stream 5 lists object 3 a hundred thousand times; a direct definition of 3 follows it. A rebuild asks whether
+        // that definition holds no value at the first listing only, each later one keeping that first place: asked at each,
+        // it read the definition again, 64 bytes a listing, six times the file (#438).
+        const int Listings = 100_000;
+        var header = new StringBuilder();
+
+        for (var i = 0; i < Listings; i++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"3 {i} ");
+        }
+
+        var data = header.ToString() + new string(' ', Listings) + "(member) ";
+        var bytes = Encoding.Latin1.GetBytes(new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+            .Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n")
+            .Append(CultureInfo.InvariantCulture, $"5 0 obj\n<< /Type /ObjStm /N {Listings} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n")
+            .Append("3 0 obj (direct) endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("direct");
+        document.WasRepaired.Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(4L * bytes.Length);
     }
 
     [Theory]
@@ -7633,8 +8389,10 @@ public class HostileInputTests
     /// <paramref name="filler"/> bytes, less <paramref name="shortBy"/>, or names object 999, which holds
     /// <paramref name="lengthObject"/>. With <paramref name="placedFromEnd"/>, object 9, which the index places, starts that
     /// many bytes before that <c>endstream</c>, inside every stream's data. The trailer holds <paramref name="entries"/> besides.
+    /// A direct length is written with <paramref name="lengthDigits"/> digits.
     /// </summary>
-    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "")
+    internal static byte[] NestedInStrings(
+        int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "", int lengthDigits = 10)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -7652,7 +8410,7 @@ public class HostileInputTests
             rows[10 + k] = origin + text.Length;
             text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
             lengthAt[k] = text.Length;
-            text.Append(lengthObject is null ? "0000000000" : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
+            text.Append(lengthObject is null ? new string('0', lengthDigits) : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
         }
 
         starts[^1] = text.Length;
@@ -7677,7 +8435,7 @@ public class HostileInputTests
 
         for (var k = 0; lengthObject is null && k < streams; k++)
         {
-            var digits = (end - starts[k] - shortBy).ToString("D10", CultureInfo.InvariantCulture);
+            var digits = (end - starts[k] - shortBy).ToString("D" + lengthDigits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
             for (var d = 0; d < digits.Length; d++)
             {

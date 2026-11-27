@@ -1589,6 +1589,8 @@ public class DocumentReaderTests
             Disposed(() => document.IsEncrypted);
             Disposed(() => document.GetObject(new PdfObjectId(3)));
             Disposed(() => document.GetObject(new PdfObjectId(2)));
+            Disposed(() => document.GetObject(3));
+            Disposed(() => document.GetObject(2));
             Disposed(() => numbers.MoveNext());
             Disposed(() => contents.Resolve());
             Disposed(() => packed.Resolve());
@@ -2627,6 +2629,8 @@ public class DocumentReaderTests
     [InlineData("7 5 obj stream")]
     [InlineData("7 5 obj R")]
     [InlineData("7 5 obj\n8 0 obj (eight) endobj")]
+    [InlineData("7 5 obj\n2147483647 0 obj")]
+    [InlineData("7 5 obj\n8 65535 obj")]
     public void A_definition_met_again_that_holds_no_value_leaves_the_readable_one_before_it(string later)
     {
         // The file has no table. Object 7's later header is followed by nothing that starts a value — a stray parenthesis,
@@ -2638,7 +2642,7 @@ public class DocumentReaderTests
             "7 3 obj << /Real true /Missing 98 0 R >> endobj\n" + new string(' ', 48) + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.GetObject(7).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(3);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
@@ -2668,6 +2672,31 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("-3 0 obj", -3)]
+    [InlineData("0 0 obj", 0)]
+    [InlineData("8 -1 obj", 8)]
+    [InlineData("8 99999 obj", 8)]
+    [InlineData("99999999999 0 obj", 99_999_999_999)]
+    [InlineData("2147483648 0 obj", 2_147_483_648)]
+    [InlineData("8 65536 obj", 8)]
+    public void A_definition_met_again_whose_integer_starts_a_pair_the_scan_takes_for_no_header_is_kept(string pair, long value)
+    {
+        // Object 7's later header is followed by two integers and obj whose number or generation lies outside what a header
+        // may give: the scan takes them for no header, a load reads the first integer as the value, and that definition wins
+        // over the one before it (#438).
+        var file = Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "7 3 obj << /Real true >> endobj\n7 5 obj " + pair + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(7).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(value);
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(5);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Theory]
     [InlineData("7 5 obj\n<< /Partial", true)]
     [InlineData("7 5 obj (five)", false)]
     public void A_definition_met_again_whose_value_is_read_in_part_or_whole_is_kept(string later, bool partial)
@@ -2679,7 +2708,7 @@ public class DocumentReaderTests
             "7 3 obj << /Real true >> endobj\n" + later + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        var seven = document.GetObject(new PdfObjectId(7));
+        var seven = document.GetObject(7);
 
         if (partial)
         {
@@ -2744,7 +2773,7 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(3);
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
+        document.GetObject(7).Should().BeOfType<PdfDictionary>().Which.ContainsKey(PdfName.Get("Real")).Should().BeTrue();
     }
 
     [Theory]
@@ -2818,7 +2847,7 @@ public class DocumentReaderTests
             "7 3 obj (three) endobj\n7 5 obj\nendobj\n7 6 obj (six) endobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n");
         using var document = PdfDocument.Open(file);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("six");
+        document.GetObject(7).Should().BeOfType<PdfString>().Which.ToText().Should().Be("six");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
             .Which.Message.Should().Be(
                 "Rebuilding the index met 2 definitions of object numbers it had already found, of object 7." + KeptOverNoValue);
@@ -3096,13 +3125,14 @@ public class DocumentReaderTests
     [InlineData("4 0 obj\n42\n", "4 0 obj\n/F\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the name /F, not a length; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("4 0 obj\n42\n", "4 0 obj\n-1\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the integer -1, not a length; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("/Length 4 0 R", "/Length 9 0 R", "The /Length of cross-reference stream 5 names object 9 0, which the file lacks; the chain took its data up to its endstream, after 42 bytes.")]
+    [InlineData("/Length 4 0 R", "/Length 4 1 R", "The /Length of cross-reference stream 5 names object 4 1, which the file lacks; the chain took its data up to its endstream, after 42 bytes.")]
     [InlineData("4 0 obj\n42\n", "4 0 xbj\n42\n", "The stream's /Length names object 4 0, which could not be read; its data ends after 42 bytes.")]
     public void Reports_a_deferred_length_that_gives_no_length_once_the_chain_is_read(string written, string replacement, string message)
     {
-        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes; object 4's header
-        // is misspelled, which no search near its entry nor any rebuild then finds — the rebuild its load sets off parses
-        // the stream again, and the parser reports the length first: the stream is reported once. Each replacement keeps
-        // every offset.
+        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes, or object 4
+        // under a generation it does not carry (#185); object 4's header is misspelled, which no search near its entry
+        // nor any rebuild then finds — the rebuild its load sets off parses the stream again, and the parser reports
+        // the length first: the stream is reported once. Each replacement keeps every offset.
         var file = Encoding.Latin1.GetBytes(
             Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength()).Replace(written, replacement, StringComparison.Ordinal));
         using var document = PdfDocument.Open(file);
@@ -3110,6 +3140,34 @@ public class DocumentReaderTests
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().Be(message);
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_under_a_generation_its_object_does_not_carry_names_what_the_file_lacks_whatever_a_guard_cut()
+    {
+        // The cross-reference stream's /Length names object 4 under generation 1; object 4 is written 4 0 obj, 3,000 spaces
+        // after its value, which MaxObjectLength, lowered to 1 KB, cuts. A length a guard cut is the guard's, unreported; this
+        // one names an object the file does not define, whatever the guard did to object 4 (#185).
+        var file = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength(lengthTail: 3000)).Replace("/Length 4 0 R", "/Length 4 1 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().StartWith("The /Length of cross-reference stream 5 names object 4 1, which the file lacks;");
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_deferred_length_whose_chain_ends_under_another_generation_names_the_link_the_file_lacks()
+    {
+        // The cross-reference stream's /Length names object 4, which holds 3 1 R; object 3 is written 3 0 obj. The chain's
+        // last link is what the file lacks, which the report names, not the object the /Length names (#185).
+        var file = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength(lengthTail: 3)).Replace("4 0 obj\n42   ", "4 0 obj\n3 1 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().StartWith("The /Length of cross-reference stream 5 names object 3 1, which the file lacks;");
     }
 
     [Theory]
@@ -3237,7 +3295,7 @@ public class DocumentReaderTests
         section.Fault.Should().Be("it holds 5 rows where its /Index and /Size declare 8");
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
-            "The /Length of cross-reference stream 7 names object 4 0, which holds null, not a length; the chain took its data up to its endstream, after 35 bytes.");
+            "The /Length of cross-reference stream 7 names object 4 0, whose chain of references reaches no value within the 32 a resolution follows; the chain took its data up to its endstream, after 35 bytes.");
     }
 
     [Fact]
@@ -4101,8 +4159,8 @@ public class DocumentReaderTests
     {
         // Stream 7's /Length names object 5, which the newer table places, and which names object 100, the next, and so on;
         // the last holds 56, and none is cut. The chain read follows as many objects as the parse resolves a /Length through,
-        // and reads a longer chain as null, as a later load of stream 7 does: the length is reported at opening, and the load
-        // adds nothing. Once, the parse resolved the reference the chain read gave back, took 56, and the report waited for
+        // and reads a longer chain as null, as a later load of stream 7 does: the length is reported at opening, with the
+        // chain (#173), and the load adds nothing. Once, the parse resolved the reference the chain read gave back, took 56, and the report waited for
         // the load (#220, #224).
         var placed = new Dictionary<int, string>();
         var last = 100 + objects - 2;
@@ -4114,7 +4172,7 @@ public class DocumentReaderTests
 
         var file = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "100 0 R", compressed: false, predicted: false, placed: true, placedToo: placed);
-        string[] expected = tooLong ? [PdfDiagnosticCodes.StreamLengthInvalid] : [];
+        string[] expected = tooLong ? [PdfDiagnosticCodes.ObjectReferenceChainCut, PdfDiagnosticCodes.StreamLengthInvalid] : [];
         using var document = PdfDocument.Open(file);
 
         document.WasRepaired.Should().BeFalse();
@@ -4302,7 +4360,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects));
 
         document.WasRepaired.Should().BeTrue();
-        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.GetObject(2).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
         document.Reader.Index.TryGet(2, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(65535, "the rebuilt entry records the generation its header gives (#118)");
     }
@@ -4366,9 +4424,20 @@ public class DocumentReaderTests
             .Replace("{row:3}", string.Create(CultureInfo.InvariantCulture, $"{{row:3:{row}:4}}"), StringComparison.Ordinal);
         using var document = PdfDocument.Open(PdfTemplate.Build(template));
 
-        document.GetObject(new PdfObjectId(3, asked)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        // Asked under a generation other than the header's, the reference names an object the file does not define (#185).
+        var read = document.GetObject(new PdfObjectId(3, asked));
+
+        if (asked == 1)
+        {
+            read.AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+        else
+        {
+            read.Should().BeSameAs(PdfNull.Instance);
+        }
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch).Should().Be(asked == 1 ? 0 : 1);
         document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
         entry.Generation.Should().Be(1);
         document.Reader.ChainIndex!.TryGet(3, out var written).Should().BeTrue();
@@ -4379,14 +4448,17 @@ public class DocumentReaderTests
     [InlineData("row")]
     [InlineData("shifted")]
     [InlineData("rebuilt")]
-    public void A_catalog_found_by_its_type_is_named_as_its_entry_names_it(string layout)
+    [InlineData("row of another generation")]
+    public void A_catalog_found_by_its_type_is_named_under_the_generation_it_carries(string layout)
     {
         // #118: the trailer's /Root names nothing, and the reader finds the catalog, written 1 1 obj, among the objects the
-        // index holds — through a row of 1, through a row of 0 a few bytes off, which the catalog's own load relocates, or
-        // in a rebuilt index. It once put 1 0 R in the trailer, so that a report named the catalog both 1 1 and 1 0.
+        // index holds — through a row of 1, through a row of 0 a few bytes off, which the catalog's own load relocates, in
+        // a rebuilt index, or through a row of 2 at its header. It once put 1 0 R in the trailer, so that a report named the
+        // catalog both 1 1 and 1 0; the row's generation would name an object the file does not define (#185).
         using var document = PdfDocument.Open(CatalogWrittenUnderGeneration1(layout));
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectGenerationMismatch);
         document.WasRepaired.Should().Be(layout == "rebuilt");
         document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1, 1));
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
@@ -4394,9 +4466,9 @@ public class DocumentReaderTests
 
     /// <summary>
     /// The sound document with its catalog written <c>1 1 obj</c> and a trailer whose <c>/Root</c> names nothing: the
-    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or
-    /// <c>startxref</c> names nothing and the index is rebuilt (<c>rebuilt</c>). <paramref name="catalog"/> replaces the
-    /// catalog's entries.
+    /// catalog's row gives generation 1 (<c>row</c>), or 0 a few bytes past its header (<c>shifted</c>), or 2 at its
+    /// header (<c>row of another generation</c>), or <c>startxref</c> names nothing and the index is rebuilt
+    /// (<c>rebuilt</c>). <paramref name="catalog"/> replaces the catalog's entries.
     /// </summary>
     internal static byte[] CatalogWrittenUnderGeneration1(string layout, string catalog = "/Type /Catalog /Pages 2 0 R")
     {
@@ -4404,7 +4476,7 @@ public class DocumentReaderTests
             .Replace("1 0 obj", "1 1 obj", StringComparison.Ordinal)
             .Replace("/Type /Catalog /Pages 2 0 R", catalog, StringComparison.Ordinal)
             .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal)
-            .Replace("{row:1}", layout == "shifted" ? "{row:1:0:4}" : "{row:1:1}", StringComparison.Ordinal);
+            .Replace("{row:1}", layout switch { "shifted" => "{row:1:0:4}", "row of another generation" => "{row:1:2}", _ => "{row:1:1}" }, StringComparison.Ordinal);
 
         return PdfTemplate.Build(layout == "rebuilt" ? template.Replace("startxref\n{xref:1}", "startxref\n999999", StringComparison.Ordinal) : template);
     }

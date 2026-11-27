@@ -249,10 +249,13 @@ total less than the file
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.
 
-One kind stays an internal constant though a valid file reaches it: a bound on what the library
+Two kinds stay internal constants though a valid file reaches them. One is a bound on what the library
 repeats of what it read, not on what it reads. A message quotes at most 127 bytes of a name, which PDF 2.0 lets be
 longer, and the whole name stays in the document; there is nothing more to read by lifting it. Its declaration says
-so instead ([How a message quotes the file](../reference/diagnostics.md#how-a-message-quotes-the-file)).
+so instead ([How a message quotes the file](../reference/diagnostics.md#how-a-message-quotes-the-file)). The other is
+a threshold that changes only when the library reads an object, never what it reads nor what it reports: validating a
+document whose objects many others name before the validator reaches them, it reads those objects sooner rather than
+keep a count of each reference, and the report is the same.
 
 ## Refusing instead
 

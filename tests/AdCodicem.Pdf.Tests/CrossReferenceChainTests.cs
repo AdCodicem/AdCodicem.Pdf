@@ -7857,8 +7857,8 @@ public class CrossReferenceChainTests
     public void A_prev_falling_inside_the_stream_its_xrefstm_read_takes_it_where_the_stream_s_own_prev_names_no_offset_in_the_file(string ownPrev)
     {
         // As above, the stream giving through its own /Prev an offset past the file's end, -1, a name, or a reference through
-        // a chain of 33 objects, one more than a section's offset is read through, the last object's place dropped: no offset
-        // in the file, which counts as another offset than the table's, the stream no stream that may be the table's own — -1
+        // a chain of 33 objects, one more than a section's offset is read through, the last object never read and the chain
+        // reported as cut (#173): no offset in the file, which counts as another offset than the table's, the stream no stream that may be the table's own — -1
         // no more than any, though it is the number the reader gives a /Prev that is not there. It is a section
         // the /Prev can mean, taken where it comes nearest, before the table farther off, and read whole, the /XRefStm
         // reported as naming what the /Prev read; its own /Prev is reported as the chain finds it, the older sections looked
@@ -7872,11 +7872,12 @@ public class CrossReferenceChainTests
             ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
         sections[3].Should().Match<XRefSectionRecord>(section => section.NamedBy == "/Prev" && section.State == XRefSectionState.NotFound);
+        string[] chainCut = ownPrev.EndsWith("33 objects", StringComparison.Ordinal) ? [PdfDiagnosticCodes.ObjectReferenceChainCut] : [];
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             ownPrev != "outside the file"
                 ?
                 [
-                    PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
+                    .. chainCut, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
                     PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined,
                 ]
                 :
@@ -8653,6 +8654,7 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("the first revision's stream")]
     [InlineData("a reference")]
+    [InlineData("a chain that loops")]
     [InlineData("another offset")]
     [InlineData("the table's /Prev, as a real")]
     public void A_first_revision_s_stream_near_a_hybrid_table_s_prev_is_taken_where_it_comes_nearest_whatever_prev_the_table_s_own_stream_gives(
@@ -8661,8 +8663,9 @@ public class CrossReferenceChainTests
         // The first revision's cross-reference stream, stream 8, gives no /Prev, as a first revision's does (ISO 32000-1, Table
         // 17); the update's table names its own stream, stream 9, through /XRefStm, and through /Prev a place 12 bytes into
         // stream 8's object. Read as possibly the table's own for giving no /Prev, stream 8 was passed over for stream 9,
-        // farther off, whose own /Prev — stream 8's offset, a reference to an object no section places, another offset, or
-        // the table's /Prev written as a real — read as naming another offset than the table's: the /XRefStm was reported as
+        // farther off, whose own /Prev — stream 8's offset, a reference to an object no section places, a chain of references
+        // that loops, which is weighed without being reported (#173), another offset, or the table's /Prev written as a
+        // real — read as naming another offset than the table's: the /XRefStm was reported as
         // naming what the /Prev read, the validator gave an Error, and the chain went on through stream 9's /Prev, to stream
         // 8, nowhere, or back to the place the table's names. Under updates appended to the file, the table's own stream lies
         // past every older revision's section: stream 8, before stream 9, is no stream of the table's revision, and is taken

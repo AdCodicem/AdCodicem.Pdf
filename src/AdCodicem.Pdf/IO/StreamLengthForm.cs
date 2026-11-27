@@ -25,6 +25,12 @@ internal enum StreamLengthForm : byte
     ObjectUnreadable,
 
     /// <summary>
+    /// A reference whose chain of references reaches no value — it loops, or leads from reference to reference past the
+    /// references a resolution follows —, and so reads as null (#173).
+    /// </summary>
+    ObjectChainCut,
+
+    /// <summary>
     /// A reference read while the cross-reference chain is read, to an object no section read so far places where it can
     /// be read without loading it: the data is taken up to its <c>endstream</c>, nothing is reported, and the length is
     /// read and checked once the chain is read (#182).

@@ -1883,17 +1883,17 @@ public class PageTreeRuleTests
     [Fact]
     public void A_chain_of_references_too_long_to_resolve_leads_to_no_page()
     {
-        // M1-06: thirty-one references lead to page 3, one more than a reference resolves through: the kid reads as null,
-        // and the walk took page 3 for listed, then called it listed again at index 1 and orphaned at once.
+        // M1-06: thirty-two references lead to page 3, past the 32 a resolution follows: the kid reads as null, and the walk
+        // took page 3 for listed, then called it listed again at index 1 and orphaned at once.
         var objects = new List<(int Number, string Body)>
         {
             (2, "<< /Type /Pages /Kids [10 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
             (3, "<< /Type /Page /Parent 2 0 R >>"),
         };
 
-        for (var link = 10; link <= 40; link++)
+        for (var link = 10; link <= 41; link++)
         {
-            objects.Add((link, string.Create(CultureInfo.InvariantCulture, $"{(link < 40 ? link + 1 : 3)} 0 R")));
+            objects.Add((link, string.Create(CultureInfo.InvariantCulture, $"{(link < 41 ? link + 1 : 3)} 0 R")));
         }
 
         using var document = PdfDocument.Open(Objects([.. objects]));
@@ -1902,7 +1902,7 @@ public class PageTreeRuleTests
 
         report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
             PdfValidationRuleIds.PageTreeKidInvalid,
-            "The kid at index 0 of page tree node 2 names object 10, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it."));
+            "The kid at index 0 of page tree node 2 names object 10, whose chain of references leads from reference to reference past the 32 a resolution follows, which reads as null: it counts as a page with nothing on it."));
         PageTreeWalk.Run(document).PageIndexes.Should().ContainKey(3).WhoseValue.Should().Be(1);
     }
 
@@ -2109,7 +2109,7 @@ public class PageTreeRuleTests
 
     [Theory]
     [InlineData("6 0 R", "null", "names object 5, which leads to object 6, which is null")]
-    [InlineData("6 0 R", "5 0 R", "names object 5, whose chain of references is too long to follow or loops, which reads as null")]
+    [InlineData("6 0 R", "5 0 R", "names object 5, whose chain of references loops back to object 5 0, which reads as null")]
     [InlineData("6 0 R", "[1 2]", "names object 5, which leads to object 6, which is an array, neither a page nor a node")]
     public void A_kid_naming_a_chain_is_judged_by_what_the_chain_leads_to(string fifth, string sixth, string what)
     {
@@ -2127,8 +2127,8 @@ public class PageTreeRuleTests
     [Fact]
     public void A_kid_naming_a_chain_that_does_not_end_takes_a_page_s_place_each_time_it_is_listed()
     {
-        // Q1-03: thirty-two references from object 5 lead to object 37, past what a reference resolves through, and node 2
-        // lists object 5 twice. Listed again, the kid was said to lead to object 35, where the chain stopped being followed,
+        // Q1-03: thirty-two references from object 5 lead to object 37, past the 32 a resolution follows, and node 2 lists
+        // object 5 twice. Listed again, the kid was said to lead to object 35, where the chain stopped being followed,
         // and to name what the tree already lists.
         var objects = new List<(int Number, string Body)>
         {
@@ -2145,8 +2145,8 @@ public class PageTreeRuleTests
         var report = Validate(Objects([.. objects]));
 
         report.Findings.Where(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal)).Select(finding => finding.Message).Should().Equal(
-            "The kid at index 0 of page tree node 2 names object 5, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it.",
-            "The kid at index 1 of page tree node 2 names object 5, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it.");
+            "The kid at index 0 of page tree node 2 names object 5, whose chain of references leads from reference to reference past the 32 a resolution follows, which reads as null: it counts as a page with nothing on it.",
+            "The kid at index 1 of page tree node 2 names object 5, whose chain of references leads from reference to reference past the 32 a resolution follows, which reads as null: it counts as a page with nothing on it.");
     }
 
     [Theory]

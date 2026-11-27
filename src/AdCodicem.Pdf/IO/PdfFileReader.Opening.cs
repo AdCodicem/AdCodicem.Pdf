@@ -55,6 +55,10 @@ internal sealed partial class PdfFileReader
         {
             _structure.RootUsable = false;
             _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
+            _structure.RootChainCut =
+                _structure.RootAsWritten is PdfReference chained && _structure.RootResolved is PdfNull && IsChainCut(chained.Id, out var loopsBackTo)
+                    ? DescribeChainCut(loopsBackTo)
+                    : null;
             _structure.RootHiddenByGuard = RootHiddenByGuard();
             _structure.RootCutByGuard = RootCutByGuard();
 
@@ -114,14 +118,15 @@ internal sealed partial class PdfFileReader
             {
                 value = GetObject(deferred.Length);
 
-                // The chain is resolved as the parse resolves a /Length, one object further than a reference: the object it
-                // leads to is read before it is asked whether a guard cut it, and what it holds is what is judged.
-                resolved = value.Resolve();
+                // The chain is resolved as the parse resolves a /Length, the one it names counted among the references a
+                // resolution follows (#173): the object it leads to is read before it is asked whether a guard cut it, and
+                // what it holds is what is judged.
+                resolved = value is PdfReference next ? next.ResolveThrough(PdfReference.MaxChainLength - 1, new PdfReference(deferred.Length, this)) : value;
 
                 // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
                 // unknown, not wrong: the guard's report says why, and what the cut left of it, null or an integer it left
                 // whole, is none the file gave (#224).
-                leftByGuard = LeftByGuard(new PdfReference(deferred.Length, this), PdfReference.MaxChainLength);
+                leftByGuard = LeftByGuard(new PdfReference(deferred.Length, this));
             }
             finally
             {
@@ -135,11 +140,17 @@ internal sealed partial class PdfFileReader
 
             if (resolved.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
-                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
+                // The link of a chain that names a generation its object does not carry is the one the file lacks (#185).
+                var target = new PdfReference(deferred.Length, this).Target();
+                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced
+                    : NamesAnotherGeneration(target) ? ObjectPresence.Missing
+                    : GetReferencePresence(deferred.Length);
+                (number, generation) = presence == ObjectPresence.Missing && NamesAnotherGeneration(target) ? (target.Number, target.Generation) : (number, generation);
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",
                     ObjectPresence.Unproduced => "which could not be read",
+                    _ when resolved is PdfNull && new PdfReference(deferred.Length, this).ReachesNoValue() => ChainReachesNoValue,
                     _ => "which holds " + DescribeValue(resolved) + ", not a length",
                 };
                 message = string.Create(

@@ -84,6 +84,13 @@ internal sealed class ArlingtonWalk
     private readonly byte _applicable;
     private readonly Queue<Work> _queue = new();
     private readonly Dictionary<int, byte> _numbers = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// The object a chain of references leads to, by the number of the object it starts from, whose value is a reference:
+    /// the one whose value a resolution gives, or one numbered 0 where the chain reaches no value (#173). No valid file
+    /// holds one; null until a chain is met.
+    /// </summary>
+    private Dictionary<int, PdfObjectId>? _chainTargets;
     private readonly List<Step> _steps = [];
     private readonly Dictionary<int, int> _tallyIndex = new(SeededComparer.Instance);
     private readonly List<Tally> _tallies = [];
@@ -268,7 +275,7 @@ internal sealed class ArlingtonWalk
     /// <summary>Whether the trailer's <c>/Root</c> leads to a dictionary the reader takes for a catalog: <c>/Type /Catalog</c>, or a <c>/Pages</c>.</summary>
     private bool LeadsToCatalog(PdfObject raw)
     {
-        var root = raw is PdfReference reference ? _reader.GetObject(reference.Id) : raw;
+        var root = raw is PdfReference reference ? _reader.GetObject(reference.Target()) : raw;
         return root is PdfDictionary dictionary &&
             (dictionary.GetRaw(PdfName.Type)?.Resolve() is PdfName { Value: "Catalog" } || dictionary.GetRaw(PdfName.Pages) is not null);
     }
@@ -543,7 +550,7 @@ internal sealed class ArlingtonWalk
         if (number != 0)
         {
             _numbers[number] |= Typed;
-            _queue.Enqueue(new Work(type, ((PdfReference)raw).Id, Step: -1, Direct: null, carried));
+            _queue.Enqueue(new Work(type, IdOf((PdfReference)raw), Step: -1, Direct: null, carried));
             return;
         }
 
@@ -635,7 +642,7 @@ internal sealed class ArlingtonWalk
 
             if (number != 0)
             {
-                nodeHolder = ((PdfReference)node.Raw).Id;
+                nodeHolder = IdOf((PdfReference)node.Raw);
                 nodeStep = -1;
             }
             else
@@ -688,9 +695,28 @@ internal sealed class ArlingtonWalk
 
     /// <summary>
     /// Whether a tree's node or array is to be expanded: one written inside another object always, for it lies in an
-    /// object expanded once; an indirect one the first time any tree meets it, which is remembered.
+    /// object expanded once; an indirect one the first time any tree meets it, which is remembered — by the object
+    /// <see cref="Classify"/> judges, the one a chain of references leads to, which many chains may lead to (#173).
     /// </summary>
-    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(reference.Id.Number);
+    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(JudgedNumber(reference));
+
+    /// <summary>
+    /// Gives the number of the object <see cref="Classify"/> judges for <paramref name="reference"/>: the one a chain of
+    /// references from it leads to; the one it names where its value is no reference, a limit cut it, or <see cref="Classify"/>
+    /// found its chain reaches no value. A chain not classified yet is not read past its last link for it: one that reaches no
+    /// value is unknown, and its node never expanded, by whatever number it is remembered (#173).
+    /// </summary>
+    private int JudgedNumber(PdfReference reference)
+    {
+        var number = reference.Id.Number;
+
+        if (_chainTargets?.TryGetValue(number, out var known) == true)
+        {
+            return known.Number == 0 ? number : known.Number;
+        }
+
+        return _reader.GetObject(reference.Id) is not PdfReference || _reader.IsCutAtLimit(number) ? number : reference.Target().Number;
+    }
 
     /// <summary>Whether an object, which <see cref="Classify"/> has resolved, was cut by a reader limit; never for a direct value.</summary>
     private bool IsCut(int number) => number != 0 && _reader.IsCutAtLimit(number);
@@ -699,8 +725,8 @@ internal sealed class ArlingtonWalk
     /// Says where the elements of a tree node's array lie: in the array's own object when it is referred to, under the
     /// node's key otherwise.
     /// </summary>
-    private static (PdfObjectId Holder, int Step, PdfName? Key) Within(PdfObject array, PdfObjectId holder, int step, PdfName key) =>
-        array is PdfReference reference ? (reference.Id, -1, null) : (holder, step, key);
+    private (PdfObjectId Holder, int Step, PdfName? Key) Within(PdfObject array, PdfObjectId holder, int step, PdfName key) =>
+        array is PdfReference reference ? (IdOf(reference), -1, null) : (holder, step, key);
 
     /// <summary>
     /// Chooses among the link's candidates of the value's kind: the only one; else the one the discriminator plan
@@ -1103,11 +1129,16 @@ internal sealed class ArlingtonWalk
     /// <summary>
     /// Says what a value is, resolving a reference once per object number: its class, <see cref="ValueClass.Null"/>
     /// for a <c>null</c> the file writes, <see cref="ValueClass.Unknown"/> for one the file lacks or the reader could
-    /// not produce.
+    /// not produce. Through a chain of references, the value is the object the chain leads to, whose value a resolution
+    /// gives; one that reaches no value — looping, or too long — is unknown, as an object a limit cut: nothing is judged of
+    /// it, and the chain is <see cref="PdfValidationRuleIds.ObjectReferenceChainUnresolved"/>'s (#173).
     /// </summary>
     /// <param name="raw">The value as its holder holds it.</param>
     /// <param name="resolved">The value resolved, when this call resolved it; null when it was known already.</param>
-    /// <param name="number">The object number of a reference, or 0 for a direct value.</param>
+    /// <param name="number">
+    /// The object number of a reference — of the object a chain leads to, or the one it starts from where it reaches no
+    /// value —, or 0 for a direct value.
+    /// </param>
     private ValueClass Classify(PdfObject raw, out PdfObject? resolved, out int number)
     {
         if (raw is not PdfReference reference)
@@ -1117,7 +1148,20 @@ internal sealed class ArlingtonWalk
             return ClassOf(raw);
         }
 
-        number = reference.Id.Number;
+        var id = reference.Id;
+        number = id.Number;
+
+        if (_chainTargets?.TryGetValue(number, out var target) == true)
+        {
+            if (target.Number == 0)
+            {
+                resolved = null;
+                return ValueClass.Unknown;
+            }
+
+            id = target;
+            number = id.Number;
+        }
 
         if (_numbers.TryGetValue(number, out var known))
         {
@@ -1125,7 +1169,31 @@ internal sealed class ArlingtonWalk
             return (ValueClass)(known & ~Typed);
         }
 
-        var value = _reader.GetObject(reference.Id);
+        var value = _reader.GetObject(id);
+
+        if (value is PdfReference && !_reader.IsCutAtLimit(number))
+        {
+            // The first reference met to an object that starts a chain: the object it leads to is the one judged.
+            id = reference.Target();
+            value = _reader.GetObject(id);
+            var cut = value is PdfReference;
+            (_chainTargets ??= new(SeededComparer.Instance))[number] = cut ? default : id;
+
+            if (cut)
+            {
+                resolved = null;
+                return ValueClass.Unknown;
+            }
+
+            number = id.Number;
+
+            if (_numbers.TryGetValue(number, out known))
+            {
+                resolved = value;
+                return (ValueClass)(known & ~Typed);
+            }
+        }
+
         // An object a limit cut is unknown, whatever was read of it — nothing, which is no null the file writes, the "12" of
         // "12 0 R", the "<" of "<<" —: nothing written in it is judged, its kind among the rest.
         var kind = _reader.IsCutAtLimit(number) ? ValueClass.Unknown
@@ -1137,7 +1205,24 @@ internal sealed class ArlingtonWalk
         return kind;
     }
 
-    private PdfObject Resolve(PdfObject raw) => raw is PdfReference reference ? _reader.GetObject(reference.Id) : raw;
+    /// <summary>The object <paramref name="reference"/> leads to: the one it names, or the one a chain from it leads to.</summary>
+    private PdfObjectId IdOf(PdfReference reference) =>
+        _chainTargets?.TryGetValue(reference.Id.Number, out var target) == true && target.Number != 0 ? target : reference.Id;
+
+    /// <summary>
+    /// Gives the value <paramref name="raw"/> leads to: itself, or what a reference names, through a chain of references the
+    /// walk has yet to classify too (#173).
+    /// </summary>
+    private PdfObject Resolve(PdfObject raw)
+    {
+        if (raw is not PdfReference reference)
+        {
+            return raw;
+        }
+
+        var value = _reader.GetObject(IdOf(reference));
+        return value is PdfReference ? _reader.GetObject(reference.Target()) : value;
+    }
 
     private static ValueClass ClassOf(PdfObject value) => value switch
     {

@@ -68,7 +68,7 @@ foreach (var entry in manifest.RootElement.GetProperty("documents").EnumerateArr
         // only when the stream it describes is decoded, which is the lazy reader behaving as designed.
         foreach (var number in document.ObjectNumbers.ToList())
         {
-            if (document.GetObject(new PdfObjectId(number)) is PdfStream stream && !stream.HasImageFilter())
+            if (document.GetObject(number) is PdfStream stream && !stream.HasImageFilter())
             {
                 _ = stream.Decode(document.Diagnostics);
             }

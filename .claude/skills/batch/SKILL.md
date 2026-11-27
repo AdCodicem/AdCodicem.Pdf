@@ -76,7 +76,9 @@ timing, budget, allocation and memory tests, alone; the site (`cd docs/website &
 - `docs/status.md`: the actual state. `docs/journal.md`: an entry of about thirty lines — what was paid, the counts
   (rounds, findings by severity, mutants), what was filed, what changed for callers; the detail goes in the pull
   request's body.
-- Post the collected issue comments; file the debts under the milestones that will pay them.
+- Post the collected issue comments; file the debts under the milestones that will pay them, each one filed under M02
+  placed in a batch — an existing one whose code it shares, within six issues, or a new one — in `docs/status.md`'s
+  step 4 list and named in its body (`CLAUDE.md`, *Tracking*).
 - Open the pull request: a `fix!:` or `fix:` title, its body naming one `Closes #n` per line. Never merge it.
 
 ## Resources
