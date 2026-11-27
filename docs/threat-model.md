@@ -169,9 +169,10 @@ defaults, never with `ThrowOnLimit`.
   it meets it higher up, a stream whose parse the bound cut, as the reader does ([#163]). Loops among object streams are found by
   Tarjan's algorithm on a stack of its own ([#277], [#168]). The object graph's two fault searches, and the writing of a
   page tree kid's path, loop too, however deep a caller nested the value ([#168]).
-- **Chains are followed once.** The `/Prev` chain keeps the offsets it has read. `PdfReference.Resolve` fetches at most
-  `MaxChainLength` (32) objects, so a chain of 31 references to references already reads as null ([#173]). The index is
-  rebuilt at most once per document (`_repaired`).
+- **Chains are followed once.** The `/Prev` chain keeps the offsets it has read. `PdfReference.Resolve` follows at most
+  `MaxChainLength` (32) references to references, the value of the last object it reads examined and none read past it;
+  a chain that loops, or runs longer, reads as null, and is reported ([#173]). The index is rebuilt at most once per
+  document (`_repaired`).
 - **Reports are made once.** A guard once per `(limit, position)`, a full index once per document, what decoding a
   stream met once per report its document's diagnostics hold ([#144]), a stream's length fault once per data start, a
   fault of the syntax once per code, position and message; a search for a lost `endstream` runs once per data start.
@@ -476,7 +477,7 @@ Known gaps:
 | A load needing itself (a `/Length` naming its stream), or loads chained without end | `PdfFileReader._loading` reads a load of an object already loading as null; the guard `MaxNestedLoads` (64, `limit.nested-loads`) and a stack probe bound the chain, reported once a document; what a read keeps serves only reads as deep (`ReadDepth`, [#163]) | `HostileInputTests`, `ReaderLimitsTests` | The load path, not the bound; `/Length`: no |
 | Decodes nested through filter parameters, each holding its output | A stream resolves every value its filters read before its data: a chain of loads holds what `ObjectStreamBudget` keeps, the last object stream decoded and one decoding ([#165]); none keeps its raw data ([#170]) | `FilterTests`, `HostileInputMemoryTests` | No |
 | Objects numbered to share a cache bucket | The cache, decoded object streams and every set the reader keys by number or offset hash with the process's seed (*Tables keyed by numbers*, [#155]) | `ReaderTimingTests`, `SeededComparerTests` | No |
-| References to references that loop | `PdfReference.Resolve` reads null after 32 fetches (`MaxChainLength`), unreported ([#173]) | `ObjectModelTests` | No |
+| References to references that loop, or run on | `PdfReference.Resolve` follows 32 references (`MaxChainLength`, an internal constant: no valid file chains references, an indirect object's value being one of the eight basic types, ISO 32000-1 7.3.1 and 7.3.10), the value of the last object it reads examined and none read past it — a stream's `/Length`, a trailer's `/Prev` and `/XRefStm`, and the validator's walk of the object streams count the object a value names among them —; past them, or back to an object it passed, the reference reads as null, reported once per object a cut chain starts from while the record of diagnostics has room (`object.reference-chain-cut`, `IPdfReferenceChainObserver`, `_chainsCutReported`, no larger than the record, and withdrawn with what a rebuild withdraws). The validator judges a chain that reaches a value by that value, and one that reaches none under a rule of its own, at the objects that hold its first reference (`ObjectGraph`, `ArlingtonWalk`) ([#173]) | `HostileInputTests`, `ObjectModelTests`, `ObjectRuleTests`, `DocumentReaderTests` | No |
 | A reference naming an object under another generation, served as that object — a stale reference to a number an update reused, or one name per generation keeping a parse each | `PdfFileReader.GetObject` compares the reference's generation with the one the object carries — its header's, or 0 for an object stream's member (`_carriedGenerations`, noted each time the object is read) — on every read, what the cache keeps by number included: another reads as null, reported once per distinct reference while the record of diagnostics has room (`object.generation-mismatch`, `_otherGenerationsReported`, no larger than the record, and withdrawn with what a rebuild withdraws); the object is read and kept once, by its number, whatever generations name it, its generation about 20 bytes for each object read, within what the index holds of it. The reader's and the validator's reads of what an entry places go by number (`GetIndexedObject`) ([#185]) | `HostileInputTests`, `DocumentReaderTests`, `ObjectRuleTests` | No |
 | An object stream needing an object it holds, or two needing each other | While an object stream is decoded, an object it holds reads as null, reported once, remembered for later decodes | `HostileInputTests`, `HeaderOffsetTests` | Object-stream seeds, not the cycle |
 | An offset table that lies | `/First` is checked against the data; `/Type` must be `/ObjStm` ([#274]). A `/N` or `/First` read through a reference to an object a guard cut is the file's where it reads as a count or an offset, the parser keeping no integer the cut may part, and the guard's otherwise, unreported (`ObjectStreamContents.TryCreate`, `ReadObjectStreamHeaderCore`, [#395], [#415]). The header is read, whatever `/N` says, to its first pair that is no valid number at a rising offset in the data ([#259]), by reader, rebuild and validator alike ([#202]), the last counting the objects lost ([#275]); its tables grow within what `/First`'s bytes hold ([#160]). A wrong index falls back on a lookup by number built once (`ObjectStreamPlaces`), shared by the validator: linear time | `ReaderTimingTests`, `DocumentReaderTests`, `HostileInputTests`, `CrossReferenceRuleTests`, `ReadOrderTests`, `ReaderLimitsTests` | Yes |
@@ -493,7 +494,6 @@ Known gaps:
 
 Known gaps:
 
-- [#173] A chain or a loop of references reads as null with no report, one reference short of its bound.
 - [#37] The cache is bounded by count, not weight, and a parsed object weighs about thirty times its syntax.
 - [#121] Each object is read through its own 8 KB window, however small.
 - [#455] The validator's walks of the page tree, the object streams and the Arlington model key references by number: a
@@ -618,7 +618,6 @@ Known gaps:
   little; one the reader meets again in its loads, or cuts at its nesting, decodes as the reader's history makes it;
   one a rebuilt index places otherwise could be followed through the reader's index, some 100 to 150 lines at moderate
   risk, for a shape no document of the corpus has. `ObjectRuleTests` pins each.
-- [#173] The Arlington walk takes a reference to a reference for a missing key.
 - [#321] A hybrid table that names through `/XRefStm` an older revision's cross-reference stream two or more revisions
   late has that stream read before the revisions between, its rows standing over theirs, and no rule yet judges where
   the recorded namings lie ([#156]).
