@@ -50,7 +50,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   proofs and the definition a rebuild keeps, [#287], [#293], [#290] and [#351], in [#436] that day; the thirty-eighth,
   brought forward as the maintainer chose on 2026-11-25, the rebuild's scan — [#387]'s time in the square of the lines,
   [#389] and [#438] —, in [#454]; the twenty-eighth, [#185], a reference under a generation its object does not carry,
-  in [#457]. Next, the other batches,
+  in [#457]; the twenty-ninth, [#173], a chain of references read through 32 and reported where it reaches no value, in
+  [#458]. Next, the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -63,7 +64,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
   to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]),
-  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
   eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -73,7 +74,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
+- **Tests**: 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
+  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
+  the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 146 green on its code.
+  Before it, 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
   and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 802 reads;
   the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 145 green on its code.
   Before it, 13,639 unit on [#454]'s branch at `cbaed88`, with 235 of the 242 remote documents fetched, 13,636 passed
@@ -122,8 +126,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#457]'s branch at `ef9121e`, as Codecov counts it, 99.43 % of the patch, 175 of its 176 coverable
-  lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
+- **Coverage**: on [#458]'s branch at `5bbccdf`, as Codecov counts it, 98.97 % of the patch, 193 of its 195 coverable
+  lines whole; the other two, partial, are the `?.` on `_chains` in `ObjectGraph.AddCuts` and `CountCut`, which run only
+  once the walk has read a link of a chain, the table then held. Before it, on [#457]'s branch at `ef9121e`, as Codecov
+  counts it, 99.43 % of the patch, 175 of its 176 coverable lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
   catalog search reads a candidate, which notes the generation it carries, before it takes it. Before it, on [#454]'s
   branch at `4e6aa4f`, as Codecov counts it, 98.10 % of the patch, 103 of its 105 coverable
   lines whole; the other two, partial, are in `NoteNoHeader` (`PdfFileReader.Loading.cs`): the `??=` that creates the
@@ -755,7 +761,7 @@ One pull request per batch, each design question put to the maintainer after mea
        and [#351], in [#436], merged on 2026-11-25, `Remote corpus` run 142 green on its branch, which filed [#437]
        and [#438] under M02 (journal of 2026-11-25).
    28. [#185] — done, in [#457] (journal of 2026-11-26), which filed [#455] and [#456] under M02.
-   29. [#173].
+   29. [#173] — done, in [#458] (journal of 2026-11-27), which filed [#459] under M02.
    30. [#192], with [#374].
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives. With [#381], which words
        the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
@@ -785,9 +791,10 @@ One pull request per batch, each design question put to the maintainer after mea
    40. [#411], [#424], [#425], [#416] and [#456]: an object stream's `/N`, `/First` and `/Type`, and a stream's
        `/Length`, `/Filter` and `/DecodeParms`, that a cut object holds whole or a nesting cut hides, a member read through
        a stack cut, and, which batch 28 filed, a member under another generation taken for one a guard cut.
-   41. [#412], [#413], [#410], [#414] and [#455]: the nesting guards under `ThrowOnLimit`, the validator's walk and probe
-       of object streams, the mutants of the nesting defenses [#409] left, and, which batch 28 filed, the validator's walks
-       that key references by number.
+   41. [#412], [#413], [#410], [#414], [#455] and [#459]: the nesting guards under `ThrowOnLimit`, the validator's walk
+       and probe of object streams, the mutants of the nesting defenses [#409] left, and, which batch 28 filed, the
+       validator's walks that key references by number, and, which batch 29 filed, the mutants of the chain-of-references
+       defenses no test tells apart yet.
    42. [#420], [#421], [#422], [#423], [#450] and [#451]: the parser at a guard's edge — a string or a delimiter left
        undecided, a whole token's syntax report, a signed generation —, a trailer `/Root` the guard parts, and, which
        batch 38 filed, the headers settling reads and a guard reported at a place several rows share.
@@ -1280,3 +1287,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#456]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/456
 [#454]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/454
 [#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
+[#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
+[#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459

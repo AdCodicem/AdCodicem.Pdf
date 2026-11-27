@@ -802,6 +802,7 @@ public class FileRuleTests
     [Theory]
     [InlineData("<< /Type /Outlines >>", "/Root 5 0 R", "The trailer's /Root names object 5 0, which reads as null. No object the reader could read is a catalog.")]
     [InlineData("<< /Type /Outlines >>", "", "No trailer the reader read gives /Root. No object the reader could read is a catalog.")]
+    [InlineData("1 0 R", "/Root 1 0 R", "The trailer's /Root names object 1 0, which reads as null: its chain of references loops back to object 1 0. No object the reader could read is a catalog.")]
     [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 1 0 R", null)]
     [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 5 0 R", null)]
     public void A_document_rebuilt_as_it_opens_is_judged_by_its_trailers_root_when_no_object_is_a_catalog(string one, string root, string? message)

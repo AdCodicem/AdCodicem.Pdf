@@ -331,7 +331,8 @@ internal sealed partial class PdfFileReader
         new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
         new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
         _objectStreamReports.Copy(),
-        new HashSet<PdfObjectId>(_otherGenerationsReported));
+        new HashSet<PdfObjectId>(_otherGenerationsReported),
+        new HashSet<PdfObjectId>(_chainsCutReported));
 
     /// <summary>
     /// Brings <paramref name="mark"/> to where the document's reports stand now, for a mark nothing was withdrawn past
@@ -349,6 +350,7 @@ internal sealed partial class PdfFileReader
         mark.NeedingThemselves.UnionWith(_objectStreamsNeedingThemselves);
         mark.ObjectStreams.TakeIn(_objectStreamReports);
         mark.OtherGenerations.UnionWith(_otherGenerationsReported);
+        mark.ChainsCut.UnionWith(_chainsCutReported);
         return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports() };
     }
 
@@ -367,6 +369,7 @@ internal sealed partial class PdfFileReader
         Restore(_objectStreamsNeedingThemselves, mark.NeedingThemselves);
         _objectStreamReports.RestoreFrom(mark.ObjectStreams);
         Restore(_otherGenerationsReported, mark.OtherGenerations);
+        Restore(_chainsCutReported, mark.ChainsCut);
     }
 
     /// <summary>Brings <paramref name="set"/> back to what <paramref name="copy"/> holds.</summary>
@@ -1218,9 +1221,12 @@ internal sealed partial class PdfFileReader
         }
     }
 
-    /// <summary>Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>.</summary>
+    /// <summary>
+    /// Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>: its own
+    /// value, not the one a chain of references from it leads to, which the search meets as an object of its own (#173).
+    /// </summary>
     private bool IsCatalogCandidate(int number) =>
-        GetIndexedObject(number).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+        GetIndexedObject(number) is { } value and not PdfReference && value.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
 
     /// <summary>Makes object <paramref name="number"/>, a catalog the search found, the trailer's <c>/Root</c>.</summary>
     private void TakeCatalog(int number)
@@ -1300,8 +1306,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
-    /// length, an object stream's fault, a reference to another generation —, so that what was reported since can be
-    /// withdrawn and reported again.
+    /// length, an object stream's fault, a reference to another generation, a chain of references cut —, so that what was
+    /// reported since can be withdrawn and reported again.
     /// </summary>
     /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
     /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>
@@ -1312,6 +1318,7 @@ internal sealed partial class PdfFileReader
     /// <param name="NeedingThemselves">The object streams reported as needing an object they hold.</param>
     /// <param name="ObjectStreams">What the object streams' reports said.</param>
     /// <param name="OtherGenerations">The references reported as naming a generation their object does not carry.</param>
+    /// <param name="ChainsCut">The objects reported as starting a chain of references a resolution cut.</param>
     private sealed record ReportsMark(
         PdfDiagnosticsMark Diagnostics,
         HashSet<long> LengthFaults,
@@ -1321,7 +1328,8 @@ internal sealed partial class PdfFileReader
         HashSet<(long DataStart, int Number)> MemberLimits,
         HashSet<int> NeedingThemselves,
         ObjectStreamReports ObjectStreams,
-        HashSet<PdfObjectId> OtherGenerations);
+        HashSet<PdfObjectId> OtherGenerations,
+        HashSet<PdfObjectId> ChainsCut);
 
     /// <summary>
     /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept

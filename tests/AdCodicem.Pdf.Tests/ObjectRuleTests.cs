@@ -58,6 +58,245 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData("/A 5 0 R", "5 0 R", "Object 1 refers to object 5 0 under /A, whose chain of references loops back to object 5 0: the reference reads as null.")]
+    [InlineData("/A 5 0 R", "6 0 R", "Object 1 refers to object 5 0 under /A, whose chain of references loops back to object 5 0: the reference reads as null.")]
+    [InlineData("/A [5 0 R 5 0 R] /B 6 0 R", "5 0 R", "Object 1 holds 3 references whose chains of references reach no value, which read as null; the first refers to object 5 0 under /A[0], whose chain of references loops back to object 5 0.")]
+    [InlineData("/A 10 0 R", "5 0 R", "Object 1 refers to object 10 0 under /A, whose chain of references leads from reference to reference past the 32 a resolution follows: the reference reads as null.")]
+    public void A_reference_to_a_chain_of_references_that_reaches_no_value_is_an_error_at_the_object_holding_it(string entries, string five, string message)
+    {
+        // Object 5 holds `five`, object 6 the reference 5 0 R, and objects 10 to 41 each a reference to the next, the last to
+        // object 42, a string: a chain of 32 references to references. A reference that leads to one that loops, or runs past
+        // the 32 references a resolution follows, reads as null: one finding at the object that holds it, none at an object
+        // of the chain (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, five),
+            [6] = file.Object(6, "5 0 R"),
+        };
+
+        for (var number = 10; number <= 41; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[42] = file.Object(42, "(value)");
+        file.Table(43, rows, "/Size 43 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.ObjectReferenceChainUnresolved);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error, "the value the reference was to give is lost (ADR 45)");
+        finding.Location.Object.Should().Be(new PdfObjectId(1));
+        finding.Message.Should().Be(message);
+        finding.Remedy.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Theory]
+    [InlineData("/A 5 0 R /B 6 0 R")]
+    [InlineData("/B 6 0 R /A 5 0 R")]
+    [InlineData("/A 5 0 R /B 6 0 R /C 5 0 R")]
+    public void Each_object_that_refers_to_a_chain_that_reaches_no_value_is_a_finding_whenever_the_walk_reads_the_chain(string entries)
+    {
+        // Object 5 names itself; object 6 refers to it, read before object 5 or after it, as the walk takes them from the catalog:
+        // each holder is one finding, the references met while object 5 waited and those met once it was read alike (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "5 0 R"),
+            [6] = file.Object(6, "<< /D 5 0 R >>"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+
+        var findings = Validate(file.Bytes).Findings;
+
+        findings.Should().OnlyContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceChainUnresolved);
+        findings.Select(finding => finding.Location.Object).Should().BeEquivalentTo([new PdfObjectId(1), new PdfObjectId(6)]);
+        findings.Single(finding => finding.Location.Object == new PdfObjectId(1)).Message.Should().StartWith(
+            entries.EndsWith("/C 5 0 R", StringComparison.Ordinal) ? "Object 1 holds 2 references" : "Object 1 refers to object 5 0 under /A");
+    }
+
+    [Theory]
+    [InlineData("/A 5 0 R /B 5 0 R /C 5 1 R", "/A", "/C")]
+    [InlineData("/A 5 1 R /B 5 0 R /C 5 0 R", "/B", "/A")]
+    public void References_to_a_chain_met_while_it_waits_are_counted_whatever_reference_had_it_read_first(string entries, string first, string missing)
+    {
+        // Object 5 names itself; the catalog names it under generation 0 twice and under generation 1, which has it read before
+        // the walk reaches it: references under 0 met while it waited, counted by holder, and those met once it was read,
+        // under a claim of generation 1, are each counted as references to a chain that reaches no value (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R " + entries + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "5 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceChainUnresolved).Message.Should().Be(
+            $"Object 1 holds 2 references whose chains of references reach no value, which read as null; the first refers to object 5 0 under {first}, whose chain of references loops back to object 5 0.");
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().StartWith($"Object 1 refers to object 5 1 under {missing}");
+    }
+
+    [Fact]
+    public void A_reference_under_another_generation_met_while_its_object_waits_is_no_reference_to_its_chain()
+    {
+        // The catalog names object 5 under generation 1, and object 3 names it so while it waits; object 4, which the walk
+        // reads, names object 5 under generation 0, and object 5's chain loops through object 6, which 4's chain reads before
+        // the walk reaches 5: object 3 refers to an object the file lacks, and is no holder of a reference to the chain — the
+        // catalog is, through object 4 (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /X 5 1 R /S 4 0 R /H 3 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "<< /R 5 1 R >>"),
+            [4] = file.Object(4, "5 0 R"),
+            [5] = file.Object(5, "6 0 R"),
+            [6] = file.Object(6, "5 0 R"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+
+        var findings = Validate(file.Bytes).Findings;
+
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceChainUnresolved).Select(finding => finding.Location.Object)
+            .Should().Equal(new PdfObjectId(1));
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Select(finding => finding.Location.Object)
+            .Should().BeEquivalentTo([new PdfObjectId(1), new PdfObjectId(3)]);
+    }
+
+    [Fact]
+    public void An_object_read_before_the_walk_reaches_it_is_asked_once_whether_it_holds_a_reference()
+    {
+        // Object 5, which repeats a key, is read through a reference under generation 1 before the walk reaches it; objects 7
+        // and 8 name it under generation 0 while it waits, between 160 objects the cache, kept to 64, lets it go for. Asked once
+        // whether it holds a reference, it is not read again for object 8's reference — read again, its repeated key, met
+        // anew with the record of diagnostics full, would be counted once more (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Z 5 0 R /B 5 1 R /First 7 0 R /Many 9 0 R /Second 8 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "<< /A 1 /A 2 >>"),
+            [8] = file.Object(8, "<< /R 5 0 R >>"),
+            [7] = file.Object(7, "<< /R 5 0 R /More 90 0 R >>"),
+        };
+        var many = new StringBuilder("[");
+        var more = new StringBuilder("[");
+
+        for (var number = 10; number < 90; number++)
+        {
+            many.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            rows[number] = file.Object(number, "<< >>");
+        }
+
+        for (var number = 91; number < 171; number++)
+        {
+            more.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            rows[number] = file.Object(number, "<< >>");
+        }
+
+        rows[9] = file.Object(9, many.Append(']').ToString());
+        rows[90] = file.Object(90, more.Append(']').ToString());
+        file.Table(171, rows, "/Size 171 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0, ObjectCacheCapacity = 0 });
+
+        _ = new PdfValidator().Validate(document);
+
+        document.Diagnostics.SuppressedCount.Should().Be(4);
+    }
+
+    [Theory]
+    [InlineData("10 0 R", "11 0 R", "<< /Type /Pages /Kids [] /Count 0 >>", null)]
+    [InlineData("10 0 R", "11 0 R", "(pages)", PdfValidationRuleIds.ObjectValueTypeWrong)]
+    [InlineData("10 0 R", "10 0 R", "(unused)", PdfValidationRuleIds.ObjectReferenceChainUnresolved)]
+    public void A_value_reached_through_a_chain_of_references_is_judged_as_the_value_the_chain_leads_to(string outlines, string ten, string eleven, string? rule)
+    {
+        // The catalog's /Outlines names object 10, which names object 11 — or itself —: the Arlington walk judges the value the
+        // chain leads to, as the reader reads it, not the reference object 10 holds, which it took for null, and so for a key
+        // the catalog lacks; a chain that reaches no value is judged by no rule of the model, its own finding aside (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Outlines " + outlines + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [10] = file.Object(10, ten),
+            [11] = file.Object(11, eleven.StartsWith("<<", StringComparison.Ordinal) ? "<< /Type /Outlines /Count 0 >>" : eleven),
+        };
+        file.Table(12, rows, "/Size 12 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(rule is null ? [] : [rule], string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_trailer_that_refers_to_a_chain_of_references_that_reaches_no_value_is_the_holder()
+    {
+        // The trailer's /Info names object 5, which names itself: the trailer holds the reference, and the finding is
+        // located there (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "5 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R /Info 5 0 R");
+
+        Single(Validate(file.Bytes), PdfValidationRuleIds.ObjectReferenceChainUnresolved).Message.Should().Be(
+            "The trailer refers to object 5 0 under /Info, whose chain of references loops back to object 5 0: the reference reads as null.");
+    }
+
+    [Fact]
+    public void A_required_key_whose_chain_of_references_reaches_no_value_is_not_missing()
+    {
+        // The catalog's /Pages names object 5, which names itself: the key is present, its value lost, which the chain's finding
+        // says, not object.key-missing, which said the catalog lacked /Pages (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 5 0 R >>"),
+            [5] = file.Object(5, "5 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        report.Contains(PdfValidationRuleIds.ObjectKeyMissing).Should().BeFalse(string.Join("; ", report.Findings));
+        Single(report, PdfValidationRuleIds.ObjectReferenceChainUnresolved).Message.Should().Be(
+            "Object 1 refers to object 5 0 under /Pages, whose chain of references loops back to object 5 0: the reference reads as null.");
+    }
+
+    [Fact]
+    public void A_root_whose_chain_of_references_reaches_no_value_is_the_root_rule_s()
+    {
+        // The trailer's /Root names object 1, which names object 5, which names object 1: file.root-invalid says how the chain
+        // ends, and the chain's own rule leaves the trailer's /Root to it, as object.reference-missing does (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "5 0 R"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "1 0 R"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        report.Contains(PdfValidationRuleIds.ObjectReferenceChainUnresolved).Should().BeFalse(string.Join("; ", report.Findings));
+        Single(report, PdfValidationRuleIds.FileRootInvalid).Message.Should().StartWith(
+            "The trailer's /Root names object 1 0, which read as null: its chain of references loops back to object 1 0.");
+    }
+
+    [Theory]
     [InlineData("/A [5 1 R 5 0 R 5 1 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 5 1 under /A[0], the object numbered 5 carrying generation 0.", true)]
     [InlineData("/B 6 0 R /A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", true)]
     [InlineData("/A 5 1 R", "Object 1 refers to object 5 1 under /A, which the file lacks: the object numbered 5 carries generation 0, and the reference reads as null.", false)]
@@ -731,13 +970,14 @@ public class ObjectRuleTests
     [Theory]
     [InlineData("/N", 31, true)]
     [InlineData("/N", 32, false)]
-    [InlineData("/Length", 32, true)]
-    [InlineData("/Length", 33, false)]
+    [InlineData("/Length", 31, true)]
+    [InlineData("/Length", 32, false)]
     public void A_chain_of_references_is_followed_as_far_as_a_reference_resolves(string key, int links, bool circular)
     {
         // Stream 7's /N, or /Length, names object 100, the first of a chain of objects each naming the next, the last naming
-        // 5, which 7 holds. A reference resolution reads the 32 objects of a chain at most, and a /Length one more, which the
-        // parse reads before it resolves what it gives: past that, the reader never reads 5, and needs nothing.
+        // 5, which 7 holds. A reference resolution reads the 32 objects of a chain at most, a /Length's counting the one it
+        // names, which the parse reads before it resolves what it gives (#173): past that, the reader never reads 5, and needs
+        // nothing.
         const string Data = "5 0 6 2 2 (six) ";
         var written = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -2695,13 +2935,13 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData(31, true)]
-    [InlineData(32, false)]
+    [InlineData(32, true)]
+    [InlineData(33, false)]
     public void A_count_at_the_end_of_a_chain_is_read_only_where_a_reference_takes_its_value(int links, bool circular)
     {
         // Stream 7's /N names the first of a chain of objects, each naming the next, the last 2. A reference takes the value
-        // of the 31st object of a chain, and drops that of the 32nd it loads (#173): one link further, the count is null, and
-        // the stream is not decoded.
+        // of the 32nd object of a chain at most, and reads none past it (#173): one link further, the count is null, and the
+        // stream is not decoded.
         var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 5 0 R")
         {
             Five = "<< /Predictor 1 >>",
@@ -2731,17 +2971,18 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData("/Length", 33, true)]
-    [InlineData("/Length", 34, false)]
+    [InlineData("/Length", 32, true)]
+    [InlineData("/Length", 33, false)]
     [InlineData("/N", 32, true)]
     [InlineData("/N", 33, false)]
     [InlineData("/DecodeParms", 32, true)]
     [InlineData("/DecodeParms", 33, false)]
-    [InlineData("the /Length of a stream /N names", 33, true)]
-    [InlineData("the /Length of a stream /N names", 34, false)]
+    [InlineData("the /Length of a stream /N names", 32, true)]
+    [InlineData("the /Length of a stream /N names", 33, false)]
     public void An_object_on_a_chain_is_followed_as_far_as_the_reader_loads_the_chain(string key, int at, bool circular)
     {
-        // A reference resolves through 32 objects, a /Length through 33; the last is loaded, and its value dropped (#173).
+        // A reference resolves through 32 objects, a /Length's chain counting the one it names; the last is loaded, and its
+        // value examined, none past it read (#173).
         // Under /Length and /N, the object at the end is a stream whose /Length names 5, which its parse loads; under
         // /DecodeParms, or the /Length of a stream met on the way, it is 5, which the stream holds. One object further, the
         // reader loads nothing of it.
@@ -2811,12 +3052,12 @@ public class ObjectRuleTests
     [Theory]
     [InlineData(1, true)]
     [InlineData(1, false)]
-    [InlineData(31, true)]
-    [InlineData(31, false)]
+    [InlineData(32, true)]
+    [InlineData(32, false)]
     public void A_value_a_guard_cut_ends_what_the_walk_follows_as_it_ends_decoding(int at, bool guarded)
     {
         // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 is the first of a chain of references to
-        // parameters that run past MaxObjectLength when it is lowered to 128 bytes, the chain's 1st object or its 31st, the
+        // parameters that run past MaxObjectLength when it is lowered to 128 bytes, the chain's 1st object or its 32nd, the
         // last whose value a reference takes, which decoding asks whether a guard cut. Decoding ends at the first step's
         // parameters, which are the guard's, and never reads 5 (#263): the walk found a loop through 5 all the same.
         // Unguarded, the second step reads 5, which the stream holds.
@@ -2834,17 +3075,16 @@ public class ObjectRuleTests
     }
 
     [Fact]
-    public void A_value_whose_chain_loads_an_object_a_guard_cut_past_its_31st_link_is_followed_on()
+    public void A_value_whose_chain_runs_past_its_32nd_object_never_reads_the_object_a_guard_would_cut()
     {
-        // As above, 100 heading a chain of 31 references, the 32nd object being the parameters that run past MaxObjectLength:
-        // the reference loads it, and drops its value (#173). Decoding asks of the 31st object, the last whose value the
-        // chain took, whether a guard cut it: none did, and the first step reads no parameters, the second 5, which the
-        // stream holds.
+        // As above, 100 heading a chain of 32 references, the 33rd object being the parameters that run past MaxObjectLength:
+        // no resolution reads past the 32nd object, whose value it examines (#173), and the guard is never reached. The chain
+        // reaches no value: the first step reads no parameters, the second 5, which the stream holds.
         var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
         {
             Five = "<< /Predictor 1 >>",
             Data = SevenData.FlateTwice,
-            Written = ReferenceChain(100, 32, "<< /Predictor 1 /Pad (" + new string('x', 200) + ") >>"),
+            Written = ReferenceChain(100, 33, "<< /Predictor 1 /Pad (" + new string('x', 200) + ") >>"),
         }.Build();
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
 
@@ -2856,16 +3096,16 @@ public class ObjectRuleTests
     [Fact]
     public void A_value_whose_chain_the_walk_takes_at_once_through_a_link_a_guard_cut_ends_what_the_walk_follows()
     {
-        // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 heads a chain of 33 references, whose 31st, 130,
-        // the last whose value a reference takes, runs past MaxObjectLength lowered to 128 bytes after the reference it
+        // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 heads a chain of 33 references, whose 32nd, 131,
+        // the last whose value a reference takes (#173), runs past MaxObjectLength lowered to 128 bytes after the reference it
         // holds: the reader keeps it as far as it read it, and the chain goes on through it, a run of links the walk takes at
-        // once. Decoding asks of the 31st whether a guard cut it, and ends at the first step's parameters, which are the
+        // once. Decoding asks of the 32nd whether a guard cut it, and ends at the first step's parameters, which are the
         // guard's: it never reads 5 (#263).
         var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
         {
             Five = "<< /Predictor 1 >>",
             Data = SevenData.FlateTwice,
-            Written = Merged(ReferenceChain(100, 33, "100 0 R"), new() { [130] = "131 0 R %" + new string('x', 200) }),
+            Written = Merged(ReferenceChain(100, 33, "100 0 R"), new() { [131] = "132 0 R %" + new string('x', 200) }),
         }.Build();
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
 

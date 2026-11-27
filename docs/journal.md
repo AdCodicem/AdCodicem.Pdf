@@ -7,6 +7,44 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-27 — Batch 29: a chain of references read through 32, and reported where it reaches no value ([#458])
+
+- **The question.** Measured on `main` at `8341583`: a loop of references, or a chain past the bound, read as null with
+  no diagnostic, the bound one short — 30 intermediate objects resolved, 31 read null, while ADR 34 and the docs said 32
+  —, `Resolve` loaded an object past the last whose value it took, so a guard cutting it reported `limit.object` for
+  nothing, and the Arlington walk took any object whose value is a reference for null: `/Pages` behind even a resolving
+  chain was `object.key-missing` ([#173]). Over the corpus — 381 documents opened, 340,672 objects — no object's value
+  is a reference.
+- **Settled with the maintainer** on 2026-11-27, each as recommended: a new reader code, `object.reference-chain-cut`
+  (Warning), once per object a cut chain starts from; the bound an internal constant of 32 references, the 32nd
+  object's value examined and none read past it, a `/Length`, `/Prev` or `/XRefStm` counting the object it names, as
+  ISO 32000-1 (7.3.1, 7.3.10) makes an indirect object's value one of the eight basic types, never a reference; a new
+  rule, `object.reference-chain-unresolved` (Error), at the holder; a chain that reaches a value judged by it. The rule
+  was named apart from the code, as `ValidationRuleIdTests` requires, on the same day.
+- **What changed.** `PdfReference.ResolveThrough` reports a cut chain to the reader (`IPdfReferenceChainObserver`),
+  which describes it — where it loops back to, or that it is too long — and notes it in the reports mark; every read
+  that follows a chain in a resolution's stead reads as far, the chain reading's own included; a `/Length` cut so says
+  its chain reaches no value. The validator counts references to a cut chain at each holder, links aside, and the
+  Arlington walk judges a chain by its target and a cut one by no rule; `/Encrypt` resolves through a chain, and the
+  catalog search takes no link for a catalog.
+- **Review** (ADR 54): two rounds. One blocker, E1 on a hand-made shape, confirmed by a refuter and fixed: a name or
+  number tree node expanded once per chain leading to it, in the square of the file. No major. Two minors, fixed (the
+  catalog search, `/Encrypt` one object deep); about twenty nits. The real-damage lens compared `main` and the branch
+  over 18,740 variant pairs of 403 documents: no difference but the decided ones.
+- **Mutation** (ADR 53 amended): 51 mutants over the resolution's bound, report and source check, the reader's report and
+  its room, the chain's description, the reads that stand for a resolution, `/Encrypt`, the reports mark, the catalog
+  search, and the validator's counting, search, cut chains and tree keys. 44 killed, 7 by tests the step added; one
+  settled by the code, a read its mutant showed needless; 2 equivalent, confirmed by a second agent; 4 filed in [#459].
+- **The issues.** Closes [#173]. Filed under M02: [#459] (batch 41).
+- **Checks.** The batch check at `5dc8ad7`: 13,731 unit tests, with 235 of the 242 remote documents, 13,728 passed and
+  3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads, the
+  forced rebuilds included, at `5fea24d` and at the head; the integration suite and the .NET 11 compatibility island
+  green in CI; `Remote corpus` run 146 green; the site. Patch coverage 98.97 %, 193 of 195 lines whole: the two partial
+  arms are `?.` on a table `ObjectGraph` always holds where they run. Benchmarks against `main`, alternating: time
+  within noise; allocation up 0.08 to 0.35 KB on 1,000 pages.
+- **For callers.** A chain of 31 references to references now reads its value; a longer one, or a loop, reads as null
+  and is reported. No committed or fetched document reads otherwise.
+
 ## 2026-11-26 — Batch 28: a reference under a generation its object does not carry ([#457])
 
 - **The question.** Measured on `main` at `1792237`: lookups compared the object number only, so `5 1 R` and `5 7 R`
@@ -1669,5 +1707,8 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#455]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/455
 [#456]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/456
 [#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
+[#173]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/173
+[#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
+[#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424

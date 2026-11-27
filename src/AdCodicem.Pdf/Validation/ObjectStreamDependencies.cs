@@ -26,8 +26,8 @@ namespace AdCodicem.Pdf.Validation;
 /// <c>/DecodeParms</c> only what a Flate, LZW or <c>/Crypt</c> step reads, and nothing past a value whose chain reaches an
 /// object a guard cut, or left out of the index, where decoding ends (#263) — asked of the object the walk's own chain
 /// reached, not by following the chain again. Each value is followed as <see cref="PdfReference.Resolve"/> follows it — as many objects as
-/// it loads, the value of the last dropped (#173), a <c>/Length</c> one object further, which the parse loads before it
-/// resolves what it gives —, and nothing written inside an array or a dictionary is read but what decoding reads of it.
+/// it loads, the value of the last examined, a <c>/Length</c>'s chain counting the object it names among them, as the parse
+/// does (#173) —, and nothing written inside an array or a dictionary is read but what decoding reads of it.
 /// </para>
 /// <para>
 /// An object a chain loads reads as the reader serves it while the stream is decoded. One the stream holds reads as null,
@@ -184,16 +184,16 @@ namespace AdCodicem.Pdf.Validation;
 internal sealed class ObjectStreamDependencies
 {
     /// <summary>
-    /// How many objects a stream's parse loads for its <c>/Length</c>: the one it names, then as many as a reference
-    /// resolves through, the value of the last dropped.
+    /// How many objects a stream's parse loads for its <c>/Length</c>: the one it names among those a resolution loads, the
+    /// value of the last examined (#173).
     /// </summary>
-    private const int LengthLinks = PdfReference.MaxChainLength + 1;
+    private const int LengthLinks = PdfReference.MaxChainLength;
 
     /// <summary>
-    /// The furthest object of a chain whose value <see cref="PdfReference.Resolve"/> takes: the one decoding asks whether
+    /// The furthest object of a chain whose value <see cref="PdfReference.Resolve"/> examines: the one decoding asks whether
     /// a guard cut, when the chain runs that far (<see cref="PdfFileReader.LeftByGuard"/>).
     /// </summary>
-    private const int TargetLink = PdfReference.MaxChainLength - 1;
+    private const int TargetLink = PdfReference.MaxChainLength;
 
     /// <summary>
     /// How deep the reader loads the values it reads of an object stream before its data, once the stream is parsed: one
@@ -1018,7 +1018,7 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Follows <paramref name="written"/> as <see cref="PdfReference.Resolve"/> does — through <paramref
-        /// name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last dropped
+        /// name="links"/> objects at most, each loaded at <paramref name="depth"/>, the value of the last examined
         /// (#173) —, recording what the objects it loads need, under <paramref name="key"/>; and gives the value the
         /// reader reads. It follows the numbers its references give, though: a reference under a generation its object
         /// does not carry, which the reader reads as null (#185), is followed to the object of its number, whose value
@@ -1029,8 +1029,8 @@ internal sealed class ObjectStreamDependencies
         /// <param name="links">How many objects the chain loads at most.</param>
         /// <param name="depth">How deep each of them is loaded.</param>
         /// <param name="target">
-        /// The object <see cref="PdfReference.Target"/> gives of the chain — the last whose value the chain took, the
-        /// 31st at most —, which decoding asks whether a guard cut; 0 when <paramref name="written"/> is no reference.
+        /// The object <see cref="PdfReference.Target"/> gives of the chain — the last whose value the chain examined, the
+        /// 32nd at most —, which decoding asks whether a guard cut; 0 when <paramref name="written"/> is no reference.
         /// </param>
         public PdfObject? Follow(PdfObject? written, string key, int links, int depth, out int target)
         {
@@ -1098,16 +1098,13 @@ internal sealed class ObjectStreamDependencies
 
                 var value = Load(number, key, depth);
 
-                // Resolve drops the value of the last object it loads (#173).
-                if (loaded < links)
+                // Resolve examines the value of the last object it loads, and loads none past it (#173).
+                if (value is not PdfReference next)
                 {
-                    if (value is not PdfReference next)
-                    {
-                        return value;
-                    }
-
-                    number = next.Id.Number;
+                    return value;
                 }
+
+                number = next.Id.Number;
             }
 
             return PdfNull.Instance;
@@ -2543,8 +2540,8 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>
     /// The objects a chain loads one after the other from an object written in the file, or held by an object stream that
-    /// decodes alike, each a reference to the next and none a stream — 33 at most, as many as the longest chain loads —, and
-    /// the object it loads after them.
+    /// decodes alike, each a reference to the next and none a stream — 32 at most, as many as the longest chain loads —, and
+    /// the object the last of them names, which the chain loads next where it has loads left.
     /// </summary>
     /// <param name="numbers">The objects, in the order the chain loads them.</param>
     /// <param name="next">The object the last of them names.</param>
@@ -2556,7 +2553,7 @@ internal sealed class ObjectStreamDependencies
         /// <summary>Gets the objects, in the order the chain loads them.</summary>
         public int[] Numbers { get; } = numbers;
 
-        /// <summary>Gets the object the last of them names, which the chain loads next.</summary>
+        /// <summary>Gets the object the last of them names, which the chain loads next where it has loads left.</summary>
         public int Next { get; } = next;
 
         /// <summary>

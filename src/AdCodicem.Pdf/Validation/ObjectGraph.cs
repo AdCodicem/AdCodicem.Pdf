@@ -99,6 +99,21 @@ internal sealed class ObjectGraph
     /// </summary>
     private readonly HashSet<int> _unwalked = new(SeededComparer.Instance);
     private readonly SortedDictionary<int, int> _missingReferences = [];
+
+    /// <summary>
+    /// Whether the chain of references from an object whose value is a reference reaches no value, by the object's number,
+    /// told once the object is read; its keys are the links of chains, which hold no reference of their own to judge: a chain
+    /// is judged at the object that holds its first reference, as a resolution reads it (#173). Null until such an object is
+    /// read: no valid file holds one.
+    /// </summary>
+    private Dictionary<int, bool>? _chains;
+
+    /// <summary>
+    /// The objects read before the walk reached them, still claimed, found to hold no reference as their value: asked once,
+    /// not read again for each reference met to them. Null until one is.
+    /// </summary>
+    private HashSet<int>? _plainWhileWaiting;
+    private readonly SortedDictionary<int, int> _cutReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
     /// <summary>
@@ -115,12 +130,16 @@ internal sealed class ObjectGraph
         _reader = document.Reader;
         _pages = pages;
         MissingReferences = new(room);
+        CutChains = new(room);
         NullCharacterNames = new(room);
         MissingEndObj = new(room);
     }
 
     /// <summary>Gets the objects, one finding each, that refer to objects the file lacks.</summary>
     public ProbeFindings MissingReferences { get; }
+
+    /// <summary>Gets the objects, one finding each, that refer to objects whose chain of references reaches no value.</summary>
+    public ProbeFindings CutChains { get; }
 
     /// <summary>Gets the objects, one finding each, that hold a name with a null character.</summary>
     public ProbeFindings NullCharacterNames { get; }
@@ -157,6 +176,7 @@ internal sealed class ObjectGraph
         while (_work.TryPop(out var pending))
         {
             var number = pending.Id.Number;
+            var claimedUnder = pending.Id.Generation;
             var value = _reader.GetObject(pending.Id);
             _claimed.Remove(number);
 
@@ -184,6 +204,19 @@ internal sealed class ObjectGraph
                 _missing.Add(number);
                 CountMissing(pending.Role, pending.Owner);
                 continue;
+            }
+
+            // An object whose value is a reference is a link of a chain, which a resolution follows: one whose chain reaches no
+            // value reads as null for each reference to it — the one the walk took it through, and those counted while it
+            // waited, which name the generation it carries where the claim does (#173).
+            if (value is PdfReference && StartsCutChain(pending.Id))
+            {
+                CountCut(pending.Role, pending.Owner);
+
+                if (claimedUnder == pending.Id.Generation && waiting?.Counted is { } byOwner)
+                {
+                    AddCuts(byOwner);
+                }
             }
 
             Scan(value, number, RoleOf(number));
@@ -357,7 +390,8 @@ internal sealed class ObjectGraph
     /// — of two generations, only reading it says which one names it —, and the references counted so far are told with it.
     /// Once the reader has read the object, each reference is told when it is met: one that names a generation the object
     /// does not carry is counted as one to an object the file lacks, and resolved, as resolving it asks for it; one that
-    /// names the generation it carries leads the walk to it where only references naming another did.
+    /// names the generation it carries leads the walk to it where only references naming another did, and is counted as one
+    /// to a chain that reaches no value where the object starts one (#173).
     /// </summary>
     private void ClaimAgain(PdfReference reference, int owner, Role role)
     {
@@ -416,13 +450,26 @@ internal sealed class ObjectGraph
         }
         else if (waiting && claimedUnder != carried)
         {
+            // The first takes the claim's place when the walk reaches the object, and is told then; the others now.
             var first = WaitingFor(number);
-            first.Named ??= (owner, role);
+
+            if (first.Named is null)
+            {
+                first.Named = (owner, role);
+            }
+            else if (StartsCutChainOnceRead(reference.Id, waiting))
+            {
+                CountCut(role, owner);
+            }
         }
         else if (_unwalked.Remove(number))
         {
             _work.Push(new Pending(reference.Id, owner, role));
             _claimed[number] = generation;
+        }
+        else if (StartsCutChainOnceRead(reference.Id, waiting))
+        {
+            CountCut(role, owner);
         }
     }
 
@@ -439,8 +486,9 @@ internal sealed class ObjectGraph
     /// <summary>
     /// Tells, once waiting object <paramref name="number"/> is read before the walk reaches it and found to carry
     /// <paramref name="carried"/>, the references counted while it waited under the claim's generation,
-    /// <paramref name="claimedUnder"/>: references to an object the file lacks where that generation is not the object's, and
-    /// nothing otherwise. Their counts are let go; the claim itself is told when the walk reaches the object.
+    /// <paramref name="claimedUnder"/>: references to an object the file lacks where that generation is not the object's;
+    /// references to a chain that reaches no value where it is, and the object starts one (#173); nothing otherwise. Their
+    /// counts are let go; the claim itself is told when the walk reaches the object.
     /// </summary>
     private void TellWaiting(int number, int claimedUnder, int carried)
     {
@@ -452,6 +500,10 @@ internal sealed class ObjectGraph
         if (claimedUnder != carried)
         {
             AddCounts(byOwner);
+        }
+        else if (StartsCutChainOnceRead(new PdfObjectId(number, carried), waiting: true))
+        {
+            AddCuts(byOwner);
         }
 
         _waitingCounts -= byOwner.Count;
@@ -465,6 +517,64 @@ internal sealed class ObjectGraph
         {
             _missingReferences[owner] = _missingReferences.TryGetValue(owner, out var counted) ? counted + count : count;
         }
+    }
+
+    /// <summary>
+    /// Adds the counts <paramref name="byOwner"/> holds to the references to a chain of references that reaches no value, by
+    /// holder, but for a holder that is a link of a chain itself.
+    /// </summary>
+    private void AddCuts(Dictionary<int, int> byOwner)
+    {
+        foreach (var (owner, count) in byOwner)
+        {
+            if (_chains?.ContainsKey(owner) != true)
+            {
+                _cutReferences[owner] = _cutReferences.TryGetValue(owner, out var counted) ? counted + count : count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines whether object <paramref name="id"/>, read, whose value is a reference, starts a chain that reaches no
+    /// value, as <see cref="PdfFileReader.IsChainCut"/> says once for each such object.
+    /// </summary>
+    private bool StartsCutChain(PdfObjectId id)
+    {
+        _chains ??= new(SeededComparer.Instance);
+
+        if (!_chains.TryGetValue(id.Number, out var cut))
+        {
+            cut = _reader.IsChainCut(id, out _);
+            _chains.Add(id.Number, cut);
+        }
+
+        return cut;
+    }
+
+    /// <summary>
+    /// Determines whether the object <paramref name="id"/> names, which the reader has read, starts a chain that reaches no
+    /// value: known once the walk reaches it; for one read before the walk reached it, still <paramref name="waiting"/>, its
+    /// value is asked, as resolving a reference asks, and an answer that it holds no reference remembered.
+    /// </summary>
+    private bool StartsCutChainOnceRead(PdfObjectId id, bool waiting)
+    {
+        if (_chains?.TryGetValue(id.Number, out var cut) == true)
+        {
+            return cut;
+        }
+
+        if (!waiting || _plainWhileWaiting?.Contains(id.Number) == true)
+        {
+            return false;
+        }
+
+        if (_reader.GetObject(id) is PdfReference)
+        {
+            return StartsCutChain(id);
+        }
+
+        (_plainWhileWaiting ??= new(SeededComparer.Instance)).Add(id.Number);
+        return false;
     }
 
     /// <summary>Gives what references met to waiting object <paramref name="number"/> leave to tell, kept from the first.</summary>
@@ -518,6 +628,19 @@ internal sealed class ObjectGraph
     }
 
     /// <summary>
+    /// Counts a reference to a chain of references that reaches no value, written in object <paramref name="owner"/> with
+    /// <paramref name="role"/>: not one another rule judges, nor one a link of a chain holds, which the chain's first holder
+    /// stands for.
+    /// </summary>
+    private void CountCut(Role role, int owner)
+    {
+        if ((role & Role.Uncounted) == 0 && _chains?.ContainsKey(owner) != true)
+        {
+            Tally(_cutReferences, owner);
+        }
+    }
+
+    /// <summary>
     /// Gives what the page tree walk made of object <paramref name="number"/>: an array of kids of its own whose kids it
     /// judged, a node whose kids it judged, or the catalog a root of the tree it judged is written in.
     /// </summary>
@@ -556,7 +679,7 @@ internal sealed class ObjectGraph
 
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var found = TryFindMissing(value, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
+            var found = TryFind(value, owner == 0 ? Role.Trailer : RoleOf(owner), first, cut: false, out var target);
             var holder = Holder(owner);
             var carried = -1;
             var defined = found && NamesAnotherGeneration(target, out carried)
@@ -572,6 +695,35 @@ internal sealed class ObjectGraph
                     (_, true) => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}{defined}."),
                     (1, false) => $"{holder} refers to an object the file lacks: the reference reads as null.",
                     _ => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null."),
+                }));
+        }
+
+        foreach (var (owner, count) in _cutReferences)
+        {
+            if (!CutChains.Take())
+            {
+                continue;
+            }
+
+            var first = new StringBuilder();
+            var found = TryFind(ValueOf(owner), owner == 0 ? Role.Trailer : RoleOf(owner), first, cut: true, out var target);
+            var holder = Holder(owner);
+            var chain = string.Empty;
+
+            if (found)
+            {
+                _ = _reader.IsChainCut(target, out var loopsBackTo);
+                chain = PdfFileReader.DescribeChainCut(loopsBackTo);
+            }
+
+            CutChains.Keep(new ProbeFinding(
+                LocationOf(owner),
+                (count, found) switch
+                {
+                    (1, true) => Invariant($"{holder} refers to object {target.Number} {target.Generation} under {Path(first)}, whose chain of references {chain}: the reference reads as null."),
+                    (_, true) => Invariant($"{holder} holds {count} references whose chains of references reach no value, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}, whose chain of references {chain}."),
+                    (1, false) => $"{holder} refers to an object whose chain of references reaches no value: the reference reads as null.",
+                    _ => Invariant($"{holder} holds {count} references whose chains of references reach no value, which read as null."),
                 }));
         }
 
@@ -623,7 +775,8 @@ internal sealed class ObjectGraph
 
     /// <summary>
     /// Finds, in file order, the first reference inside <paramref name="value"/> to an object the file lacks that the walk
-    /// counted, and writes where it lies into <paramref name="path"/>; the references of other objects are not followed.
+    /// counted — or, <paramref name="cut"/>, to a chain of references that reaches no value —, and writes where it lies into
+    /// <paramref name="path"/>; the references of other objects are not followed.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -640,9 +793,9 @@ internal sealed class ObjectGraph
     /// nested, which nothing catches (#168).
     /// </para>
     /// </remarks>
-    private bool TryFindMissing(PdfObject value, Role role, StringBuilder path, out PdfObjectId target)
+    private bool TryFind(PdfObject value, Role role, StringBuilder path, bool cut, out PdfObjectId target)
     {
-        if (IsMissing(value, role, out target))
+        if (Matches(value, role, cut, out target))
         {
             return true;
         }
@@ -687,7 +840,7 @@ internal sealed class ObjectGraph
                 continue;
             }
 
-            if (IsMissing(next, nextRole, out target))
+            if (Matches(next, nextRole, cut, out target))
             {
                 LeaveAll();
                 return true;
@@ -702,12 +855,15 @@ internal sealed class ObjectGraph
 
     /// <summary>
     /// Determines whether <paramref name="value"/>, with <paramref name="role"/>, is a reference to an object the file
-    /// lacks that the walk counted, and gives the object it names.
+    /// lacks that the walk counted — or, <paramref name="cut"/>, to a chain of references that reaches no value —, and gives
+    /// the object it names.
     /// </summary>
-    private bool IsMissing(PdfObject value, Role role, out PdfObjectId target)
+    private bool Matches(PdfObject value, Role role, bool cut, out PdfObjectId target)
     {
         if (value is PdfReference reference && (role & Role.Uncounted) == 0 &&
-            (_missing.Contains(reference.Id.Number) || NamesAnotherGeneration(reference.Id, out _)))
+            (cut
+                ? !NamesAnotherGeneration(reference.Id, out _) && _chains?.TryGetValue(reference.Id.Number, out var chain) == true && chain
+                : _missing.Contains(reference.Id.Number) || NamesAnotherGeneration(reference.Id, out _)))
         {
             target = reference.Id;
             return true;
@@ -725,7 +881,7 @@ internal sealed class ObjectGraph
     /// <param name="role"><see cref="Role.Trailer"/> for the trailer, whose <c>/Prev</c> and <c>/XRefStm</c> name sections.</param>
     /// <param name="path">Where the path to the name is written.</param>
     /// <param name="isKey">Whether the name is a key.</param>
-    /// <remarks>It reads <paramref name="value"/> in a loop, as <see cref="TryFindMissing"/> does, and for the same reason.</remarks>
+    /// <remarks>It reads <paramref name="value"/> in a loop, as <see cref="TryFind"/> does, and for the same reason.</remarks>
     private PdfName? FindNullCharacter(PdfObject value, Role role, StringBuilder path, out bool isKey)
     {
         isKey = false;

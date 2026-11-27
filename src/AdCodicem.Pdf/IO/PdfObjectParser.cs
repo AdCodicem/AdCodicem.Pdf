@@ -1417,7 +1417,9 @@ internal ref struct PdfObjectParser
 
             if (_streamData is not null)
             {
-                value = _streamData.ResolveLength(named, out presence).Resolve();
+                // Resolved through as many references as any, the one the /Length gives counted, and none past them (#173).
+                var first = _streamData.ResolveLength(named, out presence);
+                value = first is PdfReference next ? next.ResolveThrough(PdfReference.MaxChainLength - 1, named) : first;
             }
             else
             {
@@ -1434,14 +1436,14 @@ internal ref struct PdfObjectParser
             {
                 return new DeclaredLength(
                     StreamLengthForm.ObjectCut,
-                    Reference: named.Target(PdfReference.MaxChainLength),
+                    Reference: named.Target(),
                     Hint: value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? (int)hint : null);
             }
 
             // The object a guard left out of the index, as the one it cut, is the one the chain of references leads to.
             if (presence == ObjectPresence.Unindexed)
             {
-                return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target(PdfReference.MaxChainLength));
+                return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target());
             }
 
             // A reference missing for the generation it names, at the end of a chain, is the one named (#185).
@@ -1454,8 +1456,14 @@ internal ref struct PdfObjectParser
                         ObjectPresence.Deferred => StreamLengthForm.Deferred,
                         _ => StreamLengthForm.ObjectUnreadable,
                     },
-                    Reference: presence == ObjectPresence.Missing ? named.Target(PdfReference.MaxChainLength) : reference);
+                    Reference: presence == ObjectPresence.Missing ? named.Target() : reference);
             }
+        }
+
+        // A chain that reaches no value reads as null: the length says so, as the resolution reports the chain (#173).
+        if (value is PdfNull && written is PdfReference chained && chained.ReachesNoValue())
+        {
+            return new DeclaredLength(StreamLengthForm.ObjectChainCut, Reference: reference);
         }
 
         if (value.AsInteger() is not { } integer)
@@ -1566,6 +1574,7 @@ internal ref struct PdfObjectParser
             {
                 StreamLengthForm.ObjectMissing => Names(reference, "which the file lacks"),
                 StreamLengthForm.ObjectUnreadable => Names(reference, "which could not be read"),
+                StreamLengthForm.ObjectChainCut => Names(reference, PdfFileReader.ChainReachesNoValue),
                 StreamLengthForm.ObjectCut => Names(reference, "which one of the reader's limits cut"),
                 StreamLengthForm.ObjectUnindexed => Names(reference, "which one of the reader's limits left out of the index"),
                 _ => Names(reference, "which holds " + Value(declared)),
