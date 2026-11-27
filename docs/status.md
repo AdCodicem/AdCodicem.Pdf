@@ -75,8 +75,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 13,767 unit on [#462]'s branch at `2abe4ca`, with 235 of the 242 remote documents fetched, 13,764 passed
-  and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
+- **Tests**: 13,767 unit on [#462]'s branch at `28d2d0a`, compiled by the pinned SDK 10.0.404, with 235 of the 242
+  remote documents fetched, 13,764 passed and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
   CI green, the inlining check, the integration suite and the .NET 11 compatibility island among it; `Remote corpus` run
   148 green on its code. Before it, 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
   and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
