@@ -1221,9 +1221,12 @@ internal sealed partial class PdfFileReader
         }
     }
 
-    /// <summary>Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>.</summary>
+    /// <summary>
+    /// Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>: its own
+    /// value, not the one a chain of references from it leads to, which the search meets as an object of its own (#173).
+    /// </summary>
     private bool IsCatalogCandidate(int number) =>
-        GetIndexedObject(number).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+        GetIndexedObject(number) is { } value and not PdfReference && value.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
 
     /// <summary>Makes object <paramref name="number"/>, a catalog the search found, the trailer's <c>/Root</c>.</summary>
     private void TakeCatalog(int number)

@@ -1004,6 +1004,60 @@ public class ArlingtonRuleTests
         walk.Checked.Should().BeLessThan(3 * nodes, "each destination and its array are checked once, however many nodes name the array");
     }
 
+    [Fact(Timeout = 60_000)]
+    public async Task A_tree_node_many_chains_of_references_lead_to_is_expanded_once()
+    {
+        // The catalog's /PageLabels lists, as its kids, 400 objects that each hold the reference 4 0 R, and object 4 itself:
+        // node 4, with 400 page labels, is expanded once, as the object every chain leads to, and its labels checked once —
+        // where it was expanded for each chain, its labels checked 400 times over (#173).
+        const int Links = 400;
+        var labels = new StringBuilder("[");
+
+        for (var index = 0; index < Links; index++)
+        {
+            labels.Append(CultureInfo.InvariantCulture, $"{index} << /S /D >> ");
+        }
+
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Kids [" +
+                string.Join(' ', Enumerable.Range(10, Links).Select(static number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"))) + " 4 0 R] >> >>")
+            .WithObject(2, Root)
+            .WithObject(3, Page)
+            .WithObject(4, "<< /Nums " + labels.Append(']') + " >>");
+
+        for (var number = 10; number < 10 + Links; number++)
+        {
+            builder.WithObject(number, "4 0 R");
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+
+        var walk = await Task.Run(() => Walk(file), TestContext.Current.CancellationToken);
+
+        walk.Checked.Should().BeLessThan(2 * Links, "node 4 and each of its labels are checked once, however many chains lead to it");
+    }
+
+    [Fact]
+    public void The_parameters_of_a_filter_named_through_a_chain_of_references_are_typed_by_that_filter()
+    {
+        // A metadata stream's /Filter names object 9, which names object 10, /FlateDecode: its /DecodeParms are Flate's,
+        // whose /Predictor is an integer, as they are where /Filter names object 10 itself; the walk typed none, the chain's
+        // first link holding a reference (#173).
+        var file = Pdf(
+            "<< /Type /Catalog /Pages 2 0 R /Metadata 3 0 R >>",
+            Root,
+            "<< /Type /Metadata /Subtype /XML /Length 0 /Filter 9 0 R /DecodeParms << /Predictor (bad) >> >>\nstream\n\nendstream",
+            Page,
+            "null",
+            "null",
+            "null",
+            "null",
+            "10 0 R",
+            "/FlateDecode");
+
+        Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Contain("/Predictor");
+    }
+
     [Fact]
     public void Two_validations_give_the_same_findings_in_the_same_order()
     {

@@ -1451,10 +1451,21 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     void IPdfReferenceChainObserver.ChainCut(PdfReference start)
     {
         // Noted only while the record has room, as the references under another generation are: once full, it counts what
-        // it drops, no message written.
+        // it drops, no message written. The chain is described first: reading it again may throw, at a guard, or fill the
+        // record, and the start is noted only once its report is made (#173).
         if (_chainsCutReported.Contains(start.Id))
         {
             return;
+        }
+
+        var message = string.Empty;
+
+        if (_diagnostics.Count < _diagnostics.Capacity)
+        {
+            _ = IsChainCut(start.Id, out var loopsBackTo);
+            message = string.Create(
+                CultureInfo.InvariantCulture,
+                $"A reference names object {start.Id.Number} {start.Id.Generation}, whose chain of references {DescribeChainCut(loopsBackTo)}: the reference reads as null.");
         }
 
         var room = _diagnostics.Count < _diagnostics.Capacity;
@@ -1464,17 +1475,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             _chainsCutReported.Add(start.Id);
         }
 
-        var message = string.Empty;
-
-        if (room)
-        {
-            _ = IsChainCut(start.Id, out var loopsBackTo);
-            message = string.Create(
-                CultureInfo.InvariantCulture,
-                $"A reference names object {start.Id.Number} {start.Id.Generation}, whose chain of references {DescribeChainCut(loopsBackTo)}: the reference reads as null.");
-        }
-
-        _diagnostics.Warn(PdfDiagnosticCodes.ObjectReferenceChainCut, message);
+        _diagnostics.Warn(PdfDiagnosticCodes.ObjectReferenceChainCut, room ? message : string.Empty);
     }
 
     /// <summary>

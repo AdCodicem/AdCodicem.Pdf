@@ -107,6 +107,12 @@ internal sealed class ObjectGraph
     /// read: no valid file holds one.
     /// </summary>
     private Dictionary<int, bool>? _chains;
+
+    /// <summary>
+    /// The objects read before the walk reached them, still claimed, found to hold no reference as their value: told once,
+    /// not read again for each reference met to them. Null until one is.
+    /// </summary>
+    private HashSet<int>? _plainWhileWaiting;
     private readonly SortedDictionary<int, int> _cutReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
@@ -548,9 +554,26 @@ internal sealed class ObjectGraph
     /// value: told once the walk reaches it; for one read before the walk reached it, still <paramref name="waiting"/>, its
     /// value is asked again, as resolving a reference asks.
     /// </summary>
-    private bool StartsCutChainOnceRead(PdfObjectId id, bool waiting) =>
-        _chains?.TryGetValue(id.Number, out var cut) == true ? cut
-        : waiting && _reader.GetObject(id) is PdfReference && StartsCutChain(id);
+    private bool StartsCutChainOnceRead(PdfObjectId id, bool waiting)
+    {
+        if (_chains?.TryGetValue(id.Number, out var cut) == true)
+        {
+            return cut;
+        }
+
+        if (!waiting || _plainWhileWaiting?.Contains(id.Number) == true)
+        {
+            return false;
+        }
+
+        if (_reader.GetObject(id) is PdfReference)
+        {
+            return StartsCutChain(id);
+        }
+
+        (_plainWhileWaiting ??= new(SeededComparer.Instance)).Add(id.Number);
+        return false;
+    }
 
     /// <summary>Gives what references met to waiting object <paramref name="number"/> leave to tell, kept from the first.</summary>
     private Waiting WaitingFor(int number)

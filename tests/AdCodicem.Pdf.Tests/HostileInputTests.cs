@@ -1973,6 +1973,57 @@ public class HostileInputTests
             .Which.Message.Should().Contain("names object 7 0, whose chain of references reaches no value within the 32 a resolution follows");
     }
 
+    [Fact]
+    public void An_encrypt_entry_reached_through_a_chain_of_references_is_read_as_the_dictionary_it_leads_to()
+    {
+        // The trailer's /Encrypt names object 5, which names object 6, an encryption dictionary: the document is encrypted,
+        // as a reference resolves through a chain to the value it leads to; the reader read object 5 alone, and opened the
+        // document as unencrypted, its /Encrypt "read as null" (#173).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "6 0 R"),
+            [6] = file.Object(6, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R /Encrypt 5 0 R /ID [<01> <02>]");
+
+        FluentActions.Invoking(() => PdfDocument.Open(file.Bytes)).Should().Throw<PdfEncryptedException>();
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
+        document.IsEncrypted.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid);
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_catalog_search_takes_the_catalog_itself_not_an_object_whose_chain_of_references_leads_to_it(int links)
+    {
+        // The trailer's /Root names object 90, which the file lacks; object 3 names object 4, and so on through `links`
+        // objects to object 35 + links - 31, the catalog. The search takes the catalog: an object whose value is a reference
+        // is none, whatever its chain leads to. It took object 3, which /Root then read through 32 references or more, and
+        // the document ended with no catalog (#173).
+        var file = new HandWrittenFile();
+        var catalog = 3 + links;
+        var rows = new Dictionary<int, long>
+        {
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < catalog; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[catalog] = file.Object(catalog, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Table(catalog + 1, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {catalog + 1} /Root 90 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Catalog.Should().NotBeNull();
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(catalog));
+    }
+
     /// <summary>Gives <paramref name="bytes"/> with the classic table's row of object <paramref name="number"/> giving <paramref name="generation"/>.</summary>
     private static byte[] WithRowGeneration(byte[] bytes, int number, int generation)
     {

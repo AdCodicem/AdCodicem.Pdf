@@ -695,9 +695,10 @@ internal sealed class ArlingtonWalk
 
     /// <summary>
     /// Whether a tree's node or array is to be expanded: one written inside another object always, for it lies in an
-    /// object expanded once; an indirect one the first time any tree meets it, which is remembered.
+    /// object expanded once; an indirect one the first time any tree meets it, which is remembered — by the object a chain
+    /// of references leads to, which many chains may lead to (#173).
     /// </summary>
-    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(reference.Id.Number);
+    private bool Enters(PdfObject value) => value is not PdfReference reference || _treeNodes.Add(reference.Target().Number);
 
     /// <summary>Whether an object, which <see cref="Classify"/> has resolved, was cut by a reader limit; never for a direct value.</summary>
     private bool IsCut(int number) => number != 0 && _reader.IsCutAtLimit(number);
@@ -1190,7 +1191,20 @@ internal sealed class ArlingtonWalk
     private PdfObjectId IdOf(PdfReference reference) =>
         _chainTargets?.TryGetValue(reference.Id.Number, out var target) == true && target.Number != 0 ? target : reference.Id;
 
-    private PdfObject Resolve(PdfObject raw) => raw is PdfReference reference ? _reader.GetObject(IdOf(reference)) : raw;
+    /// <summary>
+    /// Gives the value <paramref name="raw"/> leads to: itself, or what a reference names, through a chain of references the
+    /// walk has yet to classify too (#173).
+    /// </summary>
+    private PdfObject Resolve(PdfObject raw)
+    {
+        if (raw is not PdfReference reference)
+        {
+            return raw;
+        }
+
+        var value = _reader.GetObject(IdOf(reference));
+        return value is PdfReference ? _reader.GetObject(reference.Target()) : value;
+    }
 
     private static ValueClass ClassOf(PdfObject value) => value switch
     {
