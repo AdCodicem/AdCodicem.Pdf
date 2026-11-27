@@ -326,31 +326,40 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("offset short", "whose offset {short} is not ten digits")]
-    [InlineData("generation short", "whose generation 0000 is not five digits")]
-    [InlineData("two spaces", "whose fields are not parted by single spaces")]
-    [InlineData("two spaces before the keyword", "whose fields are not parted by single spaces")]
-    [InlineData("tab after the offset", "whose fields are not parted by single spaces")]
-    [InlineData("tab before the keyword", "whose fields are not parted by single spaces")]
-    [InlineData("line feed", "which ends with one end-of-line byte, not two")]
-    [InlineData("carriage return", "which ends with one end-of-line byte, not two")]
-    [InlineData("space, carriage return and line feed", "which ends with more than two end-of-line bytes")]
-    [InlineData("two spaces before the end of line", "which ends with more than two end-of-line bytes")]
-    [InlineData("a blank line before the trailer", "which ends with more than two end-of-line bytes")]
-    [InlineData("two carriage returns", "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
-    [InlineData("line feed and carriage return", "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
-    [InlineData("space alone", "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
-    [InlineData("carriage return and line feed", null)]
-    [InlineData("space and carriage return", null)]
-    [InlineData("space and line feed", null)]
-    public void A_table_row_not_written_in_twenty_bytes_is_named_and_the_table_read_as_written(string row, string? fault)
+    [InlineData("offset short", 3, "whose offset {short} is not ten digits")]
+    [InlineData("generation short", 3, "whose generation 0000 is not five digits")]
+    [InlineData("two spaces", 3, "whose fields are not parted by single spaces")]
+    [InlineData("two spaces before the keyword", 3, "whose fields are not parted by single spaces")]
+    [InlineData("tab after the offset", 3, "whose fields are not parted by single spaces")]
+    [InlineData("tab before the keyword", 3, "whose fields are not parted by single spaces")]
+    [InlineData("line feed", 3, "which ends with one end-of-line byte, not two")]
+    [InlineData("carriage return", 3, "which ends with one end-of-line byte, not two")]
+    [InlineData("line feed", 2, "which ends with one end-of-line byte, not two")]
+    [InlineData("space, carriage return and line feed", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("space, carriage return and line feed", 3, null)]
+    [InlineData("a blank line after the row", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("a blank line after the row", 3, null)]
+    [InlineData("carriage return doubled", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("carriage return doubled", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("two spaces before the end of line", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("two spaces before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("two carriage returns", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("line feed and carriage return", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("space alone", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("carriage return and line feed", 2, null)]
+    [InlineData("carriage return and line feed", 3, null)]
+    [InlineData("space and carriage return", 2, null)]
+    [InlineData("space and carriage return", 3, null)]
+    [InlineData("space and line feed", 3, null)]
+    public void A_table_row_not_written_in_twenty_bytes_is_named_and_the_table_read_as_written(string row, int number, string? fault)
     {
-        // Object 3's row, the table's last, written as ISO 32000-1 (7.5.4) writes no row: a field short of digits, a second
-        // space, an end of line of one byte or of more than two — a blank line before the trailer among them —, or of two that
-        // are no end of line. The reader reads it by its tokens, so object 3 reads as written; the three ends of line ISO
-        // 32000-1 allows are no fault.
+        // Object 2's row, or object 3's, the table's last, written as ISO 32000-1 (7.5.4) writes no row: a field short of
+        // digits, a second space, an end of line of one byte or of more than two, or of two that are no end of line. The reader
+        // reads it by its tokens, so the objects read as written; the three ends of line ISO 32000-1 allows are no fault. Past
+        // the last row, which no row follows for a reader to misread, a third byte — a blank line before the trailer, as many
+        // writers write it — is not judged.
         var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
-        var at = sound.IndexOf("trailer", StringComparison.Ordinal) - 20;
+        var at = sound.IndexOf("trailer", StringComparison.Ordinal) - (20 * (4 - number));
         var offset = sound.Substring(at, 10);
         var written = row switch
         {
@@ -363,8 +372,9 @@ public class CrossReferenceRuleTests
             "line feed" => $"{offset} 00000 n\n",
             "carriage return" => $"{offset} 00000 n\r",
             "space, carriage return and line feed" => $"{offset} 00000 n \r\n",
+            "a blank line after the row" => $"{offset} 00000 n\r\n\n",
+            "carriage return doubled" => $"{offset} 00000 n\r\r\n",
             "two spaces before the end of line" => $"{offset} 00000 n  \n",
-            "a blank line before the trailer" => $"{offset} 00000 n\r\n\n",
             "two carriage returns" => $"{offset} 00000 n\r\r",
             "line feed and carriage return" => $"{offset} 00000 n\n\r",
             "space alone" => $"{offset} 00000 n ",
@@ -379,6 +389,7 @@ public class CrossReferenceRuleTests
         var report = new PdfValidator().Validate(document);
 
         document.WasRepaired.Should().BeFalse();
+        document.GetObject(2).AsDictionary()!.IsOfType(PdfName.Pages).Should().BeTrue();
         document.GetObject(3).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
 
         if (fault is null)
@@ -393,7 +404,7 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(table);
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object 3, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal)}."));
+            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object {number}, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal)}."));
     }
 
     [Theory]
@@ -426,20 +437,20 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData(" \n", 18, false)]
-    [InlineData(" \n", 19, false)]
-    [InlineData(" \r\n", 20, false)]
-    [InlineData(" \r\n", 21, true)]
-    [InlineData("\n", 19, false)]
-    [InlineData("\n", 20, true)]
-    public void A_row_whose_end_of_line_a_length_bound_cuts_is_the_guard_s_and_not_judged(string endOfLine, int bytesOfTheRow, bool judged)
+    [InlineData(3, " \n", 18, false)]
+    [InlineData(3, " \n", 19, false)]
+    [InlineData(2, " \r\n", 20, false)]
+    [InlineData(2, " \r\n", 21, true)]
+    [InlineData(3, "\n", 19, false)]
+    [InlineData(3, "\n", 20, true)]
+    public void A_row_whose_end_of_line_a_length_bound_cuts_is_the_guard_s_and_not_judged(int number, string endOfLine, int bytesOfTheRow, bool judged)
     {
-        // MaxXRefSectionLength ends the table's window within object 3's row, past its n: the row is read, but what lies past
-        // the cut — its end of line, or the byte after it — is the guard's, which says the section was read in part. A space
-        // and a carriage return the window ends with are an end of line ISO 32000-1 allows; the line feed past them, once the
-        // window holds it, makes three bytes. A line feed alone is judged once the window holds the byte after it.
+        // MaxXRefSectionLength ends the table's window within object 2's row or object 3's, past its n: the row is read, but
+        // what lies past the cut — its end of line, or the byte after it — is the guard's, which says the section was read in
+        // part. A space and a carriage return the window ends with are an end of line ISO 32000-1 allows; the line feed past
+        // them, once the window holds it, makes three bytes. A line feed alone is judged once the window holds the byte after it.
         var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
-        var row = sound.IndexOf("trailer", StringComparison.Ordinal) - 20;
+        var row = sound.IndexOf("trailer", StringComparison.Ordinal) - (20 * (4 - number));
         var file = Encoding.Latin1.GetBytes(string.Concat(sound.AsSpan(0, row + 18), endOfLine, sound.AsSpan(row + 20)));
         var table = PdfTemplate.OffsetOf(file, "xref\n");
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = (int)(row - table) + bytesOfTheRow } };

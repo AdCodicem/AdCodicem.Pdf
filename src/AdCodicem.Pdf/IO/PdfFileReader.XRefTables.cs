@@ -951,7 +951,7 @@ internal sealed partial class PdfFileReader
             // A row read by its tokens reads as it was meant, whatever its width, but a reader that seeks rows by their fixed
             // width misreads every row after it: the first is described, the others counted.
             if (!IsInTwentyBytes(window, offsetToken, generationToken, kindToken) &&
-                FormOf(window, offsetToken, generationToken, kindToken) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
+                FormOf(window, offsetToken, generationToken, kindToken, followed: i + 1 < count) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
             {
                 section.WidthWrongRows++;
                 section.WidthWrongRow ??= string.Create(
@@ -1007,7 +1007,8 @@ internal sealed partial class PdfFileReader
     /// Gives how the row whose tokens are <paramref name="offset"/>, <paramref name="generation"/> and <paramref name="kind"/>
     /// departs from the 20 bytes ISO 32000-1 (7.5.4) writes each row in: a ten-digit offset, a space, a five-digit generation,
     /// a space, <c>n</c> or <c>f</c>, and an end of line of a space and a carriage return, a space and a line feed, or a
-    /// carriage return and a line feed.
+    /// carriage return and a line feed, with no third byte of it where another row of the subsection follows the row
+    /// (<paramref name="followed"/>).
     /// </summary>
     /// <remarks>
     /// A row whose end of line the window does not hold is not judged: a larger window reads it again, or a guard cut it,
@@ -1015,7 +1016,7 @@ internal sealed partial class PdfFileReader
     /// out of the loop that reads the rows, whose own calls it would crowd out of the inlining.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static RowForm FormOf(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind)
+    private static RowForm FormOf(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind, bool followed)
     {
         var end = kind.End;
 
@@ -1042,8 +1043,9 @@ internal sealed partial class PdfFileReader
 
         // The run of spaces, carriage returns and line feeds past the keyword is the row's end of line, which takes its two
         // bytes: a run of one or of three makes the row 19 bytes or 21 or more — a reader seeking rows by width misreads the
-        // next —, and one of two is one of the three pairs ISO 32000-1 allows. A third byte the window does not hold is not
-        // looked at: the row's two are judged.
+        // next —, and one of two is one of the three pairs ISO 32000-1 allows. Past a subsection's last row, which no row
+        // follows for a reader to misread, the run goes on as many writers write it, a blank line before the trailer: only
+        // the row's two bytes are judged, as where the window does not hold a third.
         var (first, second) = (window[end], window[end + 1]);
 
         if (!IsEndOfLineByte(first))
@@ -1056,7 +1058,7 @@ internal sealed partial class PdfFileReader
             return first == (byte)' ' ? RowForm.EndOfLine : RowForm.OneEndOfLineByte;
         }
 
-        if (end + 2 < window.Length && IsEndOfLineByte(window[end + 2]))
+        if (followed && end + 2 < window.Length && IsEndOfLineByte(window[end + 2]))
         {
             return RowForm.MoreEndOfLineBytes;
         }
@@ -1101,7 +1103,7 @@ internal sealed partial class PdfFileReader
         /// <summary>The row ends with one end-of-line byte, a carriage return or a line feed no other follows.</summary>
         OneEndOfLineByte,
 
-        /// <summary>The row ends with more than two spaces, carriage returns and line feeds.</summary>
+        /// <summary>The row ends with more than two spaces, carriage returns and line feeds, a row of its subsection following.</summary>
         MoreEndOfLineBytes,
 
         /// <summary>The keyword is followed by no end of line ISO 32000-1 allows a row, of two bytes or of one.</summary>

@@ -12,7 +12,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// another width. The reader reads rows by their tokens, as pdf.js does, and qpdf accepts them with a warning, so the
 /// file reads as written: a warning (ADR 45), once a table, naming the first such row and counting them. An end of line
 /// runs over the spaces, carriage returns and line feeds past the keyword: one of more than two bytes — a blank line
-/// after the row, or a carriage return a text-mode write doubled — makes the row longer than 20 bytes. A row is judged
+/// after the row, or a carriage return a text-mode write doubled — makes the row longer than 20 bytes, where another
+/// row of its subsection follows it. Past a subsection's last row, which no row follows for a reader to misread, a
+/// blank line before the trailer is as many writers write it, and only the row's two bytes are judged. A row is judged
 /// where the table's window holds its end of line: past a guard's cut, the rows are the guard's. Rows the reader could
 /// not read as rows are <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s.
 /// </remarks>
