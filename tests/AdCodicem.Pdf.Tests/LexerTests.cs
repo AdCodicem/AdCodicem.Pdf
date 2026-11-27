@@ -313,6 +313,31 @@ end)"u8.ToArray());
         Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text)).Should().Be("back\bspace cr:crlf:end");
     }
 
+    [Theory]
+    [InlineData("hexadecimal", "<FEFF0041004200430044>", "FEFF0041004200430044")]
+    [InlineData("hexadecimal", "<48 65\n6C zz 6>", "48656C60")]
+    [InlineData("hexadecimal", "<long>", "long")]
+    [InlineData("literal", @"(Total \(net\) 100)", "546F74616C20286E65742920313030")]
+    [InlineData("literal", "(cr:\r\nlf)", "63723A0A6C66")]
+    [InlineData("literal", "(long)", "long")]
+    public void Decodes_an_escaped_or_hexadecimal_string_into_one_array_its_exact_length(string kind, string written, string bytes)
+    {
+        // A string decodes into a working buffer, on the stack or rented past 256 bytes, and its bytes are copied out once:
+        // the result is the one array the string allocates. The long rows hold 300 bytes, past the stack's share.
+        var (raw, expected) = written switch
+        {
+            "<long>" => (Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("4A 6b", 300))), Enumerable.Repeat(new byte[] { 0x4A, 0x6B }, 300).SelectMany(pair => pair).ToArray()),
+            "(long)" => (Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(@"a\(", 300))), Enumerable.Repeat(new byte[] { (byte)'a', (byte)'(' }, 300).SelectMany(pair => pair).ToArray()),
+            _ => (Encoding.ASCII.GetBytes(written[1..^1]), Convert.FromHexString(bytes)),
+        };
+        Func<byte[]> decode = kind == "literal" ? () => PdfStringDecoder.DecodeLiteral(raw) : () => PdfStringDecoder.DecodeHex(raw, out _, out _);
+
+        var allocated = Allocations.Least(decode, out var decoded);
+
+        decoded.Should().Equal(expected);
+        allocated.Should().Be(Allocations.Least(() => new byte[expected.Length], out _));
+    }
+
     [Fact]
     public void Drops_a_backslash_that_ends_a_literal_string()
     {
