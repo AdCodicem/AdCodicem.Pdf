@@ -48,8 +48,8 @@ A batch aims at three days at most. A phase that runs well past what is written 
 - Each finding carries its effect (E1 to E5) and its input (real-file or hand-made); the severity follows from them.
   **A refuter** checks each blocker and major only.
 - **Fixes**: code stages first, parallel where files allow, then one documentation stage. The check is
-  `bash .claude/scripts/batch-check.sh` (build, format, unit suite, commit subjects), not an agent. Issue comments and
-  new debt issues are collected in the notes and posted once, at the batch's end.
+  `bash .claude/scripts/batch-check.sh` (build, format, the scan's inlining, unit suite, commit subjects), not an agent.
+  Issue comments and new debt issues are collected in the notes and posted once, at the batch's end.
 - **Each later round** reviews the previous round's fixes and the code they call or that calls them.
 - **Stop** at the first round with no blocker and no major. Its minors and nits, and any left, get one final pass that
   is not reviewed again: texts and tests are fixed; a minor whose fix would change behavior is filed as `debt`.

@@ -38,6 +38,11 @@ jobs:
       - name: Verify formatting
         run: dotnet format AdCodicem.Pdf.slnx --verify-no-changes --no-restore
 
+      # The rebuild's scan for objects keeps the lexer inlined in its optimized compiles: a cost no test observes, which
+      # the method lost twice as it grew (#374). The check reads the runtime's inlining decisions in a process of its own.
+      - name: Check the scan's inlining
+        run: dotnet run -c Release --no-build --project tests/AdCodicem.Pdf.InliningCheck
+
       # The results directory is named explicitly, because the report does not land where the upload below
       # used to look for it.
       - name: Unit tests

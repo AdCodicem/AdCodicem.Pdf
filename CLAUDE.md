@@ -124,6 +124,7 @@ dotnet build AdCodicem.Pdf.slnx -c Release
 dotnet test --solution AdCodicem.Pdf.slnx -c Release          # unit + integration (the latter skip without Docker)
 dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
 dotnet run -c Release --project benchmarks/AdCodicem.Pdf.Benchmarks -- --filter '*'
+dotnet run -c Release --no-build --project tests/AdCodicem.Pdf.InliningCheck   # the rebuild's scan keeps the lexer inlined (#374)
 
 cd docs/website && npm ci && npm run build                          # the documentation site
 ```
