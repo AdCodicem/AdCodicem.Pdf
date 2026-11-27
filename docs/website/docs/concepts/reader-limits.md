@@ -133,7 +133,7 @@ its twin in the clear does. When the filters before the last reach theirs, the s
 decoded of what they kept, and the report says decoding stopped.
 
 ISO 32000 sets no limit on how many filters a stream names, and real streams name one to three. Each filter costs
-decoding something whatever its data — a few microseconds, and for LZW a table of tens of kilobytes —, and a filter
+decoding something whatever its data — a few microseconds, and for LZW a table it rents —, and a filter
 whose data decodes to itself never runs out of it: a `/Filter` array of millions, which an object stream's member can
 hold in a file of a few hundred kilobytes, cost seconds on every decode, more for filters that never run out of data.
 `MaxFilterChainLength` bounds how many filters a stream's data passes through, 64 by default: decoding stops before the

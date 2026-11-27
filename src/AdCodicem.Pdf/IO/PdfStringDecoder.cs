@@ -1,9 +1,27 @@
+using System.Buffers;
+
 namespace AdCodicem.Pdf.IO;
 
 /// <summary>Turns the raw bytes of a string token into the bytes the string actually denotes.</summary>
 internal static class PdfStringDecoder
 {
+    /// <summary>
+    /// The most bytes a working buffer takes on the stack; a longer token's is rented, up to <see cref="PooledBytes"/>.
+    /// </summary>
+    private const int StackBytes = 256;
+
+    /// <summary>
+    /// The most bytes a working buffer is rented for: a longer token's has an array of its own, which the shared pool would
+    /// otherwise keep, per thread, once the token is read.
+    /// </summary>
+    private const int PooledBytes = 64 * 1024;
+
     /// <summary>Decodes the contents of a literal string, resolving backslash escapes.</summary>
+    /// <remarks>
+    /// Escapes are resolved into a working buffer and the bytes copied out of it into the result, of the string's exact
+    /// length. The buffer is on the stack or rented, so that the result is the one array a call allocates, but for a token
+    /// past 64 KB, whose buffer is an array of its own.
+    /// </remarks>
     public static byte[] DecodeLiteral(ReadOnlySpan<byte> raw)
     {
         if (raw.IndexOf((byte)'\\') < 0 && raw.IndexOf((byte)'\r') < 0)
@@ -11,7 +29,63 @@ internal static class PdfStringDecoder
             return raw.ToArray();
         }
 
-        var buffer = new byte[raw.Length];
+        byte[]? rented = null;
+        var buffer = raw.Length <= StackBytes ? stackalloc byte[StackBytes]
+            : raw.Length <= PooledBytes ? (rented = ArrayPool<byte>.Shared.Rent(raw.Length))
+            : new byte[raw.Length];
+
+        try
+        {
+            return buffer[..Unescape(raw, buffer)].ToArray();
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Decodes the contents of a hexadecimal string, skipping white space, which ISO 32000-1 (7.3.4.3) lets it hold, and
+    /// every other byte that is no hexadecimal digit, which it does not: those are counted, for the caller to report.
+    /// </summary>
+    /// <remarks>
+    /// The digits are decoded into a working buffer and the bytes copied out of it into the result, of the string's exact
+    /// length. The buffer holds half the token's bytes and one more, on the stack or rented, so that the result is the one
+    /// array a call allocates, but for a buffer past 64 KB, which is an array of its own.
+    /// </remarks>
+    /// <param name="raw">The bytes between the angle brackets.</param>
+    /// <param name="firstStray">Where the first byte that is neither a hexadecimal digit nor white space lies, or -1.</param>
+    /// <param name="strays">How many such bytes the string holds.</param>
+    public static byte[] DecodeHex(ReadOnlySpan<byte> raw, out int firstStray, out int strays)
+    {
+        var size = (raw.Length / 2) + 1;
+        byte[]? rented = null;
+        var buffer = size <= StackBytes ? stackalloc byte[StackBytes]
+            : size <= PooledBytes ? (rented = ArrayPool<byte>.Shared.Rent(size))
+            : new byte[size];
+
+        try
+        {
+            return buffer[..Unhex(raw, buffer, out firstStray, out strays)].ToArray();
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes into <paramref name="buffer"/>, which holds at least as many bytes as <paramref name="raw"/>, the bytes a
+    /// literal string's contents denote, and returns how many.
+    /// </summary>
+    private static int Unescape(ReadOnlySpan<byte> raw, Span<byte> buffer)
+    {
         var length = 0;
         var index = 0;
 
@@ -100,19 +174,15 @@ internal static class PdfStringDecoder
             }
         }
 
-        return buffer.AsSpan(0, length).ToArray();
+        return length;
     }
 
     /// <summary>
-    /// Decodes the contents of a hexadecimal string, skipping white space, which ISO 32000-1 (7.3.4.3) lets it hold, and
-    /// every other byte that is no hexadecimal digit, which it does not: those are counted, for the caller to report.
+    /// Writes into <paramref name="buffer"/>, which holds at least one byte more than half <paramref name="raw"/>, the bytes
+    /// a hexadecimal string's contents denote, and returns how many.
     /// </summary>
-    /// <param name="raw">The bytes between the angle brackets.</param>
-    /// <param name="firstStray">Where the first byte that is neither a hexadecimal digit nor white space lies, or -1.</param>
-    /// <param name="strays">How many such bytes the string holds.</param>
-    public static byte[] DecodeHex(ReadOnlySpan<byte> raw, out int firstStray, out int strays)
+    private static int Unhex(ReadOnlySpan<byte> raw, Span<byte> buffer, out int firstStray, out int strays)
     {
-        var buffer = new byte[(raw.Length / 2) + 1];
         var length = 0;
         var high = -1;
         firstStray = -1;
@@ -149,7 +219,7 @@ internal static class PdfStringDecoder
             buffer[length++] = (byte)(high << 4);
         }
 
-        return buffer.AsSpan(0, length).ToArray();
+        return length;
     }
 
     /// <summary>

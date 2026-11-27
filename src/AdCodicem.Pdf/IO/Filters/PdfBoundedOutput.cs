@@ -60,6 +60,24 @@ internal sealed class PdfBoundedOutput
         return fits == count;
     }
 
+    /// <summary>
+    /// Appends what fits of the <paramref name="length"/> bytes written from <paramref name="start"/>, which the output holds
+    /// already; false when some of them did not fit.
+    /// </summary>
+    public bool TryRepeat(int start, int length)
+    {
+        var fits = Math.Min(length, _maxLength - _count);
+
+        if (fits > 0)
+        {
+            Reserve(fits);
+            _buffer.AsSpan(start, fits).CopyTo(_buffer.AsSpan(_count));
+            _count += fits;
+        }
+
+        return fits == length;
+    }
+
     /// <summary>Returns what was written: the buffer itself when it is exactly full, a copy otherwise.</summary>
     public byte[] ToArray() => _count == _buffer.Length ? _buffer : _buffer.AsSpan(0, _count).ToArray();
 

@@ -51,7 +51,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   brought forward as the maintainer chose on 2026-11-25, the rebuild's scan — [#387]'s time in the square of the lines,
   [#389] and [#438] —, in [#454]; the twenty-eighth, [#185], a reference under a generation its object does not carry,
   in [#457]; the twenty-ninth, [#173], a chain of references read through 32 and reported where it reaches no value, in
-  [#458]. Next, the other batches,
+  [#458]; the thirtieth, [#192] and [#374], LZW and strings decoded without needless arrays and the rebuild's scan
+  keeping its lexer inlined, with [#463], the SDK band sessions and CI compile with, in [#462]. Next, the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -64,7 +65,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
   to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]), its second ([#420] to [#426]),
-  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
+  its third ([#428] to [#435]) and its fourth ([#437], [#438]), its thirty-eighth ([#449] to [#453]), its twenty-eighth ([#455], [#456]), its twenty-ninth ([#459]), its thirtieth ([#463]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the
   eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -74,7 +75,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
+- **Tests**: 13,767 unit on [#462]'s branch at `28d2d0a`, compiled by the pinned SDK 10.0.404, with 235 of the 242
+  remote documents fetched, 13,764 passed and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
+  CI green, the inlining check, the integration suite and the .NET 11 compatibility island among it; `Remote corpus` run
+  148 green on its code. Before it, 13,731 unit on [#458]'s branch at `5dc8ad7`, with 235 of the 242 remote documents fetched, 13,728 passed
   and 3 skipped; the 72 timing and memory tests alone; the corpus differential against `main` identical over 806 reads;
   the integration suite and the .NET 11 compatibility island green in CI; `Remote corpus` run 146 green on its code.
   Before it, 13,674 unit on [#457]'s branch at `ab02627`, with 235 of the 242 remote documents fetched, 13,671 passed
@@ -126,7 +130,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   against qpdf in its container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the
   library code [#344] ends with.
-- **Coverage**: on [#458]'s branch at `5bbccdf`, as Codecov counts it, 98.97 % of the patch, 193 of its 195 coverable
+- **Coverage**: on [#462]'s branch, as Codecov reports it, every modified and coverable line of the patch covered.
+  Before it, on [#458]'s branch at `5bbccdf`, as Codecov counts it, 98.97 % of the patch, 193 of its 195 coverable
   lines whole; the other two, partial, are the `?.` on `_chains` in `ObjectGraph.AddCuts` and `CountCut`, which run only
   once the walk has read a link of a chain, the table then held. Before it, on [#457]'s branch at `ef9121e`, as Codecov
   counts it, 99.43 % of the patch, 175 of its 176 coverable lines whole; the other, partial, is `TakeCatalog`'s generation of 0 (`PdfFileReader.Rebuild.cs`), a defense no input takes: the
@@ -767,7 +772,8 @@ One pull request per batch, each design question put to the maintainer after mea
        and [#438] under M02 (journal of 2026-11-25).
    28. [#185] — done, in [#457] (journal of 2026-11-26), which filed [#455] and [#456] under M02.
    29. [#173] — done, in [#458] (journal of 2026-11-27), which filed [#459] under M02.
-   30. [#192], with [#374].
+   30. [#192], with [#374] — done, in [#462] (journal of 2026-11-27), with [#463], which it filed and the maintainer
+       chose to pay there: `global.json` pins the SDK band 10.0.4xx, which sessions, CI and the releases compile with.
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives. With [#381], which words
        the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
        two pull requests: the rules, [#107], [#111] and [#381]; the searches around a hybrid table's `/XRefStm`, [#321],
@@ -1294,4 +1300,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#457]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/457
 [#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
 [#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
+[#462]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/462
+[#463]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/463
 [#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446

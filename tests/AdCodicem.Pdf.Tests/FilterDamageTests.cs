@@ -2042,43 +2042,65 @@ public class FilterDamageTests
     /// <summary>
     /// Encodes as the PDF variant of LZW does: a clear first, the end-of-data code last unless
     /// <paramref name="endCode"/> says not to, and the code width growing one code early when
-    /// <paramref name="earlyChange"/> is 1.
+    /// <paramref name="earlyChange"/> is 1. When the table fills, a clear code starts it anew, as encoders write one, unless
+    /// <paramref name="clearWhenFull"/> says not to: the codes then go on naming the entries it holds.
     /// </summary>
-    internal static byte[] LzwEncode(byte[] data, int earlyChange = 1, bool endCode = true)
+    internal static byte[] LzwEncode(byte[] data, int earlyChange = 1, bool endCode = true, bool clearWhenFull = true)
     {
-        var table = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < 256; i++)
-        {
-            table[((char)i).ToString()] = i;
-        }
-
+        // An entry is keyed by the code of the entry it extends and its last byte.
+        var table = new Dictionary<int, int>();
         var codes = new List<(int Code, int Bits)> { (256, 9) };
         var next = 258;
         var bits = 9;
-        var current = string.Empty;
+        var current = -1;
 
         foreach (var value in data)
         {
-            var extended = current + (char)value;
-
-            if (table.ContainsKey(extended))
+            if (current < 0)
             {
-                current = extended;
+                current = value;
                 continue;
             }
 
-            codes.Add((table[current], bits));
-            table[extended] = next++;
+            if (table.TryGetValue((current << 8) | value, out var longer))
+            {
+                current = longer;
+                continue;
+            }
 
-            if (next + earlyChange > 1 << bits && bits < 12)
+            codes.Add((current, bits));
+
+            if (next < 4096)
+            {
+                table[(current << 8) | value] = next++;
+
+                if (next + earlyChange > 1 << bits && bits < 12)
+                {
+                    bits++;
+                }
+            }
+
+            if (clearWhenFull && next == 4095)
+            {
+                codes.Add((256, bits));
+                table.Clear();
+                next = 258;
+                bits = 9;
+            }
+
+            current = value;
+        }
+
+        if (current >= 0)
+        {
+            codes.Add((current, bits));
+
+            // The decoder defines an entry on the last code too, which may widen the end-of-data code.
+            if (next < 4096 && ++next + earlyChange > 1 << bits && bits < 12)
             {
                 bits++;
             }
-
-            current = ((char)value).ToString();
         }
-
-        codes.Add((table[current], bits));
 
         if (endCode)
         {

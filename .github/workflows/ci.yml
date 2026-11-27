@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       - name: Restore
         run: dotnet restore AdCodicem.Pdf.slnx
@@ -37,6 +37,11 @@ jobs:
       # Style drift fails the build rather than accumulating as a local warning nobody sees.
       - name: Verify formatting
         run: dotnet format AdCodicem.Pdf.slnx --verify-no-changes --no-restore
+
+      # The rebuild's scan for objects keeps the lexer inlined in its optimized compiles: a cost no test observes, which
+      # the method lost twice as it grew (#374). The check reads the runtime's inlining decisions in a process of its own.
+      - name: Check the scan's inlining
+        run: dotnet run -c Release --no-build --project tests/AdCodicem.Pdf.InliningCheck
 
       # The results directory is named explicitly, because the report does not land where the upload below
       # used to look for it.
@@ -127,7 +132,7 @@ jobs:
       # names the next one, which setup-dotnet installs exactly while it is a prerelease.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
           global-json-file: tests/Compat/global.json
 
       - name: Build the unit suite
@@ -173,7 +178,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       # These run the independent referees — qpdf today, more later — inside containers, so the same
       # versions answer here and on a developer's machine. Docker is present on GitHub runners; where it
@@ -244,7 +249,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       - name: Preview gate scenarios
         run: .github/scripts/tests/gate-scenarios.sh

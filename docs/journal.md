@@ -7,6 +7,43 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-27 — Batch 30: LZW and strings without needless arrays, and the rebuild's scan keeping its lexer ([#462])
+
+- **The question.** Measured on `main` at `626e73c`: LZW allocated an array for nearly every code, 10.8 MB to decode a
+  megabyte of text, 38 MB for one of random bytes, 42 KB before the first code; an escaped or hexadecimal string
+  allocated two arrays ([#192]). The rebuild's scan, built by the session's 10.0.1xx SDK, inlined `PdfLexer.Read` in its
+  optimized compiles again, but nothing would keep it so ([#374]).
+- **Settled with the maintainer** on 2026-11-27, each as recommended: the LZW table rented from the shared pool; a
+  string decoded into a working buffer on the stack up to 256 bytes, rented beyond, and copied once; for [#374], a check
+  in `tests/` that reads the runtime's inlining events, run by CI and the batch check, held to `PdfLexer.Read`.
+- **What changed.** An LZW entry is kept as where it lies in the output written and its length, and a code naming it
+  copies that part (`PdfBoundedOutput.TryRepeat`): a decode allocates its output, and decodes text about twice, random
+  bytes and a scanned page's rows two to three times as fast as on `main`. A string allocates one array of its exact
+  length, but past 64 KB, where its buffer is an array of its own, as on `main`, so that the pool keeps no large one.
+  The check's first push failed in CI: the 10.0.4xx SDK, which CI and the releases build with, writes the scan otherwise,
+  and the binaries shipped from `main` left the lexer out of two of its three optimized compiles. The trailer keyword's
+  handling now stays out of the loop, and every such compile inlines the lexer under both SDKs. The maintainer chose to
+  pay [#463] here, filed for that gap: `global.json` pins the 10.0.4xx band (`latestPatch`), every workflow installs it,
+  and the session's hook installs it from `builds.dotnet.microsoft.com` beside the archive's 10.0.1xx.
+- **Review** (ADR 54): two rounds, no blocker, no major, no minor. Round 1's nits: the first rewrite, which spelled an
+  entry back through its prefix codes, decoded long entries two to four times slower than `main`, and was replaced by
+  the copy; the check's failure in CI, above; a minimally optimized compile taken for the last; the end-of-data code
+  the test and benchmark encoders wrote at the wrong width; the strings' size mutants and pool retention. Round 2's:
+  texts, and a buffer not given back that the string test did not see. Real damage: no difference over 403 documents,
+  about 7,700 damaged variants, 36,000 LZW decodes in memory and 8,000 documents of strings; differential fuzzing,
+  2.7 M LZW and 4.4 M string cases, none differing.
+- **Mutation** (ADR 53 amended): 55 mutants over the table's and the copy's bounds, the code width, the pool returns,
+  the strings' sizes and the check's tiers, decisions and event filters. 46 killed, 4 by tests the step added; one
+  settled by the code, the instrumented optimized tier of a ReadyToRun build no longer held; 8 equivalent, confirmed by
+  a second agent, which also caught their first classing, made with the widening backwards.
+- **The issues.** Closes [#192], [#374] and [#463], which the batch filed and the maintainer chose to pay in it.
+- **Checks.** The batch check at the head; the 72 timing and memory tests alone; the corpus differential against
+  `main` identical over 806 reads, the forced rebuilds included; `Remote corpus` run 148 green; CI green, the inlining
+  check, the integration suite and the .NET 11 compatibility island among it; the site. Every changed and coverable line
+  covered, as Codecov counts them. Benchmarks against `main`, with the 10.0.4xx SDK, alternating: as above for LZW;
+  1,368 → 1,173 KB to parse a thousand dictionaries of strings; the rebuild of lines a comment parts 6 to 10 % faster.
+- **For callers.** Nothing reads otherwise; LZW streams and strings allocate less, LZW decodes faster.
+
 ## 2026-11-27 — Batch 29: a chain of references read through 32, and reported where it reaches no value ([#458])
 
 - **The question.** Measured on `main` at `8341583`: a loop of references, or a chain past the bound, read as null with
@@ -1733,6 +1770,8 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#173]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/173
 [#458]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/458
 [#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
+[#462]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/462
+[#463]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/463
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
 [#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446

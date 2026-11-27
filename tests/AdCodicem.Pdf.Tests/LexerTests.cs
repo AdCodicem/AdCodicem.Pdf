@@ -313,6 +313,74 @@ end)"u8.ToArray());
         Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text)).Should().Be("back\bspace cr:crlf:end");
     }
 
+    [Theory]
+    [InlineData("<", "FEFF0041004200430044", 1, "", "FEFF0041004200430044", "")]
+    [InlineData("<", "48 65\n6C zz 6", 1, "", "48656C60", "")]
+    [InlineData("<", "4A", 255, "6", "4A", "60")]
+    [InlineData("<", "4A", 256, "6", "4A", "60")]
+    [InlineData("<", "4A", 512, "6", "4A", "60")]
+    [InlineData("<", "4A", 65_535, "6", "4A", "60")]
+    [InlineData("<", "4A", 65_536, "6", "4A", "60")]
+    [InlineData("(", @"Total \(net\) 100", 1, "", "546F74616C20286E65742920313030", "")]
+    [InlineData("(", "cr:\r\nlf", 1, "", "63723A0A6C66", "")]
+    [InlineData("(", "a", 255, "\r", "61", "0A")]
+    [InlineData("(", "a", 256, "\r", "61", "0A")]
+    [InlineData("(", @"a\(", 300, "", "6128", "")]
+    [InlineData("(", "a", 65_535, "\r", "61", "0A")]
+    [InlineData("(", "a", 65_536, "\r", "61", "0A")]
+    public void Decodes_an_escaped_or_hexadecimal_string_into_one_array_its_exact_length(
+        string opening, string written, int times, string ending, string bytes, string endingBytes)
+    {
+        // A string decodes into a working buffer — on the stack up to 256 bytes, rented up to 64 KB, an array of its own past
+        // that — and its bytes are copied out once: the result is the one array the string allocates, but past 64 KB. The
+        // rows written several times sit on each side of those sizes, a hexadecimal string's buffer holding half its bytes
+        // and one more. Each measure follows a decode, so that a rented buffer the pool did not get back is measured anew.
+        var raw = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(written, times)) + ending);
+        var expected = Enumerable.Repeat(Convert.FromHexString(bytes), times).SelectMany(unit => unit).Concat(Convert.FromHexString(endingBytes)).ToArray();
+        var hexadecimal = opening == "<";
+        var buffer = hexadecimal ? (raw.Length / 2) + 1 : raw.Length;
+        Func<byte[]> decode = hexadecimal ? () => PdfStringDecoder.DecodeHex(raw, out _, out _) : () => PdfStringDecoder.DecodeLiteral(raw);
+
+        var allocated = Allocations.Least(decode, _ => decode(), out _, out var decoded);
+
+        decoded.Should().Equal(expected);
+        allocated.Should().Be(Allocations.Least(Arrays, out _));
+
+        byte[] Arrays()
+        {
+            if (buffer > 64 * 1024)
+            {
+                GC.KeepAlive(new byte[buffer]);
+            }
+
+            return new byte[expected.Length];
+        }
+    }
+
+    [Fact]
+    public void Decodes_an_escaped_string_of_256_bytes_on_the_stack_and_borrows_nothing_from_the_pool()
+    {
+        // Before each measure the shared pool's arrays of 256 bytes are taken until it allocates one more, so that a decode
+        // renting such an array would allocate it: one of 256 bytes allocates its result alone.
+        var raw = Encoding.ASCII.GetBytes(new string('a', 255) + "\r");
+        var taken = new List<byte[]>(100_000);
+
+        try
+        {
+            var allocated = Allocations.Least(() => TakePooledArrays(taken), _ => PdfStringDecoder.DecodeLiteral(raw), out _, out var decoded);
+
+            decoded.Length.Should().Be(256);
+            allocated.Should().Be(Allocations.Least(() => new byte[256], out _));
+        }
+        finally
+        {
+            foreach (var array in taken)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+    }
+
     [Fact]
     public void Drops_a_backslash_that_ends_a_literal_string()
     {
@@ -343,5 +411,22 @@ end)"u8.ToArray());
 
             kinds.Add(token.Kind);
         }
+    }
+
+    /// <summary>Takes arrays of 256 bytes from the shared pool, into <paramref name="taken"/>, until it allocates one.</summary>
+    private static int TakePooledArrays(List<byte[]> taken)
+    {
+        for (var i = 0; i < 10_000; i++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            taken.Add(System.Buffers.ArrayPool<byte>.Shared.Rent(256));
+
+            if (GC.GetAllocatedBytesForCurrentThread() != before)
+            {
+                break;
+            }
+        }
+
+        return taken.Count;
     }
 }

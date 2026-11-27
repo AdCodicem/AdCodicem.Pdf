@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace AdCodicem.Pdf.IO.Filters;
 
 /// <summary>Decodes the <c>LZWDecode</c> filter.</summary>
@@ -28,6 +30,10 @@ internal static class LzwFilter
     /// end-of-data code decodes to its end, as other readers decode it — qpdf among them —, and
     /// <paramref name="ending"/> says so, and whether it ends inside a code: on a whole byte past the last code, or on
     /// bits a padding to the byte would leave zero.
+    /// <para>
+    /// A decode allocates its output and nothing for each code it reads: the code table is rented from the shared pool, and
+    /// returned when the decode ends.
+    /// </para>
     /// </remarks>
     /// <param name="data">The encoded data.</param>
     /// <param name="earlyChange">1 when the code width grows one code early, as by default; 0 otherwise.</param>
@@ -42,86 +48,108 @@ internal static class LzwFilter
         undefinedCode = -1;
         ending = DataEnding.Marked;
 
-        var table = new byte[MaxCodes][];
-        for (var i = 0; i < 256; i++)
+        // An entry past the 256 single bytes is the entry written before it and the first byte written after that one, so
+        // it lies whole in what the output holds already: the table keeps where, and how long, and an entry the data names
+        // again is copied from there. Kept whole, an entry would take as many bytes as it denotes, up to 3,839, and an
+        // array for each code; spelled back through the codes it extends, a long entry would cost a read for each byte.
+        var starts = ArrayPool<int>.Shared.Rent(MaxCodes);
+        var lengths = ArrayPool<ushort>.Shared.Rent(MaxCodes);
+
+        try
         {
-            table[i] = [(byte)i];
-        }
+            var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 3L), maxLength);
+            var next = FirstFreeCode;
+            var codeBits = 9;
+            var previousStart = 0;
+            var previousLength = 0;
+            var bitBuffer = 0;
+            var bitCount = 0;
 
-        var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 3L), maxLength);
-        var next = FirstFreeCode;
-        var codeBits = 9;
-        byte[]? previous = null;
-        var bitBuffer = 0;
-        var bitCount = 0;
-
-        foreach (var current in data)
-        {
-            bitBuffer = (bitBuffer << 8) | current;
-            bitCount += 8;
-
-            while (bitCount >= codeBits)
+            foreach (var current in data)
             {
-                var code = (bitBuffer >> (bitCount - codeBits)) & ((1 << codeBits) - 1);
-                bitCount -= codeBits;
-                bitBuffer &= (1 << bitCount) - 1;
+                bitBuffer = (bitBuffer << 8) | current;
+                bitCount += 8;
 
-                if (code == EndOfDataCode)
+                while (bitCount >= codeBits)
                 {
-                    return output.ToArray();
-                }
+                    var code = (bitBuffer >> (bitCount - codeBits)) & ((1 << codeBits) - 1);
+                    bitCount -= codeBits;
+                    bitBuffer &= (1 << bitCount) - 1;
 
-                if (code == ClearCode)
-                {
-                    next = FirstFreeCode;
-                    codeBits = 9;
-                    previous = null;
-                    continue;
-                }
+                    if (code == EndOfDataCode)
+                    {
+                        return output.ToArray();
+                    }
 
-                byte[] entry;
+                    if (code == ClearCode)
+                    {
+                        next = FirstFreeCode;
+                        codeBits = 9;
+                        previousLength = 0;
+                        continue;
+                    }
 
-                if (code < next && table[code] is { } known)
-                {
-                    entry = known;
-                }
-                else if (code == next && previous is not null)
-                {
-                    // The encoder used the code it was defining with this very sequence: the previous one,
-                    // followed by its own first byte.
-                    entry = [.. previous, previous[0]];
-                }
-                else
-                {
-                    // A code the table does not hold, and is not about to: past the next one to be defined, or
-                    // the next one with no sequence before it to define it from.
-                    undefinedCode = code;
-                    return output.ToArray();
-                }
+                    var start = output.Count;
+                    int length;
+                    bool whole;
 
-                if (!output.TryWrite(entry))
-                {
-                    limited = true;
-                    return output.ToArray();
-                }
+                    if (code < ClearCode)
+                    {
+                        length = 1;
+                        whole = output.TryFill((byte)code, 1);
+                    }
+                    else if (code < next)
+                    {
+                        length = lengths[code];
+                        whole = output.TryRepeat(starts[code], length);
+                    }
+                    else if (code == next && previousLength > 0)
+                    {
+                        // The encoder used the code it was defining with this very sequence: the previous one,
+                        // followed by its own first byte.
+                        length = previousLength + 1;
+                        whole = output.TryRepeat(previousStart, previousLength) && output.TryRepeat(previousStart, 1);
+                    }
+                    else
+                    {
+                        // A code the table does not hold, and is not about to: past the next one to be defined, or
+                        // the next one with no sequence before it to define it from.
+                        undefinedCode = code;
+                        return output.ToArray();
+                    }
 
-                if (previous is not null && next < MaxCodes)
-                {
-                    table[next++] = [.. previous, entry[0]];
-                }
+                    if (!whole)
+                    {
+                        limited = true;
+                        return output.ToArray();
+                    }
 
-                previous = entry;
+                    if (previousLength > 0 && next < MaxCodes)
+                    {
+                        starts[next] = previousStart;
+                        lengths[next] = (ushort)(previousLength + 1);
+                        next++;
+                    }
 
-                if (codeBits < 12 && next + earlyChange >= 1 << codeBits)
-                {
-                    codeBits++;
+                    previousStart = start;
+                    previousLength = length;
+
+                    if (codeBits < 12 && next + earlyChange >= 1 << codeBits)
+                    {
+                        codeBits++;
+                    }
                 }
             }
-        }
 
-        // What is left is fewer bits than a code: an encoder pads the last code to the byte with zero bits, so a whole byte,
-        // or a bit that is set, is part of a code the data lost.
-        ending = bitCount >= 8 || bitBuffer != 0 ? DataEnding.UnmarkedInsideCode : DataEnding.Unmarked;
-        return output.ToArray();
+            // What is left is fewer bits than a code: an encoder pads the last code to the byte with zero bits, so a whole
+            // byte, or a bit that is set, is part of a code the data lost.
+            ending = bitCount >= 8 || bitBuffer != 0 ? DataEnding.UnmarkedInsideCode : DataEnding.Unmarked;
+            return output.ToArray();
+        }
+        finally
+        {
+            ArrayPool<ushort>.Shared.Return(lengths);
+            ArrayPool<int>.Shared.Return(starts);
+        }
     }
 }

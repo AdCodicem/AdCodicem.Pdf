@@ -100,7 +100,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       # For a publish, the gate takes RELEASE_TYPE only as major, minor or patch, and computes the version
       # again from the tags and the commits since the last stable one: NEXT_VERSION must be that version. On
@@ -164,7 +164,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       - name: Build
         run: dotnet build AdCodicem.Pdf.slnx -c Release
@@ -203,7 +203,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       - name: Pack
         id: pack
@@ -302,7 +302,7 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.4xx"
 
       # Last before the push: the key expires an hour after it is issued. `user` is the nuget.org account
       # that owns the Trusted Publishing policy (docs/releasing.md); it is public, not a secret.

@@ -110,11 +110,16 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
 
 ## Development environment
 
-Claude Code web sessions: the .NET SDK is not preinstalled, and Microsoft's distribution hosts have been blocked by
-the network policy (they answered on 2026-10-03; see below). The `SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs
-`dotnet-sdk-10.0` from the Ubuntu archive, refreshing the package index when the container's is too old to install
-from (#234). nuget.org is reachable and `dotnet restore` works.
-If `dotnet` is missing: `apt-get update && apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
+Claude Code web sessions: the .NET SDK is not preinstalled. `global.json` pins its feature band, **10.0.4xx**, which CI
+and the releases build with: the C# compilers of two bands write some methods differently, and what the runtime inlines
+follows (#374, #463), so a session that compiled with another band would measure what does not ship. The
+`SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs `dotnet-sdk-10.0` from the Ubuntu archive for its
+native libraries, refreshing the package index when the container's is too old to install from (#234), then the latest
+10.0.4xx through Microsoft's `dotnet-install.sh` from `builds.dotnet.microsoft.com` into `~/.dotnet`, linked from
+`/usr/local/bin`. Microsoft's hosts have been blocked by the network policy before; where the band cannot be
+installed nothing builds, `global.json` refusing the archive's 10.0.1xx. nuget.org is reachable and `dotnet restore`
+works. If the band is missing: `curl -fsSL https://builds.dotnet.microsoft.com/dotnet/scripts/v1/dotnet-install.sh |
+bash -s -- --channel 10.0.4xx --install-dir ~/.dotnet && ln -sf ~/.dotnet/dotnet /usr/local/bin/dotnet`.
 The .NET 11 SDK the compatibility island needs (`tests/Compat/global.json`) is not in the Ubuntu archive; on
 2026-10-03 `builds.dotnet.microsoft.com` answered, and its `linux-x64` tarball, unpacked into a folder of its own, ran
 the island (`docs/releasing.md`, *The .NET compatibility island*).
@@ -124,6 +129,7 @@ dotnet build AdCodicem.Pdf.slnx -c Release
 dotnet test --solution AdCodicem.Pdf.slnx -c Release          # unit + integration (the latter skip without Docker)
 dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
 dotnet run -c Release --project benchmarks/AdCodicem.Pdf.Benchmarks -- --filter '*'
+dotnet run -c Release --no-build --project tests/AdCodicem.Pdf.InliningCheck   # the rebuild's scan keeps the lexer inlined (#374)
 
 cd docs/website && npm ci && npm run build                          # the documentation site
 ```
