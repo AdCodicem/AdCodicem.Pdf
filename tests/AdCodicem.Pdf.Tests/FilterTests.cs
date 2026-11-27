@@ -8,6 +8,8 @@ using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using FsCheck;
+using FsCheck.Fluent;
 using NSubstitute;
 
 namespace AdCodicem.Pdf.Tests;
@@ -402,6 +404,40 @@ public class FilterTests
 
         decoded.Span.SequenceEqual(plain).Should().BeTrue();
         diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decodes_back_whatever_an_lzw_encoder_writes()
+    {
+        // Up to 20,000 bytes drawn from alphabets of one to 256 values: codes of every width, entries of one byte to some
+        // thousands, a clear code each time the table fills or none, and the end-of-data code at the width the last code
+        // leaves.
+        var inputs =
+            from length in Gen.Choose(0, 20_000)
+            from alphabet in Gen.Choose(1, 256)
+            from seed in Gen.Choose(0, int.MaxValue)
+            from earlyChange in Gen.Elements(0, 1)
+            from clearWhenFull in Gen.Elements(true, false)
+            select (Length: length, Alphabet: alphabet, Seed: seed, EarlyChange: earlyChange, ClearWhenFull: clearWhenFull);
+
+        Check.One(PropertySettings, Prop.ForAll(inputs.ToArbitrary(), input =>
+        {
+            var random = new Random(input.Seed);
+            var plain = new byte[input.Length];
+            for (var i = 0; i < plain.Length; i++)
+            {
+                plain[i] = (byte)random.Next(input.Alphabet);
+            }
+
+            var parameters = new PdfDictionary();
+            parameters.Set(PdfName.EarlyChange, PdfInteger.Create(input.EarlyChange));
+            var diagnostics = new PdfDiagnostics();
+
+            var decoded = Decode(FilterDamageTests.LzwEncode(plain, input.EarlyChange, clearWhenFull: input.ClearWhenFull), PdfName.LZWDecode, parameters, diagnostics);
+
+            decoded.ToArray().Should().Equal(plain);
+            diagnostics.Should().BeEmpty();
+        }));
     }
 
     [Theory]
@@ -1990,4 +2026,7 @@ public class FilterTests
         {
         }
     }
+
+    private static Config PropertySettings =>
+        Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
 }

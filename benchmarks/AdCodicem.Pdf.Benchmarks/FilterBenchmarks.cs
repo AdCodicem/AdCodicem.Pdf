@@ -8,8 +8,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures what decoding a Flate content stream costs, whole, cut short, and damaged; what a chain of two filters
-/// costs, its parameters read before its data; what a predictor costs after Flate; and what decoding LZW costs, of text
-/// and of incompressible bytes (#192).
+/// costs, its parameters read before its data; what a predictor costs after Flate; and what decoding LZW costs, of text,
+/// of incompressible bytes and of an image's flat rows (#192).
 /// </summary>
 /// <remarks>
 /// A whole stream is what nearly every document holds, and noticing a lost tail or a fault must cost it nothing. A
@@ -20,8 +20,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// fault was met in. Three readings at most, into the same output, on damaged streams only. The predictors are PNG's on
 /// rows of five bytes, each taking the row above, as a cross-reference stream gives them; and TIFF's on rows of
 /// 1,024 RGB pixels of eight bits, each sample taking the one before. The LZW streams hold a clear code each time the
-/// table fills: the content stream's text, whose codes name entries of a few bytes, and random bytes, which LZW expands
-/// and whose codes name entries of two. A decode allocates its output and nothing for each code, the table rented.
+/// table fills: the content stream's text, whose codes name entries of a few bytes; random bytes, which LZW expands and
+/// whose codes name entries of two; and rows of 2,400 bytes of a scanned page, white but for a few dark spans, whose codes
+/// name entries of up to some hundreds. A decode allocates its output and nothing for each code, the table rented.
 /// </remarks>
 [MemoryDiagnoser]
 public class FilterBenchmarks
@@ -45,6 +46,7 @@ public class FilterBenchmarks
     private PdfStream _tiffSamples = null!;
     private PdfStream _lzwText = null!;
     private PdfStream _lzwIncompressible = null!;
+    private PdfStream _lzwImage = null!;
 
     [Params(64 * 1024, 4 * 1024 * 1024)]
     public int DecodedLength { get; set; }
@@ -79,6 +81,7 @@ public class FilterBenchmarks
         var incompressible = new byte[DecodedLength];
         new Random(42).NextBytes(incompressible);
         _lzwIncompressible = LzwStream(LzwEncode(incompressible));
+        _lzwImage = LzwStream(LzwEncode(ScannedRows(DecodedLength)));
     }
 
     [Benchmark(Baseline = true, Description = "Decode a whole Flate stream")]
@@ -110,6 +113,9 @@ public class FilterBenchmarks
 
     [Benchmark(Description = "Decode an LZW stream of incompressible bytes")]
     public int LzwIncompressible() => _lzwIncompressible.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode an LZW stream of a scanned page's rows")]
+    public int LzwImage() => _lzwImage.Decode(new PdfDiagnostics()).Length;
 
     private static byte[] Ascii85(byte[] data)
     {
@@ -206,6 +212,12 @@ public class FilterBenchmarks
         if (current >= 0)
         {
             Put(current);
+
+            // The decoder defines an entry on the last code too, which may widen the end-of-data code.
+            if (++next + 1 > 1 << bits && bits < 12)
+            {
+                bits++;
+            }
         }
 
         Put(257);
@@ -296,6 +308,25 @@ public class FilterBenchmarks
         }
 
         return predicted;
+    }
+
+    /// <summary>Rows of 2,400 bytes, a page of 1-bit pixels scanned at 300 dpi: white, but for three dark spans a row.</summary>
+    private static byte[] ScannedRows(int length)
+    {
+        const int Row = 2400;
+        var rows = new byte[length];
+        rows.AsSpan().Fill(0xFF);
+        var random = new Random(7);
+
+        for (var row = 0; row < length / Row; row++)
+        {
+            for (var span = 0; span < 3; span++)
+            {
+                rows.AsSpan((row * Row) + random.Next(Row - 100), random.Next(1, 60)).Fill((byte)random.Next(256));
+            }
+        }
+
+        return rows;
     }
 
     private static byte[] ContentStream(int length)

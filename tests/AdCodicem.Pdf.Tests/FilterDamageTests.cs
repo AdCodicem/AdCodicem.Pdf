@@ -2094,6 +2094,12 @@ public class FilterDamageTests
         if (current >= 0)
         {
             codes.Add((current, bits));
+
+            // The decoder defines an entry on the last code too, which may widen the end-of-data code.
+            if (next < 4096 && ++next + earlyChange > 1 << bits && bits < 12)
+            {
+                bits++;
+            }
         }
 
         if (endCode)
