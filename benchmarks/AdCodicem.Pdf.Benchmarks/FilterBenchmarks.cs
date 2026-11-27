@@ -21,8 +21,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// rows of five bytes, each taking the row above, as a cross-reference stream gives them; and TIFF's on rows of
 /// 1,024 RGB pixels of eight bits, each sample taking the one before. The LZW streams hold a clear code each time the
 /// table fills: the content stream's text, whose codes name entries of a few bytes; random bytes, which LZW expands and
-/// whose codes name entries of two; and rows of 2,400 bytes of a scanned page, white but for a few dark spans, whose codes
-/// name entries of up to some hundreds. A decode allocates its output and nothing for each code, the table rented.
+/// whose codes name entries of two; and rows of 2,400 bytes of a page scanned in gray, white but for a few spans of other
+/// values, whose codes name entries of up to some hundreds. A decode allocates its output and nothing for each code, the table rented.
 /// </remarks>
 [MemoryDiagnoser]
 public class FilterBenchmarks
@@ -310,7 +310,9 @@ public class FilterBenchmarks
         return predicted;
     }
 
-    /// <summary>Rows of 2,400 bytes, a page of 1-bit pixels scanned at 300 dpi: white, but for three dark spans a row.</summary>
+    /// <summary>
+    /// Rows of 2,400 bytes, a page of 8-bit gray pixels scanned at 300 dpi: white, but for three spans of other values a row.
+    /// </summary>
     private static byte[] ScannedRows(int length)
     {
         const int Row = 2400;

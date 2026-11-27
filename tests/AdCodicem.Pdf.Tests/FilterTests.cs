@@ -410,7 +410,7 @@ public class FilterTests
     public void Decodes_back_whatever_an_lzw_encoder_writes()
     {
         // Up to 20,000 bytes drawn from alphabets of one to 256 values: codes of every width, entries of one byte to some
-        // thousands, a clear code each time the table fills or none, and the end-of-data code at the width the last code
+        // hundreds, a clear code each time the table fills or none, and the end-of-data code at the width the last code
         // leaves.
         var inputs =
             from length in Gen.Choose(0, 20_000)
