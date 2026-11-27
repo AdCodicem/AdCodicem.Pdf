@@ -586,7 +586,7 @@ public class FileRuleTests
     [Theory]
     [InlineData(
         Outlines + "xref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-        0, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog." + RebuiltToOne)]
+        0, "The trailer's /Root names object 1 0, which the cross-reference chain read as a dictionary of /Type /Outlines, not a document catalog." + RebuiltToOne)]
     [InlineData(
         SoundObjects + "xref\n0 1\n{free}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
         0, "The trailer's /Root names object 1 0, which read as null through the cross-reference chain." + RebuiltToOne)]
@@ -617,6 +617,60 @@ public class FileRuleTests
         using var document = PdfDocument.Open(file, options);
 
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("chain", "<< /Type /Catalog /Pages 2 0 R >>", "file.root-direct")]
+    [InlineData("chain", "<< /Pages 2 0 R >>", "file.root-direct object.key-missing")]
+    [InlineData("chain", "<< /Type /Outlines >>", "file.root-invalid")]
+    [InlineData("chain", "1 0 R", "")]
+    [InlineData("rebuild", "<< /Type /Catalog /Pages 2 0 R >>", "file.root-direct")]
+    public void A_catalog_written_in_the_trailer_is_taken_as_written_and_said_to_be_no_reference(string trailer, string root, string rules)
+    {
+        // /Root written in the trailer as a dictionary of /Type /Catalog, or one holding /Pages: the reader takes it as the
+        // catalog it is, and file.root-direct says it is no reference, in the trailer the chain gave or, the chain giving no
+        // index, in the one the rebuild merged; one with no /Type lacks the key the catalog requires. A dictionary that is no
+        // catalog is file.root-invalid's, the reader taking object 1 for the catalog; a reference is neither's.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", $"<< /Size 4 /Root {root} >>");
+
+        if (trailer == "rebuild")
+        {
+            var text = Encoding.Latin1.GetString(file);
+            var startXRef = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+            file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, startXRef), "9", text.AsSpan(text.IndexOf('\n', startXRef))));
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.HasCatalog.Should().BeTrue();
+        document.Reader.Structure.ChainRead.Should().Be(trailer == "chain");
+        report.Findings.Select(finding => finding.RuleId).Where(id => id != PdfValidationRuleIds.FileStartXRefWrong).Should().Equal(
+            rules.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        if (rules.StartsWith(PdfValidationRuleIds.FileRootDirect, StringComparison.Ordinal))
+        {
+            var finding = Single(report, PdfValidationRuleIds.FileRootDirect);
+            finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+            finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "trailer"));
+            finding.Message.Should().Be("The trailer's /Root is the document catalog written in the trailer, not an indirect reference to it.");
+        }
+    }
+
+    [Fact]
+    public void A_root_written_in_a_cross_reference_stream_dictionary_the_end_of_the_file_leaves_open_is_not_judged()
+    {
+        // A file whose cross-reference stream comes first, as a linearized one's does, cut inside that stream's dictionary
+        // after its /Root: no reader takes a dictionary left open for a trailer, and the rebuild merges none, so the finding
+        // says no trailer gives /Root — what the reader read, the file holding no catalog either (#381).
+        var file = Encoding.Latin1.GetBytes("%PDF-1.7\n5 0 obj\n<< /Type /XRef /Size 6 /W [1 4 2] /Root 1 0 R /Length 70 /Index [0 6");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "No trailer the reader read gives /Root. No object the reader could read is a catalog.");
     }
 
     [Fact]
@@ -1100,7 +1154,8 @@ public class FileRuleTests
         document.WasRepaired.Should().BeTrue();
         document.Reader.Structure.Sections.Should().ContainSingle().Which.HighestNumber.Should().Be(0);
         report.Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
-            (PdfValidationRuleIds.XRefSectionMalformed, PdfTemplate.OffsetOf(file, "xref\n")));
+            (PdfValidationRuleIds.XRefSectionMalformed, PdfTemplate.OffsetOf(file, "xref\n")),
+            (PdfValidationRuleIds.XRefEntryWidthWrong, PdfTemplate.OffsetOf(file, "xref\n")));
     }
 
     [Fact]

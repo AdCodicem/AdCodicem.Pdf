@@ -12798,6 +12798,9 @@
           "efforts through the new",
           "are actively working to incorporate additional"
         ],
+        "findings": [
+          "xref.entry-width-wrong"
+        ],
         "refereeCheckSucceeds": true
       }
     },
@@ -12836,6 +12839,9 @@
         "textContains": [
           "initial cancellation package was overoptimistic",
           "tool that synthesizes plausible"
+        ],
+        "findings": [
+          "xref.entry-width-wrong"
         ],
         "refereeCheckSucceeds": true
       }
@@ -17357,6 +17363,9 @@
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
+        ],
+        "findings": [
+          "xref.entry-width-wrong"
         ],
         "refereeCheckSucceeds": false
       }

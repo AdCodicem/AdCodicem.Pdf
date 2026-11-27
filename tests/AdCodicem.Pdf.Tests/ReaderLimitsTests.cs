@@ -3232,7 +3232,7 @@ public class ReaderLimitsTests
             .WithObject(3, "(three)")
             .BuildClassic(rootNumber: 1));
         var rows = original.IndexOf("xref\n0 4\n", StringComparison.Ordinal) + "xref\n0 4\n".Length;
-        var three = rows + (3 * 21) + 11;
+        var three = rows + (3 * 20) + 11;
         original[three..].Should().StartWith("00000 n");
         original = string.Concat(original.AsSpan(0, three), "70000", original.AsSpan(three + 5));
         var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
@@ -5239,9 +5239,9 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("trailer\n", "% the rows end here\ntrailer\n", false)]
     [InlineData("trailer\n", "%-------------------------------------------------------------\ntrailer\n", false)]
-    [InlineData(" 00000 n \r\ntrailer\n", " +0000 n \r\ntrailer\n", false)]
-    [InlineData(" n \r\ntrailer\n", " x \r\ntrailer\n", true)]
-    [InlineData(" n \r\ntrailer\n", " ntrailer \r\ntrailer\n", true)]
+    [InlineData(" 00000 n \ntrailer\n", " +0000 n \ntrailer\n", false)]
+    [InlineData(" n \ntrailer\n", " x \ntrailer\n", true)]
+    [InlineData(" n \ntrailer\n", " ntrailer \ntrailer\n", true)]
     public void A_table_its_length_bound_cuts_keeps_the_encryption_its_trailer_names_past_what_no_row_holds(
         string written, string replacement, bool damaged)
     {
@@ -5297,7 +5297,7 @@ public class ReaderLimitsTests
         // The search started seven bytes before the cut, inside the comment the lexer was skipping: its text was taken for
         // a fault of the table's, and a trailer written in it for the table's own, an encrypted file opened as plain.
         var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
-        const string FirstRow = "0000000000 65535 f \r\n";
+        const string FirstRow = "0000000000 65535 f \n";
         var file = Encoding.Latin1.GetBytes(text.Replace(FirstRow, FirstRow + comment + "\r\n", StringComparison.Ordinal));
         var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = OffsetOf(file, comment) - OffsetOf(file, "xref\n") + into };
 
@@ -5374,7 +5374,8 @@ public class ReaderLimitsTests
         // the bound marked the index damaged, and the next lookup rebuilt it. The rows left can only repeat numbers the
         // index holds; the trailer past them names the encryption, and is read.
         var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
-        var file = Encoding.Latin1.GetBytes(text.Replace(" 00000 n \r\ntrailer", " 70000 n \r\ntrailer", StringComparison.Ordinal));
+        text.Should().Contain(" 00000 n \ntrailer");
+        var file = Encoding.Latin1.GetBytes(text.Replace(" 00000 n \ntrailer", " 70000 n \ntrailer", StringComparison.Ordinal));
         var limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 };
 
         var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });

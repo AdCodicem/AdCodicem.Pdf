@@ -132,6 +132,16 @@ internal sealed class XRefSectionRecord
     public long RowsHeld { get; set; } = -1;
 
     /// <summary>
+    /// Gets or sets how many of the table's rows, read as rows, are not written in the 20 bytes ISO 32000-1 (7.5.4) gives
+    /// each: a ten-digit offset, a space, a five-digit generation, a space, <c>n</c> or <c>f</c>, and a two-byte end of line.
+    /// The reader reads a row by its tokens, as other readers do, whatever its width.
+    /// </summary>
+    public long WidthWrongRows { get; set; }
+
+    /// <summary>Gets or sets the first row <see cref="WidthWrongRows"/> counts, as a finding names it; null while none.</summary>
+    public string? WidthWrongRow { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether the rows a cross-reference stream's data may hold were left unread: a value they are
     /// read with leads to an object one of the reader's guards cut, beside which the data holds fewer rows than the stream
     /// declares whatever that value holds. The section was read only in part, and the chain ends at it (#210, #263).

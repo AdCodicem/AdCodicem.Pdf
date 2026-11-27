@@ -445,7 +445,7 @@ public class ReadOrderTests
         document.Reader.CatalogFoundAs.Should().Be(0);
         document.Reader.Structure.CatalogFoundAs.Should().Be(20, "the reader took 20 as the document opened");
         report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader could read is a catalog.");
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader took object 20 for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now no object the reader could read is a catalog.");
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class ReadOrderTests
         document.Reader.CatalogFoundAs.Should().Be(20);
         document.Reader.IsCutAtLimit(20).Should().BeTrue();
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader rebuilt the index, through which /Root leads to object 1, which is one.");
+            "The trailer's /Root names object 1 0, which the cross-reference chain read as a dictionary of /Type /Foo, not a document catalog. The reader rebuilt the index, through which /Root leads to object 1, which is one.");
         document.Trailer.Remove(PdfName.Root);
 
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
@@ -509,7 +509,7 @@ public class ReadOrderTests
         document.WasRepaired.Should().BeTrue();
         document.Reader.CatalogFoundAs.Should().Be(0);
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader took object 20 for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now no object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
     }
 
     [Fact]

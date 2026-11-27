@@ -2604,9 +2604,12 @@ public class PageTreeRuleTests
         var report = new PdfValidator().Validate(document);
 
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
-        report.Findings.Select(finding => finding.RuleId).Should().Equal([PdfValidationRuleIds.XRefCheckedInPart], string.Join("; ", report.Findings));
+        // The catalog is written in the trailer, which file.root-direct says whatever the cut: the trailer's start shows it.
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(
+            [PdfValidationRuleIds.FileRootDirect, PdfValidationRuleIds.XRefCheckedInPart], string.Join("; ", report.Findings));
         PageTreeWalk.Run(document).Partial.Should().BeTrue();
-        Validate(file).Findings.Should().BeEmpty("read whole, the root gives what page 3 inherits, and its /Count");
+        Validate(file).Findings.Select(finding => finding.RuleId).Should().Equal(
+            [PdfValidationRuleIds.FileRootDirect], "read whole, the root gives what page 3 inherits, and its /Count");
     }
 
     [Fact]

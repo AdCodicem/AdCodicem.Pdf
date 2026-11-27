@@ -218,6 +218,8 @@ internal sealed partial class PdfFileReader
             var subsections = 0;
             _rowsLost?.Clear();
             _rowsLostPast = false;
+            section.WidthWrongRows = 0;
+            section.WidthWrongRow = null;
 
             // Where the first row that is no row starts in the window: a reading on past the fault starts there, not where the
             // misreading of the rows after it stops, which may have taken the table's own trailer keyword for a row's token.
@@ -366,7 +368,7 @@ internal sealed partial class PdfFileReader
                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
                 // most rows an int counts lie far past any window, and a count past them describes rows that are not read.
                 subsections++;
-                truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, at, ref firstFault);
+                truncated = !ReadSubsection(ref lexer, span, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, at, ref firstFault);
 
                 if (_indexFullAt >= 0)
                 {
@@ -898,6 +900,7 @@ internal sealed partial class PdfFileReader
     /// gives false where the window ends among them, which a larger one reads again or the end of the file cut.
     /// </summary>
     /// <param name="lexer">The lexer over the table's window, past the subsection's header.</param>
+    /// <param name="window">The table's window, which the lexer reads.</param>
     /// <param name="first">The first object number the header gives.</param>
     /// <param name="count">The count of rows the header gives.</param>
     /// <param name="section">The record of the table.</param>
@@ -905,7 +908,8 @@ internal sealed partial class PdfFileReader
     /// <param name="firstFault">
     /// Where the first row that is no row starts in the window, -1 until one is met: set by the first, kept past it.
     /// </param>
-    private bool ReadSubsection(ref PdfLexer lexer, int first, int count, XRefSectionRecord section, long absolute, ref int firstFault)
+    private bool ReadSubsection(
+        ref PdfLexer lexer, ReadOnlySpan<byte> window, int first, int count, XRefSectionRecord section, long absolute, ref int firstFault)
     {
         for (var i = 0; i < count && _indexFullAt < 0; i++)
         {
@@ -943,6 +947,16 @@ internal sealed partial class PdfFileReader
 
             section.HighestNumber = Math.Max(section.HighestNumber, number);
 
+            // A row read by its tokens reads as it was meant, whatever its width, but a reader that seeks rows by their fixed
+            // width misreads every row after it: the first is described, the others counted.
+            if (FormOf(window, offsetToken, generationToken, kindToken) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
+            {
+                section.WidthWrongRows++;
+                section.WidthWrongRow ??= string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the row for object {number}, at offset {absolute + offsetToken.Start}, {Describe(form, window, offsetToken, generationToken)}");
+            }
+
             if (kindToken.IsKeyword("f"u8))
             {
                 // A free row's generation serves no object: some producers give the head of the free list 65,536.
@@ -963,5 +977,91 @@ internal sealed partial class PdfFileReader
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Gives how the row whose tokens are <paramref name="offset"/>, <paramref name="generation"/> and <paramref name="kind"/>
+    /// departs from the 20 bytes ISO 32000-1 (7.5.4) writes each row in: a ten-digit offset, a space, a five-digit generation,
+    /// a space, <c>n</c> or <c>f</c>, and an end of line of a space and a carriage return, a space and a line feed, or a
+    /// carriage return and a line feed.
+    /// </summary>
+    /// <remarks>
+    /// A row whose end of line the window does not hold is not judged: a larger window reads it again, or a guard cut it,
+    /// and what lies past the cut is the guard's.
+    /// </remarks>
+    private static RowForm FormOf(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind)
+    {
+        var end = kind.End;
+
+        if (end + 2 > window.Length)
+        {
+            return RowForm.Unjudged;
+        }
+
+        if (!IsDigits(window[offset.Start..offset.End], 10))
+        {
+            return RowForm.OffsetDigits;
+        }
+
+        if (generation.Start != offset.End + 1 || kind.Start != generation.End + 1 || window[offset.End] != (byte)' ' ||
+            window[generation.End] != (byte)' ')
+        {
+            return RowForm.Separators;
+        }
+
+        if (!IsDigits(window[generation.Start..generation.End], 5))
+        {
+            return RowForm.GenerationDigits;
+        }
+
+        return (window[end], window[end + 1]) switch
+        {
+            ((byte)' ', (byte)'\r') => end + 2 < window.Length && window[end + 2] == (byte)'\n' ? RowForm.ThreeEndOfLineBytes : RowForm.Twenty,
+            ((byte)' ', (byte)'\n') or ((byte)'\r', (byte)'\n') => RowForm.Twenty,
+            ((byte)'\r' or (byte)'\n', _) => RowForm.OneEndOfLineByte,
+            _ => RowForm.EndOfLine,
+        };
+
+        static bool IsDigits(ReadOnlySpan<byte> field, int length) =>
+            field.Length == length && field.IndexOfAnyExceptInRange((byte)'0', (byte)'9') < 0;
+    }
+
+    /// <summary>Describes <paramref name="form"/>, how a row departs from the 20 bytes ISO 32000-1 writes it in, for a finding.</summary>
+    private static string Describe(RowForm form, ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation) => form switch
+    {
+        RowForm.OffsetDigits => $"whose offset {FileQuote.Keyword(window[offset.Start..offset.End])} is not ten digits",
+        RowForm.Separators => "whose fields are not parted by single spaces",
+        RowForm.GenerationDigits => $"whose generation {FileQuote.Keyword(window[generation.Start..generation.End])} is not five digits",
+        RowForm.OneEndOfLineByte => "which ends with one end-of-line byte, not two",
+        RowForm.ThreeEndOfLineBytes => "which ends with three end-of-line bytes, not two",
+        _ => "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed",
+    };
+
+    /// <summary>How a row read by its tokens departs from the 20 bytes ISO 32000-1 (7.5.4) writes each row in.</summary>
+    private enum RowForm
+    {
+        /// <summary>The row is written in its 20 bytes.</summary>
+        Twenty,
+
+        /// <summary>The window does not hold the row's end of line.</summary>
+        Unjudged,
+
+        /// <summary>The offset is not ten digits.</summary>
+        OffsetDigits,
+
+        /// <summary>The offset, the generation and the keyword are not parted by one space each.</summary>
+        Separators,
+
+        /// <summary>The generation is not five digits.</summary>
+        GenerationDigits,
+
+        /// <summary>The row ends with one end-of-line byte.</summary>
+        OneEndOfLineByte,
+
+        /// <summary>The row ends with a space, a carriage return and a line feed.</summary>
+        ThreeEndOfLineBytes,
+
+        /// <summary>The two bytes after the keyword are no end of line ISO 32000-1 allows a row.</summary>
+        EndOfLine,
     }
 }

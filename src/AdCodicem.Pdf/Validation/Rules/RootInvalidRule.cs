@@ -24,6 +24,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where one of them kept a
 /// trailer from being read whole: it may lie past the cut, or in an older trailer the chain stopped short of.
 /// </para>
+/// <para>
+/// A <c>/Root</c> written in a dictionary the end of the file leaves open — a cross-reference stream's, in a file cut
+/// inside it — is not judged: no reader takes a dictionary left open for a trailer, and the rebuild merges none, so the
+/// finding says that no trailer the reader read gives <c>/Root</c>.
+/// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
 {
@@ -77,7 +82,12 @@ internal sealed class RootInvalidRule : IValidationRule
         var asNull = structure.RootChainCut is { } chain
             ? $"read as null: its chain of references {chain}"
             : "read as null through the cross-reference chain";
-        ReportRoot(context, structure.RootAsWritten, structure.RootResolved, asNull, trailer, "The trailer has no /Root.", Found(context, reader));
+
+        // Where a rebuild run since made /Root lead to a catalog, what the chain read is said as the chain's: the finding ends
+        // with the catalog, and the object would otherwise be said to be two things (#381).
+        var chainGave = reader.HasCatalog && reader.CatalogFoundAs <= 0 && context.Document.Trailer.GetRaw(PdfName.Root) is PdfReference;
+        ReportRoot(
+            context, structure.RootAsWritten, structure.RootResolved, asNull, trailer, "The trailer has no /Root.", Found(context, reader), chainGave);
     }
 
     /// <summary>
@@ -106,10 +116,18 @@ internal sealed class RootInvalidRule : IValidationRule
 
     /// <summary>
     /// Reports <paramref name="root"/>, the <c>/Root</c> judged, which <paramref name="resolved"/> is what it led to —
-    /// <paramref name="asNull"/> saying how, where it led to nothing —, and ends the message with <paramref name="found"/>.
+    /// <paramref name="asNull"/> saying how, where it led to nothing, and <paramref name="chainGave"/> whether to say it as
+    /// what the cross-reference chain read —, and ends the message with <paramref name="found"/>.
     /// </summary>
     private void ReportRoot(
-        ValidationContext context, PdfObject? root, PdfObject? resolved, string asNull, PdfValidationLocation trailer, string none, string found)
+        ValidationContext context,
+        PdfObject? root,
+        PdfObject? resolved,
+        string asNull,
+        PdfValidationLocation trailer,
+        string none,
+        string found,
+        bool chainGave = false)
     {
         // An entry whose value is null is one the dictionary does not have (ISO 32000-1, 7.3.7).
         switch (root)
@@ -124,7 +142,7 @@ internal sealed class RootInvalidRule : IValidationRule
                     PdfValidationLocation.OfObject(reference.Id),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {(resolved is null or PdfNull ? asNull : Describe(resolved))}.{found}"));
+                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {(resolved is null or PdfNull ? asNull : Describe(resolved, chainGave))}.{found}"));
                 break;
 
             default:
@@ -167,22 +185,35 @@ internal sealed class RootInvalidRule : IValidationRule
         }
 
         // What the reader could not read — a definition a later one supersedes, an object in a stream that cannot be decoded,
-        // an object a guard cut — may be one: only what it read is said not to be.
-        return reader.CatalogCandidateCut
-            ? " No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names."
-            : " No object the reader could read is a catalog.";
+        // an object a guard cut — may be one: only what it read is said not to be. A catalog it took as the document opened,
+        // which the index rebuilt since serves as something else, was one, and is said to have been (#381).
+        var none = reader.CatalogCandidateCut
+            ? "no object the reader read whole is a catalog: one of the reader's limits cut some, which its report names."
+            : "no object the reader could read is a catalog.";
+        var taken = context.Structure.CatalogFoundAs;
+
+        if (taken > 0 && !reader.IsCutAtLimit(taken) && !IsCatalog(context.Document.GetObject(taken)))
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $" The reader took object {taken} for the catalog as the document opened, which the index it rebuilt since serves as no catalog; now {none}");
+        }
+
+        return " " + char.ToUpperInvariant(none[0]) + none[1..];
     }
+
+    private static bool IsCatalog(PdfObject value) => value is PdfDictionary dictionary && dictionary.IsOfType(PdfName.Catalog);
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>
         context.Report(this, location, message, "Point /Root at the document catalog, as an indirect reference.");
 
-    private static string Describe(PdfObject resolved) => resolved switch
+    private static string Describe(PdfObject resolved, bool chainGave = false) => (chainGave ? "the cross-reference chain read as " : "is ") + resolved switch
     {
-        PdfStream => "is a stream, not a document catalog",
+        PdfStream => "a stream, not a document catalog",
         PdfDictionary dictionary when dictionary.GetName(PdfName.Type) is { } type =>
-            $"is a dictionary of /Type {FileQuote.Name(type)}, not a document catalog",
-        PdfDictionary => "is a dictionary that is not a document catalog",
-        _ => $"is {Kind(resolved)}, not a document catalog",
+            $"a dictionary of /Type {FileQuote.Name(type)}, not a document catalog",
+        PdfDictionary => "a dictionary that is not a document catalog",
+        _ => $"{Kind(resolved)}, not a document catalog",
     };
 
     private static string Kind(PdfObject value) => value switch

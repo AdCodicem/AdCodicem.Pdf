@@ -326,6 +326,110 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("offset short", "whose offset {short} is not ten digits")]
+    [InlineData("generation short", "whose generation 0000 is not five digits")]
+    [InlineData("two spaces", "whose fields are not parted by single spaces")]
+    [InlineData("line feed", "which ends with one end-of-line byte, not two")]
+    [InlineData("carriage return", "which ends with one end-of-line byte, not two")]
+    [InlineData("space, carriage return and line feed", "which ends with three end-of-line bytes, not two")]
+    [InlineData("two spaces before the end of line", "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("carriage return and line feed", null)]
+    [InlineData("space and carriage return", null)]
+    [InlineData("space and line feed", null)]
+    public void A_table_row_not_written_in_twenty_bytes_is_named_and_the_table_read_as_written(string row, string? fault)
+    {
+        // Object 3's row, the table's last, written as ISO 32000-1 (7.5.4) writes no row: a field short of digits, a second
+        // space, an end of line of one byte or three, or of two that are no end of line. The reader reads it by its tokens, so
+        // object 3 reads as written; the three ends of line ISO 32000-1 allows are no fault.
+        var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var at = sound.IndexOf("trailer", StringComparison.Ordinal) - 20;
+        var offset = sound.Substring(at, 10);
+        var written = row switch
+        {
+            "offset short" => $"{offset[2..]} 00000 n \n",
+            "generation short" => $"{offset} 0000 n \n",
+            "two spaces" => $"{offset}  00000 n\n",
+            "line feed" => $"{offset} 00000 n\n",
+            "carriage return" => $"{offset} 00000 n\r",
+            "space, carriage return and line feed" => $"{offset} 00000 n \r\n",
+            "two spaces before the end of line" => $"{offset} 00000 n  \n",
+            "carriage return and line feed" => $"{offset} 00000 n\r\n",
+            "space and carriage return" => $"{offset} 00000 n \r",
+            _ => $"{offset} 00000 n \n",
+        };
+        var file = Encoding.Latin1.GetBytes(string.Concat(sound.AsSpan(0, at), written, sound.AsSpan(at + 20)));
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(3).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+
+        if (fault is null)
+        {
+            report.Findings.Should().BeEmpty();
+            return;
+        }
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryWidthWrong);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds a row not written in 20 bytes: the row for object 3, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal)}."));
+    }
+
+    [Theory]
+    [InlineData(4, 0)]
+    [InlineData(3448, 8)]
+    public void A_table_whose_rows_end_with_one_byte_is_reported_once_naming_the_first_and_counting_them(int rows, int spaces)
+    {
+        // Every row ends with a line feed alone, as a file whose carriage returns a transfer stripped has them: the table is
+        // reported once, its first row named and its rows counted. The 3,448 rows end within the first window the reader reads
+        // a table in, but the trailer keyword runs past it: the rows are read again in a larger window, and counted once.
+        var template = PdfTemplate.Sound.Replace("0 4\n", string.Create(CultureInfo.InvariantCulture, $"0 {rows}{new string(' ', spaces)}\n"), StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n" + string.Concat(Enumerable.Repeat("0000000000 00000 f \n", rows - 4)), StringComparison.Ordinal)
+            .Replace("/Size 4", string.Create(CultureInfo.InvariantCulture, $"/Size {rows}"), StringComparison.Ordinal);
+        var text = Encoding.Latin1.GetString(PdfTemplate.Build(template));
+        var table = text.IndexOf("xref\n", StringComparison.Ordinal);
+        var end = text.IndexOf("trailer", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, table), text[table..end].Replace(" \n", "\n", StringComparison.Ordinal), text.AsSpan(end)));
+        var first = PdfTemplate.OffsetOf(file, "0000000000 65535 f");
+        var keyword = PdfTemplate.OffsetOf(file, "trailer") - table;
+        keyword.Should().BeLessThan(PdfFileReader.XRefWindow);
+        (rows < 10 || keyword + "trailer".Length > PdfFileReader.XRefWindow).Should().BeTrue("the trailer keyword runs past the first window");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryWidthWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds {rows} rows not written in 20 bytes; the first is the row for object 0, at offset {first}, which ends with one end-of-line byte, not two."));
+    }
+
+    [Theory]
+    [InlineData(18)]
+    [InlineData(19)]
+    public void A_row_whose_end_of_line_a_length_bound_cuts_is_the_guard_s_and_not_judged(int bytesOfTheRow)
+    {
+        // MaxXRefSectionLength ends the table's window within object 3's row, past its n: the row is read, but what lies past
+        // the cut — its end of line — is the guard's, which says the section was read in part.
+        var file = PdfTemplate.Build(PdfTemplate.Sound);
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        var row = Encoding.Latin1.GetString(file).IndexOf("trailer", StringComparison.Ordinal) - 20;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = (int)(row - table) + bytesOfTheRow } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
+        report.Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefEntryWidthWrong);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("t")]
     [InlineData("trai")]

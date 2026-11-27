@@ -4360,11 +4360,11 @@ public class CrossReferenceChainTests
     [Fact]
     public void Reads_an_object_a_length_bound_cut_out_of_its_table_as_null_until_the_guard_is_lifted()
     {
-        // Tables read no further than 128 bytes: the update's, which names the catalog, fits; the original's six rows do
+        // Tables read no further than 120 bytes: the update's, which names the catalog, fits; the original's six rows do
         // not, and the last, object 5's, is cut. Object 5 reads as null, unknown rather than missing, and the index is not
         // rebuilt for it (#183), until the guard is lifted.
         var (file, _) = Updated();
-        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } };
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 120 } };
 
         using (var document = PdfDocument.Open(file, options))
         {
