@@ -6,13 +6,20 @@ internal sealed class Compile
     /// <summary>Where the runtime's method flags hold the tier a method was compiled at.</summary>
     private const int TierShift = 7;
 
+    /// <summary>The runtime's tier of a method compiled with minimal optimization, which inlines nothing.</summary>
+    private const uint MinimalTier = 1;
+
     private string? _refusal;
+    private uint _tier;
 
     /// <summary>Gets the tier, as the runtime's method flags name it.</summary>
     public string Tier { get; private set; } = "unknown";
 
-    /// <summary>Gets a value indicating whether the compile optimizes, and so decides what it inlines.</summary>
-    public bool Optimized { get; private set; }
+    /// <summary>
+    /// Gets a value indicating whether the compile must inline the lexer: any but the quick tiers, which the runtime
+    /// replaces once the method runs long, and a tier it does not name.
+    /// </summary>
+    public bool Checked { get; private set; }
 
     /// <summary>Gets a value indicating whether the compile is the method's last: its final tier, or the only one there is.</summary>
     public bool Final { get; private set; }
@@ -24,7 +31,8 @@ internal sealed class Compile
     public string Verdict =>
         _refusal is not null ? $"PdfLexer.Read refused ({_refusal})"
         : LexerInlined ? "PdfLexer.Read inlined"
-        : Optimized ? "PdfLexer.Read not considered: the call that reaches it was not inlined"
+        : _tier == MinimalTier ? "minimally optimized, which inlines nothing"
+        : Checked ? "PdfLexer.Read not considered: the call that reaches it was not inlined"
         : "not optimized";
 
     /// <summary>Records a decision of the compile on the lexer.</summary>
@@ -44,18 +52,20 @@ internal sealed class Compile
     /// <summary>Records the tier the compile loaded at, from the runtime's method flags.</summary>
     public void Load(uint methodFlags)
     {
-        // The runtime's optimization tiers: 1 minimally optimized, 2 optimized without tiers, 3 quick, 4 the final tier,
-        // 5 on-stack replacement, 6 quick and instrumented, 7 optimized and instrumented.
-        (Tier, Optimized, Final) = ((methodFlags >> TierShift) & 0x7) switch
+        // The runtime's optimization tiers: 1 minimally optimized — a method the compiler gave up optimizing, or one marked
+        // so —, 2 optimized outside the tiers — without tiered compilation, or a method the runtime optimizes at once —,
+        // 3 quick, 4 the final tier, 5 on-stack replacement, 6 quick and instrumented, 7 optimized and instrumented.
+        _tier = (methodFlags >> TierShift) & 0x7;
+        (Tier, Checked, Final) = _tier switch
         {
-            1 => ("minimally optimized", false, true),
+            1 => ("minimally optimized", true, true),
             2 => ("optimized", true, true),
             3 => ("quick", false, false),
             4 => ("final tier", true, true),
             5 => ("on-stack replacement", true, false),
             6 => ("quick and instrumented", false, false),
             7 => ("optimized and instrumented", true, false),
-            _ => ("unknown", false, false),
+            _ => ("unknown", true, false),
         };
     }
 }

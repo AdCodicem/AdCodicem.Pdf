@@ -20,9 +20,14 @@ namespace AdCodicem.Pdf.InliningCheck;
 /// The file is that benchmark's: 4 MB of lines of a string holding a <c>%</c> before a number and a comment, each followed
 /// by a line <c>0 obj</c>, so that the profile the compiler gathers sees the lexer called. The compiles are those of the
 /// default tiers — on-stack replacement while the first rebuilds run, then the instrumented and final tiers — and each one
-/// that optimizes must inline <c>PdfLexer.Read</c> into the scan. The runtime reports its inlining decisions as events,
-/// which this process reads from itself. The check holds under the runtime's default settings: without tiered
-/// compilation, or without the profile its tiers gather, no compile of the scan inlines the call that reaches the lexer.
+/// but the quick tiers must inline <c>PdfLexer.Read</c> into the scan, a compile with minimal optimization failing. The
+/// runtime reports its inlining decisions as events, which this process reads from itself.
+/// </para>
+/// <para>
+/// What the runtime inlines depends on the code the C# compiler writes as much as on the runtime: the compilers of the
+/// 10.0.1xx and 10.0.4xx SDKs write the scan differently, and only the first kept the lexer in until its trailer keyword's
+/// handling left the loop. The check holds under the runtime's default settings: without tiered compilation, or without
+/// the profile its tiers gather, no compile of the scan inlines the call that reaches the lexer.
 /// </para>
 /// </remarks>
 internal static class Program
@@ -73,7 +78,7 @@ internal static class Program
 
         foreach (var compile in compiles)
         {
-            if (compile.Optimized && !compile.LexerInlined)
+            if (compile.Checked && !compile.LexerInlined)
             {
                 Console.WriteLine($"The {compile.Tier} compile of the scan left PdfLexer.Read out: {compile.Verdict}.");
                 failed = true;

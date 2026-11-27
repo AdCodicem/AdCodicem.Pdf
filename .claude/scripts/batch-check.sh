@@ -5,9 +5,9 @@
 #
 # It builds the solution in Release (warnings are errors), verifies the code style, checks that the rebuild's scan keeps
 # the lexer inlined as CI does, runs the whole unit suite as CI does, and checks the subjects of the commits since the
-# base against the conventional-commit rules CI applies. The
-# suite's timing tests run last in their own collection; run the script while no benchmark or other heavy process
-# loads the machine, or a timing test may fail for the load alone (#342). It prints one line per step and exits
+# base against the conventional-commit rules CI applies. The suite's timing tests run last in their own collection; run
+# the script while no benchmark or other heavy process loads the machine, or a timing test may fail for the load alone
+# (#342). It prints one line per step and exits
 # non-zero on the first failure, so a workflow reads its result without reading its logs, which are in
 # $TMPDIR/batch-check (or /tmp/batch-check).
 set -uo pipefail

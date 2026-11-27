@@ -799,7 +799,14 @@ internal sealed partial class PdfFileReader
     /// around it makes part of a longer word or of a comment. No stream's indirect length is read from the values the scan
     /// passed before it (<see cref="ScanState.ValuesFloor"/>, <see cref="TryReadLastValue"/>).
     /// </summary>
+    /// <remarks>
+    /// Kept out of the scan's loop, which meets a <c>trailer</c> keyword about once a file: inlined, with the sweep it asks
+    /// whether a comment or a string holds the keyword, it took the locals that left the lexer of
+    /// <see cref="HeaderNumbers.TakeLine"/> out of the loop's optimized compiles, as the compiler of the 10.0.4xx SDK writes
+    /// the loop, for the reason given at <see cref="ScanState.PieceXRefAt"/> (#374).
+    /// </remarks>
     /// <returns>False where the memo can hold the keyword no more; true otherwise.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool NoteTrailerKeyword(
         ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScannedTrailers trailers, ScanMemo.Builder? memo)
     {
