@@ -330,6 +330,11 @@ public class CrossReferenceRuleTests
     [InlineData("generation short", 3, "whose generation 0000 is not five digits")]
     [InlineData("two spaces", 3, "whose fields are not parted by single spaces")]
     [InlineData("two spaces before the keyword", 3, "whose fields are not parted by single spaces")]
+    [InlineData("offset of nine digits and two spaces", 3, "whose offset {nine} is not ten digits")]
+    [InlineData("generation of four digits and two spaces", 3, "whose fields are not parted by single spaces")]
+    [InlineData("two spaces before the keyword, then a carriage return and a line feed", 3, "whose fields are not parted by single spaces")]
+    [InlineData("a sign before the offset", 3, "whose offset +{nine} is not ten digits")]
+    [InlineData("a sign before the generation", 3, "whose generation +0000 is not five digits")]
     [InlineData("tab after the offset", 3, "whose fields are not parted by single spaces")]
     [InlineData("tab before the keyword", 3, "whose fields are not parted by single spaces")]
     [InlineData("line feed", 3, "which ends with one end-of-line byte, not two")]
@@ -345,6 +350,7 @@ public class CrossReferenceRuleTests
     [InlineData("two spaces before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("two carriage returns", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("line feed and carriage return", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("line feed and carriage return", 2, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("tab before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("space alone", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
     [InlineData("carriage return and line feed", 2, null)]
@@ -355,7 +361,8 @@ public class CrossReferenceRuleTests
     public void A_table_row_not_written_in_twenty_bytes_is_named_and_the_table_read_as_written(string row, int number, string? fault)
     {
         // Object 2's row, or object 3's, the table's last, written as ISO 32000-1 (7.5.4) writes no row: a field short of
-        // digits, a second space, an end of line of one byte or of more than two, or of two that are no end of line. The reader
+        // digits or signed, a second space, an end of line of one byte or of more than two, or of two that are no end of
+        // line — some in 20 bytes all the same. The reader
         // reads it by its tokens, so the objects read as written; the three ends of line ISO 32000-1 allows are no fault. Past
         // the last row, which no row follows for a reader to misread, a third byte — a blank line before the trailer, as many
         // writers write it — is not judged.
@@ -368,6 +375,11 @@ public class CrossReferenceRuleTests
             "generation short" => $"{offset} 0000 n \n",
             "two spaces" => $"{offset}  00000 n\n",
             "two spaces before the keyword" => $"{offset} 00000  n\n",
+            "offset of nine digits and two spaces" => $"{offset[1..]}  00000 n\r\n",
+            "generation of four digits and two spaces" => $"{offset} 0000  n\r\n",
+            "two spaces before the keyword, then a carriage return and a line feed" => $"{offset} 00000  n\r\n",
+            "a sign before the offset" => $"+{offset[1..]} 00000 n\r\n",
+            "a sign before the generation" => $"{offset} +0000 n\r\n",
             "tab after the offset" => $"{offset}\t00000 n \n",
             "tab before the keyword" => $"{offset} 00000\tn \n",
             "line feed" => $"{offset} 00000 n\n",
@@ -406,7 +418,7 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(table);
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object {number}, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal)}."));
+            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object {number}, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal).Replace("{nine}", offset[1..], StringComparison.Ordinal)}."));
     }
 
     [Theory]
