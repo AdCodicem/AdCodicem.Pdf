@@ -450,6 +450,31 @@ public class CrossReferenceRuleTests
             $"The cross-reference table at offset {table} holds {rows} rows not in the 20-byte form; the first is the row for object 0, at offset {first}, which ends with one end-of-line byte, not two."));
     }
 
+    [Fact]
+    public void A_row_the_first_window_ends_within_is_named_as_the_larger_window_reads_it()
+    {
+        // A table of 780 subsections that each number objects 0 to 3 again, under a MaxIndexEntries its rows' bytes exceed: the
+        // rows are read in the first window the reader reads a table in, which ends past object 1's row in the last
+        // subsection, after its carriage return written twice, and before the line feed that follows them. A larger window
+        // reads the rows again, the line feed among them: the row is named for the three bytes it ends with.
+        var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var table = sound.IndexOf("xref\n", StringComparison.Ordinal);
+        var rows = sound.Substring(sound.IndexOf("0 4\n", StringComparison.Ordinal) + 4, 80);
+        var odd = string.Concat(rows.AsSpan(0, 38), "\r\r\n", rows.AsSpan(40));
+        var subsections = string.Concat(Enumerable.Repeat("0 4\n" + rows, 728)) + string.Concat(Enumerable.Repeat("0 4\r\n" + rows, 51));
+        var file = Encoding.Latin1.GetBytes(sound[..table] + "xref\n" + subsections + "0 4\n" + odd + sound[sound.IndexOf("trailer", StringComparison.Ordinal)..]);
+        var row = table + 5 + subsections.Length + 4 + 20;
+        (row + 20 - table).Should().Be(PdfFileReader.XRefWindow, "the first window ends after the two carriage returns");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 100 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryWidthWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object 1, at offset {row}, which ends with more than two end-of-line bytes."));
+    }
+
     [Theory]
     [InlineData(3, " \n", 18, false)]
     [InlineData(3, " \n", 19, false)]
