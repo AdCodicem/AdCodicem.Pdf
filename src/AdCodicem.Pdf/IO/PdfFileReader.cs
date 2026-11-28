@@ -125,6 +125,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const int HeaderNumberReach = 64;
 
     /// <summary>
+    /// What a probe of the white space at a place gives for where the object number ends that holds the first token there,
+    /// where its bytes do not tell (<see cref="PaddingProbe.NumberEnd"/>): the chain then looks at the bytes around that token
+    /// (<see cref="NumberEndHolding"/>).
+    /// </summary>
+    private const long UnknownNumberEnd = -2;
+
+    /// <summary>
     /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object, free of what a pass that reads
     /// every entry's header may consume: enough for a header after some white space. A header that runs past them, or that
     /// their edge may have cut, is read on from there in a window eight times larger, and so on, the window a load starts

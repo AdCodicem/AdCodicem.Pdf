@@ -156,7 +156,12 @@ internal sealed partial class PdfFileReader
 
             if (remember)
             {
-                _paddingProbes = (new PaddingProbe(absolute, padding, table), last);
+                // Where the object number ends that holds the first token's first byte is told from the same bytes, where they
+                // hold it: the chain asks it of the place each link reaches once it has reached a stream (NumberEndHolding).
+                var numberEnd = padding < 0 || table
+                    ? -1
+                    : ProbedNumberEnd(probe.Memory.Span, padding, absolute + padding, endOfData: probe.Length < probeLength);
+                _paddingProbes = (new PaddingProbe(absolute, padding, table, numberEnd), last);
             }
 
             return padding;
@@ -164,16 +169,65 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
+    /// Gives where the object number ends whose bytes hold <paramref name="start"/>, the first token's first byte at
+    /// <paramref name="at"/> in a probe <see cref="PaddingAt"/> read, as <see cref="NumberEndHolding"/> gives it from its
+    /// own window, where the probe's bytes tell: a run of signs, then digits, ending at the first other byte within
+    /// <see cref="HeaderNumberReach"/> bytes; -1 where no digit follows the signs, where they or the digits run on past that
+    /// reach or to the end of the data, and for a <c>-</c> past white space or a comment, which starts its run.
+    /// <see cref="UnknownNumberEnd"/> where they run to the probe's edge short of both, and for a <c>-</c> at the position
+    /// probed, whose run of signs may start before it, which the probe does not hold.
+    /// </summary>
+    /// <param name="span">The bytes the probe read, from the position probed.</param>
+    /// <param name="at">Where the first token starts in <paramref name="span"/>.</param>
+    /// <param name="start">Where the first token starts in the file.</param>
+    /// <param name="endOfData">Whether the probe holds the end of the data, the source giving fewer bytes than asked.</param>
+    private static long ProbedNumberEnd(ReadOnlySpan<byte> span, int at, long start, bool endOfData)
+    {
+        if (at >= span.Length)
+        {
+            return -1;
+        }
+
+        if (span[at] == (byte)'-')
+        {
+            return at > 0 ? -1 : UnknownNumberEnd;
+        }
+
+        var limit = Math.Min(span.Length, at + HeaderNumberReach);
+        var rest = span[at..limit];
+        var signs = rest.IndexOfAnyExcept((byte)'+', (byte)'-');
+        var digits = signs < 0 ? -1 : rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');
+
+        if (digits < 0)
+        {
+            return limit == at + HeaderNumberReach || endOfData ? -1 : UnknownNumberEnd;
+        }
+
+        return digits == 0 ? -1 : start + signs + digits;
+    }
+
+    /// <summary>
     /// What a probe <see cref="PaddingAt"/> read found at a position: how many bytes of white space and comments lie there
-    /// before the first token, and whether that token is the <c>xref</c> keyword.
+    /// before the first token, whether that token is the <c>xref</c> keyword, and where the object number ends that holds
+    /// the token's first byte.
     /// </summary>
     /// <param name="Position">The position probed, in the file; -1 for no probe.</param>
     /// <param name="Padding">The bytes before the first token; -1 where they run on past a trailer's window.</param>
     /// <param name="Table">Whether the first token is the <c>xref</c> keyword.</param>
-    private readonly record struct PaddingProbe(long Position, int Padding, bool Table)
+    /// <param name="NumberEnd">
+    /// Where the object number ends that holds the first token's first byte (<see cref="ProbedNumberEnd"/>): -1 for none,
+    /// <see cref="UnknownNumberEnd"/> where the probe's bytes do not tell.
+    /// </param>
+    private readonly record struct PaddingProbe(long Position, int Padding, bool Table, long NumberEnd)
     {
         /// <summary>Gets no probe: one that answers no position.</summary>
-        public static PaddingProbe None => new(-1, 0, false);
+        public static PaddingProbe None => new(-1, 0, false, -1);
+
+        /// <summary>
+        /// Gives where the object number ends that holds <paramref name="start"/>, where it is the first token this probe
+        /// found; <see cref="UnknownNumberEnd"/> for any other position, and where the probe's bytes do not tell.
+        /// </summary>
+        public long NumberEndAt(long start) => Position >= 0 && Padding >= 0 && Position + Padding == start ? NumberEnd : UnknownNumberEnd;
     }
 
     /// <summary>

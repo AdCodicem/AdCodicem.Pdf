@@ -875,12 +875,27 @@ internal sealed partial class PdfFileReader
     /// Nothing tells here that a header follows: two places whose number ends at one byte lie in one run of signs and
     /// digits, and the chain tells a stream by where its header's number ends, as its reading lexed it
     /// (<see cref="XRefSectionRecord.NumberEnd"/>), and the search a header it finds by where its number ends in the bytes
-    /// searched (<see cref="PlaceNumberEnd"/>). One window of at most twice <see cref="HeaderNumberReach"/> bytes, around the
-    /// position: nothing else is read, nor allocated.
+    /// searched (<see cref="PlaceNumberEnd"/>). The position is mostly where the first token at a place a link names starts,
+    /// which a probe of the white space there found (<see cref="PaddingAt"/>): that probe answers it from the bytes it read,
+    /// where they tell (<see cref="ProbedNumberEnd"/>), and nothing is read for it — a classic table's keyword, which holds no
+    /// number, among them. Otherwise one window of at most twice <see cref="HeaderNumberReach"/> bytes, around the position:
+    /// nothing else is read, nor allocated.
     /// </remarks>
     /// <param name="position">The position, in the file.</param>
     private long NumberEndHolding(long position)
     {
+        var (last, before) = _paddingProbes;
+
+        if (last.NumberEndAt(position) is var probed && probed != UnknownNumberEnd)
+        {
+            return probed;
+        }
+
+        if (before.NumberEndAt(position) is var earlier && earlier != UnknownNumberEnd)
+        {
+            return earlier;
+        }
+
         var from = Math.Max(0, position - HeaderNumberReach);
         using var window = _source.GetWindow(from, (int)(position - from) + HeaderNumberReach);
         var span = window.Memory.Span;
