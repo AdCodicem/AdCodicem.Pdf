@@ -436,7 +436,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   Dependabot entry batches its minor and patch security updates into one pull request since then ([#440]).
   The backlog Dependabot had opened was taken in one pull request on 2026-11-25: every update but two, the preset
   `conventional-changelog-conventionalcommits` 10, which breaks the release notes ([#446]), and the first grouped
-  security pull request, #444, left to show whether the bypass merges it.
+  security pull request, #444, left to show whether the bypass merges it; the maintainer merged it by hand on
+  2026-11-27, so the bypass is still not observed. A second pass on 2026-11-28 took the two groups opened since, #460
+  (GitHub Actions) and #461 (Testcontainers, itext), in one pull request, and closed the seven left open whose updates
+  were already on `main` (#153, #233, #242, #269, #272, #285, #445): Dependabot had not closed them itself.
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
