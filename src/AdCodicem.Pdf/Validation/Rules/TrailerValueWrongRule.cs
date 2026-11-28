@@ -87,7 +87,10 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 continue;
             }
 
-            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Trailer is not { } trailer)
+            // A stream an older section's /Prev read again is judged at that reading, whose /Prev the chain followed
+            // (XRefSectionRecord.ReadAgainBy).
+            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Trailer is not { } trailer ||
+                section.ReadAgainBy is not null)
             {
                 continue;
             }

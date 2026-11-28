@@ -47,7 +47,10 @@ internal sealed partial class PdfFileReader
     /// its links with it (#156); and, near the offset a <c>/Prev</c> names, for a hybrid file's stream the chain read only
     /// through the <c>/XRefStm</c> of a newer table, an older revision's stream, which that <c>/Prev</c> may take as it reads
     /// one it names, the newer table's <c>/XRefStm</c> then reported (<see cref="XRefSectionRecord.ReadOnlyThroughXRefStm"/>,
-    /// #330), whether or not the table's own <c>/XRefStm</c> names it again. Where the stream the <c>/XRefStm</c> read is a
+    /// #330), whether or not the table's own <c>/XRefStm</c> names it again, in the order its own <c>/Prev</c> gives it
+    /// (<see cref="ReadAgainPlace"/>): a newer revision's stream an update writes right past the section the <c>/Prev</c>
+    /// falls short of gives none, and is tried once every other place was, and one whose <c>/Prev</c> leads back to what the
+    /// chain reached is passed over. Where the stream the <c>/XRefStm</c> read is a
     /// cross-reference stream — or where the table's <c>/XRefStm</c> names again a stream a newer table's <c>/XRefStm</c>
     /// read —, a stream near the offset may be the table's own, which the <c>/Prev</c> does not mean
     /// (<see cref="MayBeTablesOwn"/>), but only one that starts no sooner than that stream, which is told by its data, not
@@ -123,6 +126,15 @@ internal sealed partial class PdfFileReader
     /// for the stream the <c>/XRefStm</c> read in telling which streams near the offset may be the table's own, as the
     /// remarks say, its own header among them, in the order its own <c>/Prev</c> gives it.
     /// </param>
+    /// <param name="named">
+    /// For the search near the offset a <c>/Prev</c> names, the offsets the chain has named so far, as the file writes them;
+    /// null for any other link.
+    /// </param>
+    /// <param name="sectionsAt">
+    /// For the search near the offset a <c>/Prev</c> names, what the chain first named, or read, at each position it reached,
+    /// by which that search tells where it tries a stream read only through a newer table's <c>/XRefStm</c>
+    /// (<see cref="ReadAgainPlace"/>); null for any other link, whose search passes such a stream over as reached.
+    /// </param>
     /// <param name="previous">The offset the section found gives through <c>/Prev</c>, or -1.</param>
     /// <param name="hybrid">The offset the section found gives through <c>/XRefStm</c>, or -1.</param>
     /// <param name="left">
@@ -137,6 +149,8 @@ internal sealed partial class PdfFileReader
         bool leaveIsTable,
         XRefSectionRecord? readInStreamsPlace,
         XRefSectionRecord? streamNamedAgain,
+        HashSet<long>? named,
+        Dictionary<long, XRefSectionRecord>? sectionsAt,
         out long previous,
         out long hybrid,
         out KeptPlace left)
@@ -190,14 +204,16 @@ internal sealed partial class PdfFileReader
         var streamEnd = streamRead?.NumberEnd ?? -1;
         var inWindow = candidates.Count;
 
-        // Near the offset a /Prev names, a hybrid file's stream the chain read only through a newer table's /XRefStm is a
-        // section that /Prev may take, as it reads one it names: an older revision's, the newer table's /XRefStm being at fault
-        // (#330).
-        var takesReadAgain = section.NamedBy == "/Prev";
+        // The stream the table's /XRefStm read is what the table's /Prev names where the place it names lies in that stream's
+        // header, from its token's start to the end of its object number, at a byte from which a load reads no header — a -
+        // of a run a + starts, or a digit that reads 0 —: the /Prev reaches it by its data (#332), and takes it where the
+        // search comes to it, whatever the stream's own /Prev, both links of the table reaching one section (#156).
+        var takeAsNamed = sectionsAt is not null && readInStreamsPlace is { Kind: XRefSectionKind.Stream } stream &&
+            StartOf(absolute, out _) is var namedStart && namedStart >= 0 && NumberEndHolding(namedStart) == stream.NumberEnd;
 
-        // Where the stream the /XRefStm read is put back unread, past the places the window holds: the one place put back
-        // that was not counted yet.
-        var uncountedAt = -1;
+        // Where a stream read only through a newer table's /XRefStm, or the stream the table's /XRefStm read, is put back
+        // unread, past the places the window holds: the places put back that were not counted yet; null while there is none.
+        List<int>? uncounted = null;
 
         // The places passed over whose dictionary gives /Type /XRef, with what the scan's memo said of each, which may be
         // reported where the search does not come back to them; null while there is none.
@@ -239,8 +255,8 @@ internal sealed partial class PdfFileReader
             // Under updates appended to the file, a revision's own stream lies past every older revision's section, and the
             // stream the /XRefStm read, or names again, is the table's own or an older revision's: a stream that starts
             // before it, that stream's own header aside, is an older revision's, and keeps its nearest-first place, whatever
-            // its /Prev.
-            var passOver = !retry && candidate >= streamStart ? tablePrevious : -1;
+            // its /Prev. So does the stream the /XRefStm read where the /Prev names it by its data.
+            var passOver = !retry && candidate >= streamStart && !(takeAsNamed && candidate == takeAt) ? tablePrevious : -1;
 
             // Where the section was named holds no section that reads, and a place where a section the chain reached starts —
             // read there, found moved there, or there and not read though it declares itself one — holds that section, not the
@@ -255,7 +271,7 @@ internal sealed partial class PdfFileReader
             // so: an older revision's, which the /Prev may take as it reads one it names, the stream named again among them,
             // in the order its own /Prev gives it, below (#330).
             var reachedThere = numberEnd >= 0 ? _sectionsByNumberEnd.GetValueOrDefault(numberEnd) : null;
-            var readAgain = takesReadAgain && reachedThere is { ReadOnlyThroughXRefStm: true };
+            var readAgain = sectionsAt is not null && reachedThere is { ReadOnlyThroughXRefStm: true };
 
             if (candidate == absolute ||
                 (candidate != takeAt && !readAgain && (_sectionsReadAt.Contains(candidate) || reachedThere is not null)))
@@ -273,7 +289,27 @@ internal sealed partial class PdfFileReader
             {
                 if (StreamPrevious(told.Trailer) >= 0)
                 {
-                    uncountedAt = candidates.Count;
+                    (uncounted ??= []).Add(candidates.Count);
+                    candidates.Add(candidate);
+                }
+
+                ForgetReadThrough(readThrough);
+                continue;
+            }
+
+            // Any other stream read only through a newer table's /XRefStm is told by its own /Prev too, read from the dictionary
+            // its first reading kept, where the search first comes to it (ReadAgainPlace): a newer revision's own stream, which
+            // an update writes past the older sections, often right past the table whose /Prev falls short, gives none, or one
+            // that leads back to what the chain reached, and is no section that /Prev means — tried once every other place
+            // was, where it gives none, as a hybrid table's own stream is, or passed over as reached, where taking it would end
+            // the chain in a loop. One whose /Prev leads to a section the chain has not reached keeps its nearest-first place,
+            // an older revision's (#330).
+            if (readAgain && !retry && candidate != takeAt &&
+                ReadAgainPlace(reachedThere!, named!, sectionsAt!) is var placed && placed != ReadAgainOrder.Nearest)
+            {
+                if (placed == ReadAgainOrder.Last)
+                {
+                    (uncounted ??= []).Add(candidates.Count);
                     candidates.Add(candidate);
                 }
 
@@ -318,7 +354,7 @@ internal sealed partial class PdfFileReader
             // KeepsItsPlace makes once for each hybrid table, and where it does, the section is left to that /Prev there.
             // Where a nearer place is left unread, the bound stops the search before it. What the /Prev of the stream the
             // /XRefStm read led to, judged above, is forgotten with the place the bound leaves.
-            if (!retry || i == uncountedAt)
+            if (!retry || (uncounted is not null && uncounted.Contains(i)))
             {
                 if (_relocationCandidatesTried >= MaxRelocationCandidates)
                 {
@@ -671,7 +707,8 @@ internal sealed partial class PdfFileReader
     private bool? IsTokenOnItsLine(ReadOnlySpan<byte> span, long spanStart, int at)
     {
         // A place before the bytes the window holds — the stream an /XRefStm read from a sign, whose header the search
-        // found at the digits past a run of signs the window does not hold (NumberRunsInto) — is not lexed: it declares
+        // found at the digits past a run of signs the window does not hold, its number ending where that stream's does
+        // (PlaceNumberEnd) — is not lexed: it declares
         // nothing, as a header whose number starts before the bytes searched counts for nothing (#197).
         if (at < 0)
         {
@@ -852,7 +889,8 @@ internal sealed partial class PdfFileReader
 
             // A header whose number is written with signs is placed where the walk met its number — at its digits, or at its
             // first sign where the walk lexed its line —, where the search tells it from a section the chain reached
-            // (NumberRunsInto, DigitsPastSigns); a load reads it from either byte. A run a minus starts is no header (#327).
+            // by where its number ends (PlaceNumberEnd, _sectionsByNumberEnd); a load reads it from either byte. A run a minus
+            // starts is no header (#327).
             if (ReadHeaderBackwards(span, position, startsData: true, signsBeforeUnknown: true, out _, out _, out _, out var found) == HeaderWalk.Header &&
                 found >= from)
             {

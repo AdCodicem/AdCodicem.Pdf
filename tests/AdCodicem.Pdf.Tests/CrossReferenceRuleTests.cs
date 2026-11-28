@@ -1842,13 +1842,59 @@ public class CrossReferenceRuleTests
         if (newest)
         {
             errors[0].Message.Should().Be(Invariant(
-                $"The /XRefStm of the cross-reference table at offset {last} names offset {stream}, a cross-reference stream of an older revision, which the /Prev of the section at offset {table} names too, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
+                $"The /XRefStm of the cross-reference table at offset {last} names offset {stream}, a cross-reference stream of an older revision, which the /Prev of the section at offset {table} reaches too, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
         }
 
         if (shape != 3)
         {
             errors[^1].Message.Should().Contain(Invariant($"names offset {stream}, the section its /Prev names too, which the chain read through that /Prev, "));
         }
+    }
+
+    [Theory]
+    [InlineData("a reserved row", PdfValidationRuleIds.XRefEntryTypeReserved, PdfDiagnosticCodes.XRefEntryReserved)]
+    [InlineData("fewer rows", PdfValidationRuleIds.XRefSectionMalformed, PdfDiagnosticCodes.XRefSectionUnreadable)]
+    [InlineData("a malformed dictionary", PdfValidationRuleIds.FileTrailerMalformed, "")]
+    [InlineData("a real index", PdfValidationRuleIds.FileTrailerValueWrong, "")]
+    public void A_stream_an_older_section_s_prev_reads_again_has_a_fault_of_its_own_found_once(string fault, string ruleId, string code)
+    {
+        // Stream 11, which the newest table's /XRefStm read, gives a row of a reserved type, fewer rows than it declares, a
+        // dictionary with a stray token, or the count of a subsection as a real; the third revision's table's /Prev reads it
+        // again. The two readings read the same data: the reader reports the fault once, at the first, and the validator once,
+        // at the reading the chain followed the stream's /Prev from. Each rule found it twice, one finding for each reading
+        // (#330).
+        var (file, _, stream, _, _) = HybridFiles.NamingAnOlderRevisionsStream(3, 0, newest: true, streamFault: fault);
+        using var document = PdfDocument.Open(file);
+
+        if (code.Length > 0)
+        {
+            document.Diagnostics.Count(diagnostic => diagnostic.Code == code).Should().Be(1);
+        }
+
+        FindingsOf(document).Where(finding => finding.RuleId == ruleId).Select(finding => finding.Position).Should().Equal(stream);
+    }
+
+    [Theory]
+    [InlineData("+7 0 obj", 0, 1, 0, 0)]
+    [InlineData("7 0 obj", 0, 0, -1, 1)]
+    [InlineData("+7 0 obj", 0, 1, -1, 1)]
+    [InlineData("7 0 obj", 50, 0, 10, 0)]
+    public void A_prev_that_loops_back_to_a_stream_names_it_short_by_the_white_space_it_crosses_alone(
+        string header, int zeros, int tablePrevFrom, int streamPrevFrom, int shortBy)
+    {
+        // The newest table's /Prev reads stream 7 at its header or at the digit past the + its number is written with; the
+        // stream's own /Prev names its header's first byte, or the end of line before it, or a digit inside the 50 leading
+        // zeros it is written with, and loops back to it. That /Prev falls short of the header by the white space before it
+        // alone, whatever byte of its number the stream's reading started at: naming the + or a digit, by nothing. The bytes
+        // between where it names and where the reading started were counted as white space, the + among them (#188, #332).
+        var (file, stream, _) = HybridFiles.StreamNamingItselfThroughPrev(new string('0', zeros) + header, tablePrevFrom, streamPrevFrom);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.LoopOffset.Should().Be(stream + tablePrevFrom);
+        var imprecise = FindingsOf(document).Where(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Select(finding => finding.Message);
+        imprecise.Should().Equal(shortBy == 0
+            ? []
+            : [Invariant($"An offset names the white space before what it designates rather than its first byte: /Prev gives offset {stream + streamPrevFrom}, {shortBy} byte before the header of the cross-reference stream.")]);
     }
 
     [Theory]

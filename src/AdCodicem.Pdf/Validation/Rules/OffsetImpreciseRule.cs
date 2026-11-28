@@ -68,14 +68,14 @@ internal sealed class OffsetImpreciseRule : IValidationRule
             }
         }
 
-        // A /Prev that loops back through the white space before a section the chain read names it short too, the loop
-        // placed where that section starts, past what the offset names: the chain's last naming, counted where no naming
-        // before it wrote that offset. One that loops back to where a section starts, or to an offset the chain reached no
-        // section past, or to a section the chain could not read, names none short.
+        // A /Prev that loops back through the white space before a section the chain read names it short too, by the white
+        // space it crossed (FileStructure.LoopPadding): the chain's last naming, counted where no naming before it wrote that
+        // offset. One that loops back to where a section starts, or to a byte of a stream's header's object number, or to an
+        // offset the chain reached no section past, or to a section the chain could not read, names none short.
         var structure = context.Structure;
         var named = context.Document.Reader.PositionOf(structure.LoopWrittenOffset);
 
-        if (structure.LoopOffset > named && ReadAt(structure, structure.LoopOffset) is { } looped &&
+        if (structure.LoopPadding > 0 && ReadAt(structure, structure.LoopOffset) is { } looped &&
             counted.Add(structure.LoopWrittenOffset))
         {
             if (count++ == 0)
@@ -84,7 +84,7 @@ internal sealed class OffsetImpreciseRule : IValidationRule
                     PdfValidationLocation.AtPosition(named),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{structure.LoopNamedBy} gives offset {named}, {CountText.Bytes(structure.LoopOffset - named)} before {Target(looped.Kind)}"));
+                        $"{structure.LoopNamedBy} gives offset {named}, {CountText.Bytes(structure.LoopPadding)} before {Target(looped.Kind)}"));
             }
         }
 

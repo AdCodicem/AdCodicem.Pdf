@@ -547,8 +547,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// The cross-reference streams the chain reached, by where the object number of each one's header ends
-    /// (<see cref="XRefSectionRecord.NumberEnd"/>), the first reached there kept: a reading that starts at any byte of that
-    /// number — a sign of the run a <c>+</c> starts, or a digit — reads the same dictionary and the same data, and so does a
+    /// (<see cref="XRefSectionRecord.NumberEnd"/>), the first reached there kept: a reading that starts at the token's first
+    /// sign, at a <c>+</c> of the run a <c>+</c> starts, or at a digit, reads the same dictionary and the same data, and so does a
     /// search near an offset that finds the header at its digit, or at the first sign of that run. The chain tells a stream
     /// by this end, not by the byte its reading started at, beside each start <see cref="_sectionsReadAt"/> holds: a link that
     /// names a place from the header's token start to the end of its number reaches that stream (<see cref="ReachedAt"/>), and

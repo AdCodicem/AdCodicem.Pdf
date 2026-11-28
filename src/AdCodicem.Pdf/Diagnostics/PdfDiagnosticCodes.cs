@@ -17,10 +17,14 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// An object, or a cross-reference section the chain names, was not at the offset the file claimed, and was
-    /// found nearby — a section never where a section the chain reached starts, nor at a header whose digits, past its
-    /// own signs, are where those of a stream the chain reached start (#327), but for what a hybrid table's
-    /// <c>/XRefStm</c> read in the stream's place, which that table's <c>/Prev</c> takes, reading it whole (#156); nor near
-    /// one that is there and cannot be read. Where the offset holds no section, the nearest place near it that declares
+    /// found nearby — a section never where a section the chain reached starts, nor at a header whose object number ends
+    /// where that of a stream the chain reached does, whatever byte of that number its reading started at (#327, #332), but
+    /// for what a hybrid table's <c>/XRefStm</c> read in the stream's place, which that table's <c>/Prev</c> takes, reading
+    /// it whole (#156), and, near the offset a <c>/Prev</c> names, a stream the chain read only through a newer table's
+    /// <c>/XRefStm</c>, which that <c>/Prev</c> may read again as an older revision's: where it comes nearest where its own
+    /// <c>/Prev</c> names a section the chain has not reached, once every other place was tried where it gives none, and
+    /// never where its <c>/Prev</c> leads back to what the chain reached (#330); nor near one that is there and cannot be
+    /// read. Where the offset holds no section, the nearest place near it that declares
     /// itself one — an <c>xref</c> keyword, a stream whose dictionary gives <c>/Type /XRef</c> — is the section found
     /// moved though it cannot be read, which <see cref="XRefSectionUnreadable"/> then reports where it was found (#281).
     /// </summary>

@@ -29,8 +29,10 @@ internal sealed class TrailerMalformedRule : IValidationRule
         {
             string message;
 
-            // Past the report's room, the section is counted, its finding not written (#168).
-            if (section.TrailerFault is XRefTrailerFault.NotADictionary or XRefTrailerFault.Malformed && !context.HasRoomFor(this))
+            // A stream an older section's /Prev read again is judged at that reading (XRefSectionRecord.ReadAgainBy); past the
+            // report's room, the section is counted, its finding not written (#168).
+            if (section.ReadAgainBy is not null ||
+                (section.TrailerFault is XRefTrailerFault.NotADictionary or XRefTrailerFault.Malformed && !context.HasRoomFor(this)))
             {
                 continue;
             }

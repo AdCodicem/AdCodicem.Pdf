@@ -36,8 +36,10 @@ internal sealed class SectionMalformedRule : IValidationRule
             // A section a limit stopped the reader reading is unknown past the cut, not malformed; what the reader read of
             // it — rows before the cut, what lay past them on the way to the trailer — is the file's, and so is the fault a
             // classic table cannot be read for, met before a limit cut the trailer it was read on to (#324).
-            if (section.CutByLimit && section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) &&
-                section.Kind != XRefSectionKind.Table)
+            // A stream an older section's /Prev read again is judged at that reading (XRefSectionRecord.ReadAgainBy).
+            if ((section.CutByLimit && section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) &&
+                    section.Kind != XRefSectionKind.Table) ||
+                section.ReadAgainBy is not null)
             {
                 continue;
             }

@@ -81,6 +81,14 @@ internal sealed class FileStructure
     public long LoopWrittenOffset { get; set; } = -1;
 
     /// <summary>
+    /// Gets how many bytes of white space and comments lie between the position <see cref="LoopWrittenOffset"/> names and
+    /// the first token of the section the chain looped back to, which the offset reached through them: none where it names
+    /// that token — a byte of a stream's header's object number among them, whatever byte of that number the stream's
+    /// reading started at (#332) —, where it names an offset the chain reached no section past, and where it never looped.
+    /// </summary>
+    public long LoopPadding { get; set; }
+
+    /// <summary>
     /// Gets what the chain had found at <see cref="LoopOffset"/>: a section it read there, one it reached there and could
     /// not read, or only an offset it named; <see cref="XRefLoopTarget.Named"/> when it never looped.
     /// </summary>

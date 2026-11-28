@@ -358,8 +358,9 @@ internal sealed class XRefSectionRecord
 
     /// <summary>
     /// Gets where the object number of a cross-reference stream's header ends, in the file: past its last digit, as the
-    /// reading of its header lexed it. A reading that starts at any byte of that number — a sign of the run of signs it may
-    /// be written with, or a digit — reads the same dictionary and the same data, and ends the number at the same byte: the
+    /// reading of its header lexed it. A reading that starts at the token's first sign, at a <c>+</c> of the run of signs
+    /// the number may be written with, or at a digit — not at a <c>-</c> past the first sign, from which a load reads a
+    /// negative number — reads the same dictionary and the same data, and ends the number at the same byte: the
     /// chain tells the stream by this position, not by the byte its reading started at, and so does the search near an
     /// offset, which finds a header at its digit, or at the first sign of a run a <c>+</c> starts (#327, #332). -1 for a
     /// classic table, and for a section whose header was not read as a cross-reference stream's.
@@ -367,21 +368,31 @@ internal sealed class XRefSectionRecord
     public long NumberEnd { get; set; } = -1;
 
     /// <summary>
-    /// Gets where the older section starts whose <c>/Prev</c> reached this hybrid file's stream, which the chain had read
-    /// only through the <c>/XRefStm</c> of the newer table that names it, and read it again as that section's previous one
-    /// (#330); -1 while none has. That <c>/XRefStm</c> names an older revision's stream, not its own table's, and is reported
-    /// (<see cref="NamesNoStream"/>).
+    /// Gets a value indicating whether an older section's <c>/Prev</c> reached this hybrid file's stream, which the chain had
+    /// read only through the <c>/XRefStm</c> of the newer table that names it, and read it again as that section's previous
+    /// one, or judged it so past a guard that kept it from being read (#330). That <c>/XRefStm</c> names an older revision's
+    /// stream, not its own table's, and is reported (<see cref="NamesNoStream"/>).
     /// </summary>
-    public long ReadAgainFrom { get; set; } = -1;
+    public bool ReadAgain { get; set; }
+
+    /// <summary>
+    /// Gets the record of the older section's <c>/Prev</c> that read this hybrid file's stream again, which the chain had read
+    /// only through the <c>/XRefStm</c> of the newer table that names it (<see cref="ReadAgain"/>, #330); null while none
+    /// has, and where a guard kept that <c>/Prev</c> from being read. The two readings read the same dictionary and the same
+    /// rows, and what this one reported the other does not report again: a rule that judges a section's own data — its
+    /// rows, its dictionary, the values it gives — judges the stream once, at that reading, where the chain followed the
+    /// stream's own <c>/Prev</c>, and not at this one.
+    /// </summary>
+    public XRefSectionRecord? ReadAgainBy { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the section is a hybrid file's stream the chain read only through the <c>/XRefStm</c>
     /// of the newer table that names it, read whole or in part, where it was named or found moved, and that no older
-    /// section's <c>/Prev</c> has read again (<see cref="ReadAgainFrom"/>): an older section's <c>/Prev</c> that reaches it,
+    /// section's <c>/Prev</c> has read again (<see cref="ReadAgain"/>): an older section's <c>/Prev</c> that reaches it,
     /// at its offset or found moved there by the search near the offset it names, reads it again, rather than looping back to
     /// it (#330).
     /// </summary>
-    public bool ReadOnlyThroughXRefStm => IsHybridStream && ReadAgainFrom < 0 && State is XRefSectionState.Read or XRefSectionState.Relocated;
+    public bool ReadOnlyThroughXRefStm => IsHybridStream && !ReadAgain && State is XRefSectionState.Read or XRefSectionState.Relocated;
 
     /// <summary>Takes what a successful attempt at another offset read, the section having been relocated there.</summary>
     public void RelocateTo(XRefSectionRecord attempt)

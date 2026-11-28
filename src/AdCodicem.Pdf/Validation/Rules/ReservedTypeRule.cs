@@ -41,8 +41,9 @@ internal sealed class ReservedTypeRule : IValidationRule
     {
         foreach (var section in context.Structure.Sections)
         {
-            // Past the report's room, the section is counted, its finding not written (#168).
-            if (section.ReservedRow is not { } first || !context.HasRoomFor(this))
+            // A stream an older section's /Prev read again is judged at that reading (XRefSectionRecord.ReadAgainBy); past the
+            // report's room, the section is counted, its finding not written (#168).
+            if (section.ReservedRow is not { } first || section.ReadAgainBy is not null || !context.HasRoomFor(this))
             {
                 continue;
             }

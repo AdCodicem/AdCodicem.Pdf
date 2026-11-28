@@ -364,9 +364,10 @@ internal ref struct PdfObjectParser
     /// Gets where the object number of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the
     /// buffer: past its last digit, the run of signs it may be written with read with it as one token, the first sign
     /// deciding — <c>++14 0 obj</c> is object 14, its number ending four bytes past its header's start (#327). A reading
-    /// that starts at any sign of a run a <c>+</c> starts, or at any of the number's digits, reads the same generation,
-    /// dictionary and data, and ends the number at the same byte: where it ends tells the header, whatever byte of it the
-    /// reading started at (#332).
+    /// that starts at the token's first sign, at a <c>+</c> of a run a <c>+</c> starts, or at any of the number's digits,
+    /// reads the same generation, dictionary and data, and ends the number at the same byte: where it ends tells the
+    /// header, whatever byte of it the reading started at (#332). One that starts at a <c>-</c> past the first sign reads a
+    /// negative number, no object's: from the <c>-</c> of <c>+-14</c>, -14.
     /// </summary>
     public readonly int HeaderNumberEnd => _headerNumberEnd;
 
