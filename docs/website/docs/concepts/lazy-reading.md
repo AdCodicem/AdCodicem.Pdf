@@ -137,8 +137,12 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   or a hybrid file's table names through `/XRefStm` no cross-reference stream of its revision — a classic table, one
   that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, a stream an older section's
   `/Prev` reaches too, an older revision's, which that `/Prev` reads again rather than looping back to it, at the
-  offset it names or found moved near it, the rows the stream gave as the newer table's standing
-  ([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330)),
+  offset it names or found moved near it, the rows the stream gave as the newer table's standing — the search near that
+  offset takes such a stream where it comes nearest only where the stream's own `/Prev` names a section the chain has
+  not reached: one that gives none, as the stream of a newer revision written right past the section that `/Prev` falls
+  short of gives none, is tried once every other place was, and one whose `/Prev` leads back to what the chain reached
+  is passed over, its reading ending the chain in a loop
+  ([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330)) —,
   or what the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
   section, another byte of that section's header's object number, or one a few bytes off where the search near it
   comes to that section and the `/Prev` keeps its place there,
@@ -156,7 +160,9 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   the naming is the limit's: nothing is reported of it, and the map is not rebuilt for it
   ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A stream an older table names again, as a writer that
   copies `/XRefStm` into the next trailer leaves it, is no such fault, and is read once, whatever offset in the white
-  space before its header, or byte of its header's object number, each table writes;
+  space before its header, or byte of its header's object number, each table writes — but where an older section's
+  `/Prev` reaches it too, which reads it again, as above, the newer table's naming reported, and the older table's own
+  naming again with it where that table's `/Prev` is the one that reads it;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it;
 - before a validation's first rule, when one of the two cases above could still happen — the map may have lost
