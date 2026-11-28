@@ -180,10 +180,10 @@ internal ref struct PdfObjectParser
     private int _headerStart;
 
     /// <summary>
-    /// Where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read start, in
-    /// the buffer (<see cref="HeaderDigits"/>).
+    /// Where the object number of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the buffer
+    /// (<see cref="HeaderNumberEnd"/>).
     /// </summary>
-    private int _headerDigits;
+    private int _headerNumberEnd;
 
     /// <summary>Where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends.</summary>
     private int _headerEnd;
@@ -361,12 +361,14 @@ internal ref struct PdfObjectParser
     public readonly int HeaderStart => _headerStart;
 
     /// <summary>
-    /// Gets where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read
-    /// start, in the buffer: past the run of signs the number is written with, which the lexer reads with the number as one
-    /// token, the first sign deciding — <c>++14 0 obj</c> is object 14, its digits two bytes past its header's start —,
-    /// and where the header starts otherwise (#327).
+    /// Gets where the object number of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the
+    /// buffer: past its last digit, the run of signs it may be written with read with it as one token, the first sign
+    /// deciding — <c>++14 0 obj</c> is object 14, its number ending four bytes past its header's start (#327). A reading
+    /// that starts at any sign of a run a <c>+</c> starts, or at any of the number's digits, reads the same generation,
+    /// dictionary and data, and ends the number at the same byte: where it ends tells the header, whatever byte of it the
+    /// reading started at (#332).
     /// </summary>
-    public readonly int HeaderDigits => _headerDigits;
+    public readonly int HeaderNumberEnd => _headerNumberEnd;
 
     /// <summary>Gets where the <c>obj</c> keyword of the last indirect object <see cref="TryReadIndirectObject"/> read ends, in the buffer.</summary>
     public readonly int HeaderEnd => _headerEnd;
@@ -470,8 +472,7 @@ internal ref struct PdfObjectParser
         _objectNumber = id.Number;
         _headerStart = number.Start;
 
-        // The number is an integer past 0: its token holds a digit past the signs it may start with.
-        _headerDigits = number.Start + _memory.Span[number.Start..number.End].IndexOfAnyExcept((byte)'+', (byte)'-');
+        _headerNumberEnd = number.End;
         _headerEnd = keyword.End;
         _headerAt = -1;
         _headerUndecided = false;

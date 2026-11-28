@@ -110,12 +110,15 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> names an offset the chain has
     /// already reached — where a section it reached starts, or the white space and comments before it, a section it read
-    /// however it was named and one there that it could not read though it declares itself one among them (#188, #208), or
-    /// an offset a <c>/Prev</c> or an <c>/XRefStm</c> named where it read none, in the file or outside it. An
-    /// <c>/XRefStm</c> ends no chain: one that names what the chain has reached names a hybrid file's stream again, or is
-    /// <see cref="XRefHybridStreamLost"/>'s (#156). The report is placed at the offset the <c>/Prev</c> names, or where the
-    /// section it reaches past the white space there starts, or at the section whose trailer named it when that offset lies
-    /// outside the file.
+    /// however it was named and one there that it could not read though it declares itself one among them (#188, #208), any
+    /// byte of a reached stream's header from its token start to the end of its object number, whatever byte the chain read
+    /// it from (#332), or an offset a <c>/Prev</c> or an <c>/XRefStm</c> named where it read none, in the file or outside
+    /// it. An <c>/XRefStm</c> ends no chain: one that names what the chain has reached names a hybrid file's stream again,
+    /// or is <see cref="XRefHybridStreamLost"/>'s (#156). Nor does a <c>/Prev</c> that reaches a hybrid file's stream the
+    /// chain read only through a newer table's <c>/XRefStm</c>, an older revision's stream, which it reads again, that
+    /// <c>/XRefStm</c> being <see cref="XRefHybridStreamLost"/>'s (#330). The report is placed at the offset the
+    /// <c>/Prev</c> names, or where the section it reaches past the white space there starts, or at the section whose
+    /// trailer named it when that offset lies outside the file.
     /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
 
@@ -124,10 +127,15 @@ public static class PdfDiagnosticCodes
     /// a classic table — the table itself, another the chain read, one it reads in the stream's place, its rows taken, or
     /// one that cannot be read, at each table that names it —, a cross-reference stream the chain read through
     /// <c>/Prev</c> or <c>startxref</c>, or what the table's own <c>/Prev</c> reaches too — at the same offset, through the
-    /// white space before that section, or where the search near the offset the <c>/XRefStm</c> names comes to it and
-    /// that <c>/Prev</c> keeps its place there, as its own reading does —, which the chain reads through that
-    /// <c>/Prev</c> rather than in the stream's place, the report saying no more of it than the chain knows before that
-    /// <c>/Prev</c> is read (#156). A search that stopped there only because one of the reader's limits cut what the
+    /// white space before that section, at another byte of its header's object number (#332), or where the search near
+    /// the offset the <c>/XRefStm</c> names comes to it and that <c>/Prev</c> keeps its place there, as its own reading
+    /// does —, which the chain reads through that <c>/Prev</c> rather than in the stream's place, the report saying no more
+    /// of it than the chain knows before that <c>/Prev</c> is read (#156). So does a newer table's <c>/XRefStm</c> whose
+    /// stream an older section's <c>/Prev</c> reaches — at the offset it names, or found moved there by the search near
+    /// it, which may take a stream the chain read only through a newer table's <c>/XRefStm</c> —: an older revision's
+    /// stream, which the chain reads again as that section's previous one, through to the sections past it, the report
+    /// naming that section, once; the rows the stream gave as the newer table's stand, the first row for each number
+    /// (#330). A search that stopped there only because one of the reader's limits cut what the
     /// <c>/Prev</c> names, before it said what it is or in a value its rows are read with, is the limit's, and not
     /// reported (#264). The objects only the table's stream indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. The report is placed at the offset the <c>/XRefStm</c> names, or

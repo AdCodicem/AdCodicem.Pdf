@@ -1805,6 +1805,105 @@ public class CrossReferenceRuleTests
             "a copy naming the white space before the stream's header still names the stream, an imprecise offset only");
     }
 
+    [Theory]
+    [InlineData(1, 0, true)]
+    [InlineData(1, -7, true)]
+    [InlineData(2, 1, true)]
+    [InlineData(2, -7, true)]
+    [InlineData(3, 0, true)]
+    [InlineData(3, 1, true)]
+    [InlineData(3, -7, true)]
+    [InlineData(1, -7, false)]
+    [InlineData(2, 0, false)]
+    [InlineData(3, 0, false)]
+    [InlineData(3, -7, false)]
+    public void A_newer_table_s_xrefstm_naming_a_stream_an_older_table_s_prev_reads_is_the_error_not_that_prev(
+        int shape, int prevFrom, bool newest)
+    {
+        // The files of the chain's tests: stream 11, the second revision's, which the third revision's table names through
+        // /Prev, at its header, one byte into its number or 7 bytes short of it, and through /XRefStm in shapes 1 and 2;
+        // the fourth revision's table copies that /XRefStm. The /Prev is sound, and reads the chain through to the oldest
+        // table: no loop, no section missing, no catalog the chain lost. The fourth revision's /XRefStm names an older
+        // revision's stream, the stream of its own revision unknown, an error at that table (ADR 45); and the third's, which
+        // names what its /Prev reads, is an error at its table, with or without the fourth revision. The /Prev was an
+        // Error xref.chain-loop at the exact offset, and a few bytes short the chain was cut, with Error
+        // xref.section-not-found or file.root-invalid, the fourth revision's /XRefStm never reported (#330, #332).
+        var (file, _, stream, table, last) = HybridFiles.NamingAnOlderRevisionsStream(shape, prevFrom, newest);
+        using var document = PdfDocument.Open(file);
+
+        var errors = FindingsOf(document).Where(finding => finding.Severity == PdfValidationSeverity.Error).ToList();
+
+        errors.Select(finding => (finding.RuleId, finding.Position)).Should().Equal(
+            [
+                .. newest ? [(PdfValidationRuleIds.XRefHybridStreamWrong, (long?)last)] : Array.Empty<(string, long?)>(),
+                .. shape == 3 ? [] : new[] { (PdfValidationRuleIds.XRefHybridStreamWrong, (long?)table) },
+            ]);
+
+        if (newest)
+        {
+            errors[0].Message.Should().Be(Invariant(
+                $"The /XRefStm of the cross-reference table at offset {last} names offset {stream}, a cross-reference stream of an older revision, which the /Prev of the section at offset {table} names too, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
+        }
+
+        if (shape != 3)
+        {
+            errors[^1].Message.Should().Contain(Invariant($"names offset {stream}, the section its /Prev names too, which the chain read through that /Prev, "));
+        }
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0, 1)]
+    [InlineData(1, 0)]
+    public void An_xrefstm_naming_the_stream_its_table_s_prev_names_at_another_byte_of_its_number_is_an_error(int xrefStmFrom, int prevFrom)
+    {
+        // A hybrid table's two links name one stream, at its header or one byte into its object number: one section, which
+        // the /Prev reads, and the /XRefStm names no stream of its revision. Named at two bytes, the stream was read twice and
+        // the file broke no rule (#156, #332).
+        var (file, _, stream, _, newest) = HybridFiles.NamingAStreamFromTwoPlaces(xrefStmFrom, prevFrom, middle: false);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefHybridStreamWrong);
+
+        finding.Location.Position.Should().Be(newest);
+        finding.Message.Should().Contain(Invariant(
+            $"names offset {stream + xrefStmFrom}, the section its /Prev names too, which the chain read through that /Prev, where"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void An_xrefstm_naming_again_inside_its_number_a_stream_a_newer_table_names_breaks_no_rule(int into)
+    {
+        // As a copy of /XRefStm into the next trailer, a naming again one byte into the stream's object number names the
+        // stream all the same: the file breaks no rule (#156, #332).
+        Validate(HybridFiles.NamingAStreamFromTwoPlaces(into, 0, middle: true).File).Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("13 0 obj", -4, "")]
+    [InlineData("+13 0 obj", -4, "")]
+    [InlineData("+-13 0 obj", 30, "")]
+    [InlineData("13 0 obj", 30, "/FooDecode")]
+    [InlineData("+13 0 obj", 30, "/FooDecode")]
+    [InlineData("+-13 0 obj", -4, "/FooDecode")]
+    public void An_xrefstm_whose_search_finds_the_header_its_table_s_prev_names_at_a_sign_is_an_error_beside_the_stream_s_own(
+        string header, int into, string filter)
+    {
+        // The update's table names its own stream through /Prev at its first byte, a sign where its number is written with
+        // signs, and through /XRefStm a place a few bytes off it that holds no section: the /XRefStm names what its /Prev
+        // names, an error at that table, beside the stream's own where it cannot be read, once. Where a sign starts the
+        // header, the stream was two sections, found moved and read again, or unreadable twice (#156, #332).
+        var (file, _, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
+            into, "the oldest table", catalogInStream: false, header, filter: filter, prevFrom: 0);
+
+        Validate(file).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                [
+                    .. filter.Length > 0 ? [(PdfValidationRuleIds.XRefSectionMalformed, (long?)stream)] : Array.Empty<(string, long?)>(),
+                    (PdfValidationRuleIds.XRefHybridStreamWrong, newest),
+                ]);
+    }
+
     [Fact]
     public void An_entry_outside_the_file_is_broken()
     {

@@ -115,6 +115,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
+    /// How many bytes the chain looks at on either side of a place a link names, past the white space and comments there,
+    /// to tell whether that place lies inside the object number of a cross-reference stream's header it reached
+    /// (<see cref="NumberEndHolding"/>): the signs before it, where it is a sign, and the signs and digits from it to the
+    /// number's end. A valid file's links name a header's first byte, or the white space before it, where the chain tells
+    /// the section by that byte: only a link that names a place inside an object number needs the look, and one whose
+    /// number, or run of signs, runs on past this reach is told by the byte, as before (#332), which no valid file reaches.
+    /// </summary>
+    private const int HeaderNumberReach = 64;
+
+    /// <summary>
     /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object, free of what a pass that reads
     /// every entry's header may consume: enough for a header after some white space. A header that runs past them, or that
     /// their edge may have cut, is read on from there in a window eight times larger, and so on, the window a load starts
@@ -529,20 +539,19 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
 
     /// <summary>
-    /// Where the digits of the object number of each cross-reference stream the chain reached start, a position in the file,
-    /// as its reading lexed them (<see cref="XRefSectionRecord.DigitsAt"/>): past the run of signs the number is written
-    /// with, where it is, and where the header starts otherwise — beside each start <see cref="_sectionsReadAt"/> holds
-    /// for a stream, and -1 for a classic table, which no place equals. The search near an offset finds a header written
-    /// <c>-+5 0 obj</c> or <c>++5 0 obj</c> at its digit, wherever the run of signs before it starts — or the second at
-    /// the run's first sign, within the bytes searched, where the line its number is on holds a <c>%</c> —, and a reading
-    /// from a <c>+</c> of that run, or from the digit past it, read the same header: it tells the header as that section
-    /// by this position, looked up past the run of signs the place it found starts with (<see cref="DigitsPastSigns"/>,
-    /// #327).
+    /// The cross-reference streams the chain reached, by where the object number of each one's header ends
+    /// (<see cref="XRefSectionRecord.NumberEnd"/>), the first reached there kept: a reading that starts at any byte of that
+    /// number — a sign of the run a <c>+</c> starts, or a digit — reads the same dictionary and the same data, and so does a
+    /// search near an offset that finds the header at its digit, or at the first sign of that run. The chain tells a stream
+    /// by this end, not by the byte its reading started at, beside each start <see cref="_sectionsReadAt"/> holds: a link that
+    /// names a place from the header's token start to the end of its number reaches that stream (<see cref="ReachedAt"/>), and
+    /// a search passes over a header there (<see cref="TryRelocateXRefSection"/>, #327, #332).
     /// </summary>
     /// <remarks>
-    /// One entry for each start <see cref="_sectionsReadAt"/> takes, and let go with them once the chain is read.
+    /// One entry for each stream <see cref="_sectionsReadAt"/> takes a start for, which
+    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds, and let go with them once the chain is read.
     /// </remarks>
-    private readonly HashSet<long> _sectionDigitsAt = new(SeededComparer.Instance);
+    private readonly Dictionary<long, XRefSectionRecord> _sectionsByNumberEnd = new(SeededComparer.Instance);
 
     /// <summary>
     /// What the last probe <see cref="PaddingAt"/> read found, and the one before it: the chain asks of each position it

@@ -144,7 +144,9 @@ public static class PdfValidationRuleIds
     /// <summary>
     /// A <c>/Prev</c> of the chain of cross-reference sections names a section the chain has already read, or one it has
     /// already reached and could not read though it declares itself one, or an offset it has already named, and the
-    /// sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
+    /// sections before the loop are out of reach — not a hybrid file's stream the chain read only through a newer table's
+    /// <c>/XRefStm</c>, which that <c>/Prev</c> reads again, the <c>/XRefStm</c> being <see cref="XRefHybridStreamWrong"/>'s
+    /// (#330). <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefChainLoop = "xref.chain-loop";
 
@@ -155,8 +157,9 @@ public static class PdfValidationRuleIds
     public const string XRefChainEmpty = "xref.chain-empty";
 
     /// <summary>
-    /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision, and what only that
-    /// stream indexes is lost. <see cref="PdfValidationSeverity.Error"/>.
+    /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision — an older revision's
+    /// stream an older section's <c>/Prev</c> reaches too among them (#330) —, and what only that stream indexes is lost.
+    /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefHybridStreamWrong = "xref.hybrid-stream-wrong";
 

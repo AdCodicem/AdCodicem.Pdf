@@ -121,7 +121,7 @@ internal sealed partial class PdfFileReader
         PdfObject value;
         int number;
         long header;
-        long digits;
+        long numberEnd;
         bool syntaxFault;
         bool objectRead;
         bool cutByGuard;
@@ -136,7 +136,7 @@ internal sealed partial class PdfFileReader
         // section, the guard is reported; where it is only checked, the guard's cut is known and nothing is reported.
         if (checkOnly)
         {
-            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out digits, out cutByGuard, out valueKindCut);
+            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out numberEnd, out cutByGuard, out valueKindCut);
             syntaxFault = false;
         }
         else
@@ -146,7 +146,7 @@ internal sealed partial class PdfFileReader
             // search passes over it, to try it again once every other place was (TryRelocateXRefSection).
             PdfDictionary? passedOver = null;
             objectRead = tablePrevious >= 0
-                ? TryParseNearHybridPrev(at, tablePrevious, out value, out number, out header, out digits, out syntaxFault, out passedOver)
+                ? TryParseNearHybridPrev(at, tablePrevious, out value, out number, out header, out numberEnd, out syntaxFault, out passedOver)
                 : TryParseNumberedAt(
                     at,
                     AnyObject,
@@ -155,7 +155,7 @@ internal sealed partial class PdfFileReader
                     out number,
                     out _,
                     out header,
-                    out digits,
+                    out numberEnd,
                     out syntaxFault,
                     out valueKindCut,
                     XRefWindow,
@@ -253,12 +253,11 @@ internal sealed partial class PdfFileReader
         section.Kind = XRefSectionKind.Stream;
         section.StreamObjectNumber = number;
 
-        // The header lies where the object read starts, past however much white space the offset falls short by, and the
-        // digits of its number past the run of signs it is written with, if any, as the reading lexed them: a search near an
-        // offset tells the header it finds there as this stream, however few of those signs its window holds
-        // (NumberRunsInto).
+        // The header lies where the object read starts, past however much white space the offset falls short by, and its
+        // object number ends where the reading lexed it: a link that names another byte of that number, or a search near an
+        // offset that finds the header at another, tells this stream by that end (#332).
         section.Padding = (int)(header - absolute);
-        section.DigitsAt = digits;
+        section.NumberEnd = numberEnd;
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
         section.TypedOther = !section.TypedXRef && dictionary.GetRaw(PdfName.Type) is PdfName;
@@ -775,7 +774,7 @@ internal sealed partial class PdfFileReader
     /// <param name="value">The object read, where it is kept.</param>
     /// <param name="number">The number of the object found, kept or not.</param>
     /// <param name="header">Where the object's header starts.</param>
-    /// <param name="digits">Where the digits of the object's number start, past any run of signs it is written with.</param>
+    /// <param name="numberEnd">Where the object's number ends, past its last digit.</param>
     /// <param name="syntaxFault">Whether the reading kept met a fault of the syntax.</param>
     /// <param name="passedOver">
     /// The dictionary of what is there, where it is a cross-reference stream, its dictionary read whole, that may be the
@@ -787,7 +786,7 @@ internal sealed partial class PdfFileReader
         out PdfObject value,
         out int number,
         out long header,
-        out long digits,
+        out long numberEnd,
         out bool syntaxFault,
         out PdfDictionary? passedOver)
     {
@@ -800,7 +799,7 @@ internal sealed partial class PdfFileReader
             out number,
             out _,
             out header,
-            out digits,
+            out numberEnd,
             out syntaxFault,
             out _,
             XRefWindow,

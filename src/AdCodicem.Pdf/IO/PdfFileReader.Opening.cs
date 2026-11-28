@@ -32,8 +32,8 @@ internal sealed partial class PdfFileReader
             _streamsPassedOver = null;
             _sectionsReadAt.Clear();
             _sectionsReadAt.TrimExcess();
-            _sectionDigitsAt.Clear();
-            _sectionDigitsAt.TrimExcess();
+            _sectionsByNumberEnd.Clear();
+            _sectionsByNumberEnd.TrimExcess();
         }
 
         if (!chainRead)

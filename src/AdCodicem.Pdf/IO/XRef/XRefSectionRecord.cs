@@ -357,17 +357,31 @@ internal sealed class XRefSectionRecord
     public int Padding { get; set; }
 
     /// <summary>
-    /// Gets where the digits of a cross-reference stream's object number start, in the file: past the run of signs its
-    /// header is written with, where it is, as the reading of its header lexed them, and where the header starts otherwise
-    /// (#327). The search near an offset finds a header written <c>++13 0 obj</c> or <c>-+13 0 obj</c> at its digit, and
-    /// tells it by this position as a stream the chain reached from a <c>+</c> of that run, wherever the run starts — near
-    /// the offset a hybrid table's <c>/Prev</c> names, as the stream the table's <c>/XRefStm</c> read, or names again,
-    /// however few of those signs its window holds. One it finds at the first sign of a run a <c>+</c> starts, within the
-    /// bytes searched, where the line its number is on holds a <c>%</c>, it tells as a section the chain reached, from a
-    /// later <c>+</c> of the run or from its digit, by this position past the run. -1 for a classic table, and for a
-    /// section whose header was not read as a cross-reference stream's.
+    /// Gets where the object number of a cross-reference stream's header ends, in the file: past its last digit, as the
+    /// reading of its header lexed it. A reading that starts at any byte of that number — a sign of the run of signs it may
+    /// be written with, or a digit — reads the same dictionary and the same data, and ends the number at the same byte: the
+    /// chain tells the stream by this position, not by the byte its reading started at, and so does the search near an
+    /// offset, which finds a header at its digit, or at the first sign of a run a <c>+</c> starts (#327, #332). -1 for a
+    /// classic table, and for a section whose header was not read as a cross-reference stream's.
     /// </summary>
-    public long DigitsAt { get; set; } = -1;
+    public long NumberEnd { get; set; } = -1;
+
+    /// <summary>
+    /// Gets where the older section starts whose <c>/Prev</c> reached this hybrid file's stream, which the chain had read
+    /// only through the <c>/XRefStm</c> of the newer table that names it, and read it again as that section's previous one
+    /// (#330); -1 while none has. That <c>/XRefStm</c> names an older revision's stream, not its own table's, and is reported
+    /// (<see cref="NamesNoStream"/>).
+    /// </summary>
+    public long ReadAgainFrom { get; set; } = -1;
+
+    /// <summary>
+    /// Gets a value indicating whether the section is a hybrid file's stream the chain read only through the <c>/XRefStm</c>
+    /// of the newer table that names it, read whole or in part, where it was named or found moved, and that no older
+    /// section's <c>/Prev</c> has read again (<see cref="ReadAgainFrom"/>): an older section's <c>/Prev</c> that reaches it,
+    /// at its offset or found moved there by the search near the offset it names, reads it again, rather than looping back to
+    /// it (#330).
+    /// </summary>
+    public bool ReadOnlyThroughXRefStm => IsHybridStream && ReadAgainFrom < 0 && State is XRefSectionState.Read or XRefSectionState.Relocated;
 
     /// <summary>Takes what a successful attempt at another offset read, the section having been relocated there.</summary>
     public void RelocateTo(XRefSectionRecord attempt)
@@ -401,6 +415,6 @@ internal sealed class XRefSectionRecord
         StreamObjectNumber = attempt.StreamObjectNumber;
         HighestNumber = attempt.HighestNumber;
         Padding = attempt.Padding;
-        DigitsAt = attempt.DigitsAt;
+        NumberEnd = attempt.NumberEnd;
     }
 }

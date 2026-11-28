@@ -81,8 +81,10 @@ internal sealed partial class PdfFileReader
 
         // The record of the cross-reference stream a newer table's /XRefStm read in the stream's place, which the table's own
         // /XRefStm names again: the search near the offset the table's /Prev, read next, names tells by it which streams there
-        // may be the table's own, as by a stream the /XRefStm read (#156).
+        // may be the table's own, as by a stream the /XRefStm read (#156); and the record of that naming again, which names
+        // what that /Prev reads where its search takes the stream (#330).
         XRefSectionRecord? streamNamedAgain = null;
+        XRefSectionRecord? namingAgain = null;
         var offset = startOffset;
         var sections = 0;
         var naming = "startxref";
@@ -98,7 +100,9 @@ internal sealed partial class PdfFileReader
             var streamsPlace = readInStreamsPlace;
             readInStreamsPlace = null;
             var namedAgainStream = streamNamedAgain;
+            var namedAgain = namingAgain;
             streamNamedAgain = null;
+            namingAgain = null;
 
             // An offset in the file that a section a guard ended the chain at names, where the chain has not been, is where
             // the guard hides the older sections, which its report says: a section there would be read only past the guard.
@@ -111,7 +115,21 @@ internal sealed partial class PdfFileReader
                 break;
             }
 
-            if (reached >= 0)
+            if (reached >= 0 && sectionsAt.GetValueOrDefault(reached) is { ReadOnlyThroughXRefStm: true } readOnlyThere &&
+                !ReferenceEquals(readOnlyThere, streamsPlace))
+            {
+                // A hybrid file's stream the chain read only through a newer table's /XRefStm, which an older section's /Prev
+                // reaches, is an older revision's: that /XRefStm is at fault, not the /Prev, and there is no loop. The /Prev
+                // reads the stream again, where it names it or where its search near that offset finds it, and the newer
+                // table's /XRefStm is reported once it has (ReportReadAgain) — or here, past a guard that keeps the /Prev from
+                // being read, as a whole read reports it (#330).
+                if (pastGuard)
+                {
+                    ReportReadAgain(readOnlyThere, namedFrom);
+                    break;
+                }
+            }
+            else if (reached >= 0)
             {
                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
                 // find, as a missing section's is.
@@ -306,19 +324,43 @@ internal sealed partial class PdfFileReader
             // before it, reaches it, and ends the chain in a loop, or leaves the /XRefStm to the /Prev.
             var readAgain = streamsPlace is { } place && section.Offset == place.Offset + place.Padding;
 
+            // A hybrid file's stream the chain read only through a newer table's /XRefStm, which this /Prev read again where it
+            // names it or where its search near that offset found it, told by its data (#330, #332): the newer table's
+            // /XRefStm, which names an older revision's stream, is reported, and so is this table's /XRefStm that named it
+            // again, which names what its /Prev read, as where its own /XRefStm read it (#156). The rows that first reading
+            // took stand, the first row for each number, as the newer table's.
+            var readOnly = readAgain ? null : StreamReadAgain(section, streamsPlace);
+
+            if (readOnly is not null)
+            {
+                if (namedAgain is not null && ReferenceEquals(namedAgain.ReadAs, readOnly))
+                {
+                    namedAgain.ReadAs = section;
+                    namedAgain.NamesWhatPreviousReads = true;
+                    ReportNoStream(namedAgain, "the section its /Prev names too, which the chain read through that /Prev");
+                }
+
+                ReportReadAgain(readOnly, namedFrom);
+            }
+
             if (readAgain)
             {
                 LeaveReadingToPrevious(streamsPlace!, section, sectionsAt);
+            }
 
-                // The rows are those the /XRefStm's reading read, and the reader reported them from that reading. What it
-                // refused itself — a row for a number it gives twice, the numbers a stream it read in part declares, every
-                // number where they cannot be kept apart —, which the second reading meets as refused before it, is no
-                // refusal by a section read before: a row of a reserved type it read as the null object is not said to stand
-                // for nothing, nor a row it refused said to be a newer section's refusal, nor every number said refused before
-                // the chain came to the section (#156, #221).
-                section.ReservedRowsRefused = streamsPlace!.ReservedRowsRefused;
-                section.RowsRefusedBefore = streamsPlace.RowsRefusedBefore;
-                section.EveryNumberRefusedBefore = streamsPlace.EveryNumberRefusedBefore;
+            // Read again, the rows are those the first reading read, and the reader reported them from that reading. What it
+            // refused itself — a row for a number it gives twice, the numbers a stream it read in part declares, every number
+            // where they cannot be kept apart —, which the second reading meets as refused before it, is no refusal by a
+            // section read before: a row of a reserved type it read as the null object is not said to stand for nothing, nor a
+            // row it refused said to be a newer section's refusal, nor every number said refused before the chain came to the
+            // section (#156, #221).
+            var firstReading = readAgain ? streamsPlace : readOnly;
+
+            if (firstReading is not null)
+            {
+                section.ReservedRowsRefused = firstReading.ReservedRowsRefused;
+                section.RowsRefusedBefore = firstReading.RowsRefusedBefore;
+                section.EveryNumberRefusedBefore = firstReading.EveryNumberRefusedBefore;
             }
 
             RecordSectionReached(section, sectionsAt);
@@ -352,7 +394,7 @@ internal sealed partial class PdfFileReader
             // The section is reported once it has refused what it lost, so that its report says what that refusal leaves to a
             // rebuild — every object, where it refused every number (#210) —, in the order its reading met them: nothing
             // between its reading and here reports on it.
-            if (!readAgain)
+            if (firstReading is null)
             {
                 ReportSectionReadInPart(section, naming);
                 ReportReservedRows(section, naming);
@@ -387,21 +429,35 @@ internal sealed partial class PdfFileReader
             var pastWhat = streamPastGuard ? "stopped the table" : section.TrailerCutByLimit ? "cut the table's trailer" : null;
 
             // What the /XRefStm reaches, and where the section the /Prev names starts: the two links reach one section by the
-            // same offset, or by two that name the white space before it, or where the search near the offset the /XRefStm
-            // names finds what the /Prev names — but for a /Prev that names what the chain has reached, which reads nothing.
+            // same offset, or by two that name the white space before it or two places of one header's object number, or where
+            // the search near the offset the /XRefStm names finds what the /Prev names — but for a /Prev that names what the
+            // chain has reached, which reads nothing, and for a hybrid file's stream the chain read only through a newer
+            // table's /XRefStm, which a /Prev no guard keeps from being read reads again (#330).
             var hybridStart = -1L;
             var hybridReached = hybrid >= 0 ? ReachedAt(hybrid, visited, out hybridStart) : -1;
             var previousTable = false;
             var previousStart = hybrid >= 0 && hybridReached < 0 ? StartOfNamed(previous, visited, out previousTable) : -1;
 
-            if (hybrid >= 0 && hybridReached < 0 && (hybrid == previous || (previousStart >= 0 && hybridStart == previousStart)))
+            // A /Prev reaches that stream only from a place no farther than where its header's object number ends: past it, no
+            // white space, nor any byte of that number, leads to it, and nothing is read to tell.
+            var readAgainByPrevious = hybridReached >= 0 && previous >= 0 && !pastGuard &&
+                sectionsAt.GetValueOrDefault(hybridReached) is { ReadOnlyThroughXRefStm: true } namedTwice &&
+                PositionOf(previous) < namedTwice.NumberEnd && ReachedAt(previous, visited, out _) == hybridReached;
+
+            if (readAgainByPrevious ||
+                (hybrid >= 0 && hybridReached < 0 &&
+                    (hybrid == previous ||
+                        (previousStart >= 0 && (hybridStart == previousStart || InOneNumber(hybridStart, previousStart))))))
             {
                 // The /XRefStm names what the /Prev names: read as the table's stream, that section would have its own links
                 // left unread, and the /Prev would loop back to it. The /Prev reads it, whole, and the table's own stream is
                 // unknown (#156) — or, past a guard that stopped the table or cut its trailer, reads nothing in the file, which
                 // the guard hides. Named through the white space before that section, the /XRefStm falls short of it as a /Prev
-                // read there would; where both name one offset, the /Prev's record says so once.
-                var shortBy = hybrid != previous ? (int)(hybridStart - PositionOf(hybrid)) : 0;
+                // read there would; named inside its header's object number, or where both name one offset, by nothing, the
+                // /Prev's record saying so once.
+                var shortBy = readAgainByPrevious ? Math.Max(0, (int)(hybridReached - PositionOf(hybrid)))
+                    : hybrid != previous ? (int)(hybridStart - PositionOf(hybrid))
+                    : 0;
                 namedWithPrevious = LeaveToPrevious(hybrid, section, pastWhat, shortBy);
             }
             else if (hybridReached >= 0)
@@ -410,9 +466,9 @@ internal sealed partial class PdfFileReader
                 // is recorded, so that a hybrid file's stream a newer table names too counts for each (#156). What the chain
                 // read there and is no hybrid file's stream stands for none: the table's own stream is unknown.
                 // Reached through the white space before where that section starts, the naming falls short of it as a
-                // section read there does.
+                // section read there does; reached inside its header's object number, by nothing.
                 var again = NameAgain(
-                    hybrid, section, sectionsAt.GetValueOrDefault(hybridReached), (int)(hybridReached - PositionOf(hybrid)));
+                    hybrid, section, sectionsAt.GetValueOrDefault(hybridReached), Math.Max(0, (int)(hybridReached - PositionOf(hybrid))));
 
                 if (again.ReadAs is { State: XRefSectionState.Read or XRefSectionState.Relocated, IsHybridStream: false } read)
                 {
@@ -437,9 +493,11 @@ internal sealed partial class PdfFileReader
                 {
                     // A hybrid file's stream a newer table read, its /XRefStm copied into this table's trailer, as a writer
                     // that copies it leaves it: the table's own stream, which nothing may name, lies past it, if anywhere.
-                    // The table's /Prev, read next, tells by it which streams near the offset it names may be that one; it
-                    // is not taken, a section the chain reached (#330).
+                    // The table's /Prev, read next, tells by it which streams near the offset it names may be that one, and
+                    // may take it, a stream read only through a newer table's /XRefStm, the naming then naming what that
+                    // /Prev read (#330).
                     streamNamedAgain = namedStream;
+                    namingAgain = again;
                 }
             }
             else if (hybrid >= 0 && !(streamPastGuard && IsInFile(PositionOf(hybrid))))
@@ -618,7 +676,7 @@ internal sealed partial class PdfFileReader
     /// is named or found moved, reads it or reports it as it finds it — read, read in part, or there and unreadable, a
     /// guard's cut among it —; one the search came back to was read, taken or dropped as holding no section. The stream is
     /// told by its data, not by the byte a reading of it started at, as the search tells the stream an <c>/XRefStm</c> read
-    /// (<see cref="NumberRunsInto"/>): a link that names a place inside its header's object number past its first byte —
+    /// (<see cref="PlaceNumberEnd"/>): a link that names a place inside its header's object number past its first byte —
     /// the first sign of the run of signs the number is written with, where that run starts with a <c>+</c>, as the
     /// header's token does (<see cref="HeaderTokenStart"/>), or its first digit — and reads a header there reads the same
     /// dictionary and the same data, and reaches that stream as one that names its header does; one that reads none there —
@@ -742,16 +800,19 @@ internal sealed partial class PdfFileReader
     /// it has not: it named that offset before, as written — among <paramref name="named"/>, whether it read a section there
     /// or not —, or a section it reached starts at the position the offset names, or at the first token past the white space
     /// and comments there (<see cref="StartOf"/>) — where that section was named, where it was found moved, or where it was
-    /// reached and lost though it declares itself one (<see cref="_sectionsReadAt"/>). The one notion of "already reached"
-    /// the chain's checks share, which a section's first token decides — and, for a stream, where the digits of its number
-    /// start —, not the offset written for it: a <c>/Prev</c> that names what the chain has reached ends the chain in a
-    /// loop, rather than reading a section twice; an <c>/XRefStm</c> that names it is recorded as naming what is there, read
-    /// once (#156); and a relocation, which tries positions, passes over those where a section the chain reached starts,
-    /// and those where the digits of a stream the chain reached start past the place's own run of signs, as that stream's
-    /// reading lexed them — a header found at its digit, wherever its run of signs starts and whatever sign starts it, or
-    /// at the first sign of a run a <c>+</c> starts within the bytes searched, where the line its number is on holds a
-    /// <c>%</c> (<see cref="DigitsPastSigns"/>, <see cref="_sectionDigitsAt"/>, #188, #327) —, but for what a hybrid
-    /// table's <c>/XRefStm</c> read in the stream's place, which that table's <c>/Prev</c> takes (#156).
+    /// reached and lost though it declares itself one (<see cref="_sectionsReadAt"/>) —, or that token lies in the header of
+    /// a cross-reference stream the chain reached, anywhere from the header's token start to the end of its object number,
+    /// whatever byte of that number the stream's reading started at (<see cref="NumberEndHolding"/>,
+    /// <see cref="_sectionsByNumberEnd"/>), where that stream starts being given. The one notion of "already reached" the
+    /// chain's checks share, which a section's data decides — the first token past the white space, and, for a stream, the
+    /// end of its header's object number —, not the offset written for it nor the byte its reading started at (#332): a
+    /// <c>/Prev</c> that names what the chain has reached ends the chain in a loop, rather than reading a section twice, but
+    /// for a hybrid file's stream the chain read only through a newer table's <c>/XRefStm</c>, which it reads again
+    /// (<see cref="XRefSectionRecord.ReadOnlyThroughXRefStm"/>, #330); an <c>/XRefStm</c> that names it is recorded as
+    /// naming what is there, read once (#156); and a relocation, which tries positions, passes over those where a section the
+    /// chain reached starts, and a header whose object number ends where that of a stream the chain reached does, but for
+    /// what a hybrid table's <c>/XRefStm</c> read in the stream's place, which that table's <c>/Prev</c> takes (#156), and,
+    /// near the offset a <c>/Prev</c> names, a stream read only through a newer table's <c>/XRefStm</c> (#330).
     /// </summary>
     /// <remarks>
     /// The offsets named are kept as written: one the chain named and found nothing at, or found its section moved from,
@@ -759,7 +820,8 @@ internal sealed partial class PdfFileReader
     /// and lies in the file, the bytes there are read as far as a section's own probe reads them: one window, grown no
     /// further than a trailer's and the few bytes past it that tell what starts at its end, for each offset the chain names,
     /// which <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds — the probe the section's own reading there then
-    /// answers from, rather than crossing the white space again (<see cref="_paddingProbes"/>).
+    /// answers from, rather than crossing the white space again (<see cref="_paddingProbes"/>) —, and, once the chain has
+    /// reached a stream, one more of at most twice <see cref="HeaderNumberReach"/> bytes around the first token.
     /// </remarks>
     /// <param name="offset">The offset a <c>/Prev</c> or an <c>/XRefStm</c> gives, not negative.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
@@ -770,7 +832,7 @@ internal sealed partial class PdfFileReader
     /// </param>
     /// <returns>
     /// The position the offset names, where the chain named it or a section starts there; where the section it reaches
-    /// starts, past the white space before it; or -1.
+    /// starts, past the white space before it, or the stream whose header's object number holds that first token; or -1.
     /// </returns>
     private long ReachedAt(long offset, HashSet<long> named, out long start)
     {
@@ -788,7 +850,69 @@ internal sealed partial class PdfFileReader
         }
 
         start = StartOf(position, out _);
-        return _sectionsReadAt.Contains(start) ? start : -1;
+
+        if (start < 0 || _sectionsReadAt.Contains(start))
+        {
+            return start;
+        }
+
+        return _sectionsByNumberEnd.Count > 0 && _sectionsByNumberEnd.TryGetValue(NumberEndHolding(start), out var stream)
+            ? stream.Offset + stream.Padding
+            : -1;
+    }
+
+    /// <summary>
+    /// Gives where the object number ends whose bytes hold <paramref name="position"/>, a position in the file, where the
+    /// position lies in the header's token, from its start to the number's end: a digit of the number; a sign of the run of
+    /// signs it is written with, where that run starts with a <c>+</c>, from whose first sign a load reads the number
+    /// (<see cref="HeaderTokenStart"/>); or a <c>+</c> past a <c>-</c> that starts the run, from which a load reads the same
+    /// number, the first sign deciding, as a reading of the header from there does. -1 for any other byte — a <c>-</c> that
+    /// starts the run or follows the one that does, from which a load reads a negative number, no object's —, and where
+    /// the number, or the run of signs before the place, runs on past <see cref="HeaderNumberReach"/> bytes, which only a
+    /// link that names a place inside an object number reaches (#332).
+    /// </summary>
+    /// <remarks>
+    /// Nothing tells here that a header follows: two places whose number ends at one byte lie in one run of signs and
+    /// digits, and the chain tells a stream by where its header's number ends, as its reading lexed it
+    /// (<see cref="XRefSectionRecord.NumberEnd"/>), and the search a header it finds by where its number ends in the bytes
+    /// searched (<see cref="PlaceNumberEnd"/>). One window of at most twice <see cref="HeaderNumberReach"/> bytes, around the
+    /// position: nothing else is read, nor allocated.
+    /// </remarks>
+    /// <param name="position">The position, in the file.</param>
+    private long NumberEndHolding(long position)
+    {
+        var from = Math.Max(0, position - HeaderNumberReach);
+        using var window = _source.GetWindow(from, (int)(position - from) + HeaderNumberReach);
+        var span = window.Memory.Span;
+        var at = (int)(position - from);
+
+        // The signs from the place, then the digits past them: digits that run on to the window's edge may run on past it,
+        // and a number the file's end ends is followed by no header.
+        var signs = at < span.Length ? span[at..].IndexOfAnyExcept((byte)'+', (byte)'-') : -1;
+        var digits = signs < 0 ? -1 : span[(at + signs)..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');
+
+        if (digits <= 0)
+        {
+            return -1;
+        }
+
+        // A - lies in the header's token only where the run of signs that holds it starts with a +, as a load reads it.
+        if (span[at] == (byte)'-')
+        {
+            var first = at;
+
+            while (first > 0 && span[first - 1] is (byte)'+' or (byte)'-')
+            {
+                first--;
+            }
+
+            if ((first == 0 && from > 0) || span[first] != (byte)'+')
+            {
+                return -1;
+            }
+        }
+
+        return position + signs + digits;
     }
 
     /// <summary>
@@ -898,9 +1022,9 @@ internal sealed partial class PdfFileReader
     /// <param name="value">The object read, as far as the window let it be.</param>
     /// <param name="foundNumber">The number of the object found.</param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
-    /// <param name="digitsAt">
-    /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
-    /// (<see cref="PdfObjectParser.HeaderDigits"/>); <paramref name="headerAt"/> otherwise.
+    /// <param name="numberEnd">
+    /// Where in the file the object's number ends, past its last digit (<see cref="PdfObjectParser.HeaderNumberEnd"/>);
+    /// <paramref name="headerAt"/> where nothing was read.
     /// </param>
     /// <param name="cut">
     /// Whether the guard's window cut what was read, where <see cref="TryParseNumberedAt"/> reaches the guard: the object, or
@@ -912,12 +1036,12 @@ internal sealed partial class PdfFileReader
     /// </param>
     /// <returns>Whether an object starts there, whole or cut.</returns>
     private bool TryParseUnrecordedAt(
-        long offset, out PdfObject value, out int foundNumber, out long headerAt, out long digitsAt, out bool cut, out bool valueKindCut)
+        long offset, out PdfObject value, out int foundNumber, out long headerAt, out long numberEnd, out bool cut, out bool valueKindCut)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
         headerAt = offset;
-        digitsAt = offset;
+        numberEnd = offset;
         cut = false;
         valueKindCut = false;
 
@@ -968,7 +1092,7 @@ internal sealed partial class PdfFileReader
                 value = parsed;
                 foundNumber = found.Number;
                 headerAt = offset + parser.HeaderStart;
-                digitsAt = offset + parser.HeaderDigits;
+                numberEnd = offset + parser.HeaderNumberEnd;
                 return true;
             }
         }
@@ -980,8 +1104,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Records where <paramref name="section"/> starts: its <c>xref</c> keyword or its stream's object header, past the white
-    /// space the offset that names it fell short by (<see cref="_sectionsReadAt"/>), and where the digits of a stream's
-    /// object number start (<see cref="_sectionDigitsAt"/>) — and, in <paramref name="sectionsAt"/>, that the section is
+    /// space the offset that names it fell short by (<see cref="_sectionsReadAt"/>), and, for a stream, where its header's
+    /// object number ends (<see cref="_sectionsByNumberEnd"/>) — and, in <paramref name="sectionsAt"/>, that the section is
     /// what is there, unless what was first named there is (#156). A section the chain read, where it was named or where it
     /// was found moved; or one it reached and could not read, which declares itself a section, and is reported once where
     /// it is: a cross-reference stream whose <c>/Prev</c> the chain goes on through (#208), or a section an
@@ -989,16 +1113,20 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// Each such section is a classic table, which starts at its keyword, or a stream whose header was read, its object
-    /// number lexed (<see cref="XRefSectionRecord.DigitsAt"/>): a section lost before its header was read declares nothing,
-    /// and is not recorded. So a section recorded that starts at a sign of the run of signs a number is written with is a
-    /// stream whose header was read from that sign, the digits past the run recorded with it (#327).
+    /// number lexed (<see cref="XRefSectionRecord.NumberEnd"/>): a section lost before its header was read declares nothing,
+    /// and is not recorded. A stream read again at another byte of its number keeps the record of its first reading there
+    /// (#327, #332).
     /// </remarks>
     private void RecordSectionReached(XRefSectionRecord section, Dictionary<long, XRefSectionRecord> sectionsAt)
     {
         var start = section.Offset + section.Padding;
         _sectionsReadAt.Add(start);
-        _sectionDigitsAt.Add(section.DigitsAt);
         sectionsAt.TryAdd(start, section);
+
+        if (section.NumberEnd >= 0)
+        {
+            _sectionsByNumberEnd.TryAdd(section.NumberEnd, section);
+        }
     }
 
     /// <summary>
@@ -1076,6 +1204,11 @@ internal sealed partial class PdfFileReader
         sectionsAt[place.NamedOffset] = previous;
         sectionsAt[place.Offset + place.Padding] = previous;
 
+        if (place.NumberEnd >= 0)
+        {
+            _sectionsByNumberEnd[place.NumberEnd] = previous;
+        }
+
         if (place.Kind == XRefSectionKind.Stream)
         {
             ReportNoStream(named, "the section its /Prev names too, which the chain read through that /Prev");
@@ -1109,6 +1242,64 @@ internal sealed partial class PdfFileReader
         };
         _structure.Add(again);
         return again;
+    }
+
+    /// <summary>
+    /// Gives the record of the hybrid file's stream that <paramref name="section"/>, read where a <c>/Prev</c> names it or
+    /// found moved near there, reads again, which the chain read only through the <c>/XRefStm</c> of a newer table
+    /// (<see cref="XRefSectionRecord.ReadOnlyThroughXRefStm"/>, #330): a stream whose header's object number ends where the
+    /// section's does, the stream told by its data, whatever byte of that number each reading started at (#332). Null for
+    /// any other section, and for the stream the table's own <c>/XRefStm</c> read in the stream's place,
+    /// <paramref name="streamsPlace"/>, which that <c>/Prev</c> takes as its table's two links reaching one section (#156).
+    /// </summary>
+    private XRefSectionRecord? StreamReadAgain(XRefSectionRecord section, XRefSectionRecord? streamsPlace) =>
+        section.State is XRefSectionState.Read or XRefSectionState.Relocated && section.NumberEnd >= 0 &&
+        _sectionsByNumberEnd.GetValueOrDefault(section.NumberEnd) is { ReadOnlyThroughXRefStm: true } stream &&
+        !ReferenceEquals(stream, streamsPlace)
+            ? stream
+            : null;
+
+    /// <summary>
+    /// Records that the older section at <paramref name="olderFrom"/>, whose <c>/Prev</c> reaches <paramref name="stream"/>,
+    /// a hybrid file's stream the chain read only through the <c>/XRefStm</c> of a newer table, reads it again, and reports
+    /// that <c>/XRefStm</c> (#330): the stream is an older revision's, which ISO 32000-1 has a later revision's <c>/Prev</c>
+    /// name (7.5.6), and not the stream of the newer table's revision (Table 19), which is unknown, the objects only it
+    /// indexes looked for by rebuilding the index. The <c>/Prev</c> is sound, and the chain goes on through the stream's own
+    /// <c>/Prev</c>, as from any section; the rows its reading as the newer table's stream took stand, the first row for
+    /// each number. Reported where the <c>/XRefStm</c> names, once: a <c>/Prev</c> that reaches the stream again loops.
+    /// </summary>
+    /// <param name="stream">The record of the stream, as the newer table's <c>/XRefStm</c> read it.</param>
+    /// <param name="olderFrom">Where the older section whose <c>/Prev</c> reaches the stream starts.</param>
+    private void ReportReadAgain(XRefSectionRecord stream, long olderFrom)
+    {
+        stream.ReadAgainFrom = olderFrom;
+        ReportNoStream(
+            stream,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"a cross-reference stream of an older revision, which the /Prev of the section at offset {olderFrom} names too"));
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="first"/> and <paramref name="second"/>, two positions in the file — or -1, where a
+    /// link reaches no first token, which lies in no number —, lie in the object number of one header, each from the
+    /// header's token start to the end of that number (<see cref="NumberEndHolding"/>):
+    /// a link that names either reads the same dictionary and the same data, as two links that name one offset do (#332).
+    /// </summary>
+    /// <remarks>
+    /// Two positions farther apart than <see cref="HeaderNumberReach"/> bytes are not looked at: one of them would lie past
+    /// what the look reads around the other. At most two windows of twice that reach, for each hybrid table whose two links
+    /// name two places near each other.
+    /// </remarks>
+    private bool InOneNumber(long first, long second)
+    {
+        if (first < 0 || second < 0 || Math.Abs(first - second) >= HeaderNumberReach)
+        {
+            return false;
+        }
+
+        var end = NumberEndHolding(first);
+        return end >= 0 && NumberEndHolding(second) == end;
     }
 
     /// <summary>

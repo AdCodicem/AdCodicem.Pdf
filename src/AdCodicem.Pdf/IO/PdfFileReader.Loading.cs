@@ -300,9 +300,9 @@ internal sealed partial class PdfFileReader
     /// </param>
     /// <param name="foundGeneration">The generation the header of the object read gives; 0 for a direct object.</param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
-    /// <param name="digitsAt">
-    /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
-    /// (<see cref="PdfObjectParser.HeaderDigits"/>); <paramref name="headerAt"/> otherwise, and for a direct object.
+    /// <param name="numberEnd">
+    /// Where in the file the object's number ends, past its last digit (<see cref="PdfObjectParser.HeaderNumberEnd"/>);
+    /// <paramref name="headerAt"/> for a direct object, and where nothing was read.
     /// </param>
     /// <param name="syntaxFault">
     /// Whether the reading kept met a fault of the syntax, or may have, the pending diagnostics full: reported now or
@@ -337,7 +337,7 @@ internal sealed partial class PdfFileReader
         out int foundNumber,
         out int foundGeneration,
         out long headerAt,
-        out long digitsAt,
+        out long numberEnd,
         out bool syntaxFault,
         out bool valueKindCut,
         int initialWindow = InitialObjectWindow,
@@ -349,7 +349,7 @@ internal sealed partial class PdfFileReader
         foundNumber = 0;
         foundGeneration = 0;
         headerAt = offset;
-        digitsAt = offset;
+        numberEnd = offset;
         syntaxFault = false;
         valueKindCut = false;
 
@@ -577,7 +577,7 @@ internal sealed partial class PdfFileReader
                 RecordStreamLength(noted ? number : DirectObject, foundNumber, parsed, lengthFault);
                 value = parsed;
                 headerAt = offset + parser.HeaderStart;
-                digitsAt = offset + parser.HeaderDigits;
+                numberEnd = number == DirectObject ? headerAt : offset + parser.HeaderNumberEnd;
                 return true;
             }
         }

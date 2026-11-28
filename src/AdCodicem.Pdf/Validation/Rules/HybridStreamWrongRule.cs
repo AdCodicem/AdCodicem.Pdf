@@ -20,7 +20,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// limit hides it. An <c>/XRefStm</c> whose search near the offset it names stopped only where a limit cut what the
 /// <c>/Prev</c> names is the limit's, which the reader left unreported, and is not judged here (#264). A stream that more
 /// than one table names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a stream all the same,
-/// and not judged here.
+/// and not judged here — but where an older section's <c>/Prev</c> reaches it too, which reads it again: it is an older
+/// revision's, which a later revision's <c>/Prev</c> names (7.5.6), and the newer table's <c>/XRefStm</c> that the chain
+/// read it through first names no stream of its revision, found wrong as the reader reported it (#330).
 /// </remarks>
 internal sealed class HybridStreamWrongRule : IValidationRule
 {
