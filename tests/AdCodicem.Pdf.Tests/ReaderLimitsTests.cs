@@ -829,6 +829,39 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_catalog_taken_as_the_document_opened_that_the_walk_s_guard_cuts_in_the_rebuilt_index_is_not_said_to_be_none()
+    {
+        // Opening takes catalog 100, written directly. Object stream 250, written after it, defines 100 again as no catalog,
+        // and object 240's row leads nowhere: the validator rebuilds the index, which serves 100 from stream 250. Objects 200
+        // to 208, written before 100 and indexed by the rebuild alone, name as their /Type objects 9 to 17, which streams 250,
+        // 4, 5 and 6 hold in turn: the rebuilt index's search, past what it may decode again, reads 100 as null, the walk's
+        // guard cut, then whole as it reads again what the guard cut. That second reading looks for a catalog only: the
+        // finding does not say the catalog the reader took as the document opened is none.
+        var file = new HandWrittenFile(version: "1.5");
+
+        for (var number = 200; number < 209; number++)
+        {
+            file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type {number - 191} 0 R >>"));
+        }
+
+        var direct = file.Object(100, Catalog);
+        var rows = WriteStreamsCutInTurn(file, "<< >>", 100, catalogBody: "<< /Type /Foo >>");
+        rows[100] = (1, direct, 0);
+        rows[240] = (1, direct + 1, 0);
+        file.CompressedCrossReferenceStream(251, 252, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ObjectCacheCapacity = 64 };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Reader.CatalogFoundAs.Should().Be(100);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a string, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+    }
+
+    [Fact]
     public void Under_ThrowOnLimit_a_rebuild_a_search_for_a_catalog_sets_off_lets_go_of_the_loads_the_walk_s_guard_threw_through()
     {
         // The trailer's /Root names a string, and its /Prev names no section. Opened to throw, the search for a catalog reads
@@ -3232,7 +3265,7 @@ public class ReaderLimitsTests
             .WithObject(3, "(three)")
             .BuildClassic(rootNumber: 1));
         var rows = original.IndexOf("xref\n0 4\n", StringComparison.Ordinal) + "xref\n0 4\n".Length;
-        var three = rows + (3 * 21) + 11;
+        var three = rows + (3 * 20) + 11;
         original[three..].Should().StartWith("00000 n");
         original = string.Concat(original.AsSpan(0, three), "70000", original.AsSpan(three + 5));
         var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
@@ -5239,9 +5272,9 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("trailer\n", "% the rows end here\ntrailer\n", false)]
     [InlineData("trailer\n", "%-------------------------------------------------------------\ntrailer\n", false)]
-    [InlineData(" 00000 n \r\ntrailer\n", " +0000 n \r\ntrailer\n", false)]
-    [InlineData(" n \r\ntrailer\n", " x \r\ntrailer\n", true)]
-    [InlineData(" n \r\ntrailer\n", " ntrailer \r\ntrailer\n", true)]
+    [InlineData(" 00000 n \ntrailer\n", " +0000 n \ntrailer\n", false)]
+    [InlineData(" n \ntrailer\n", " x \ntrailer\n", true)]
+    [InlineData(" n \ntrailer\n", " ntrailer \ntrailer\n", true)]
     public void A_table_its_length_bound_cuts_keeps_the_encryption_its_trailer_names_past_what_no_row_holds(
         string written, string replacement, bool damaged)
     {
@@ -5297,7 +5330,7 @@ public class ReaderLimitsTests
         // The search started seven bytes before the cut, inside the comment the lexer was skipping: its text was taken for
         // a fault of the table's, and a trailer written in it for the table's own, an encrypted file opened as plain.
         var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
-        const string FirstRow = "0000000000 65535 f \r\n";
+        const string FirstRow = "0000000000 65535 f \n";
         var file = Encoding.Latin1.GetBytes(text.Replace(FirstRow, FirstRow + comment + "\r\n", StringComparison.Ordinal));
         var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = OffsetOf(file, comment) - OffsetOf(file, "xref\n") + into };
 
@@ -5374,7 +5407,8 @@ public class ReaderLimitsTests
         // the bound marked the index damaged, and the next lookup rebuilt it. The rows left can only repeat numbers the
         // index holds; the trailer past them names the encryption, and is read.
         var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
-        var file = Encoding.Latin1.GetBytes(text.Replace(" 00000 n \r\ntrailer", " 70000 n \r\ntrailer", StringComparison.Ordinal));
+        text.Should().Contain(" 00000 n \ntrailer");
+        var file = Encoding.Latin1.GetBytes(text.Replace(" 00000 n \ntrailer", " 70000 n \ntrailer", StringComparison.Ordinal));
         var limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 };
 
         var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -9378,8 +9412,8 @@ public class ReaderLimitsTests
     /// Writes to <paramref name="file"/> object 1, a string, and an empty page tree; object streams 4, 5 and 6, which decode
     /// to <see cref="ObjectStreamDecoded"/> bytes each, past half the budget the reader keeps them in, and hold objects 10 to
     /// 33 in turn, object 28, in stream 4, holding <paramref name="value"/>; and object stream 250, which holds object 9 and,
-    /// where <paramref name="catalog"/> is not 0, that catalog, stream 5 then holding the 80 objects after it besides. Gives
-    /// the rows written.
+    /// where <paramref name="catalog"/> is not 0, that catalog — or <paramref name="catalogBody"/> under its number —, stream
+    /// 5 then holding the 80 objects after it besides. Gives the rows written.
     /// </summary>
     /// <remarks>
     /// Read in number order by a walk that may decode its object streams again once, each of streams 4, 5 and 6 is decoded
@@ -9388,7 +9422,8 @@ public class ReaderLimitsTests
     /// catalog that reads them again, stream by stream, reads object 28 whole as it decodes stream 4, and lets go of it as
     /// it caches 86 objects of stream 5, past a cache of 64 objects.
     /// </remarks>
-    private static Dictionary<int, (int Type, long Field2, int Field3)> WriteStreamsCutInTurn(HandWrittenFile file, string value, int catalog)
+    private static Dictionary<int, (int Type, long Field2, int Field3)> WriteStreamsCutInTurn(
+        HandWrittenFile file, string value, int catalog, string catalogBody = Catalog)
     {
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -9417,7 +9452,7 @@ public class ReaderLimitsTests
             }
         }
 
-        rows[250] = (1, file.ObjectStream(250, catalog == 0 ? [(9, "<< >>")] : [(9, "<< >>"), (catalog, Catalog)]), 0);
+        rows[250] = (1, file.ObjectStream(250, catalog == 0 ? [(9, "<< >>")] : [(9, "<< >>"), (catalog, catalogBody)]), 0);
         rows[9] = (2, 250, 0);
 
         if (catalog != 0)

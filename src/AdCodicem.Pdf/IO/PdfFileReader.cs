@@ -1050,6 +1050,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private bool _catalogCandidateCut;
 
     /// <summary>
+    /// Whether the last search for a catalog, over an index rebuilt since, read whole as none the object the reader took for
+    /// the catalog as the document opened (<see cref="FileStructure.CatalogFoundAs"/>).
+    /// </summary>
+    private bool _openingCatalogNotServed;
+
+    /// <summary>
     /// The object <see cref="PdfDiagnosticCodes.TrailerRootRecovered"/> last named, 0 while it named none — object 0 heads the
     /// free list, and no catalog is: a rebuild after opening sets aside the catalog a search took, and the search it runs
     /// takes the same object again, which is not reported twice.
@@ -1941,6 +1947,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// may lie past the cut, the one it took read only in part, and the limit's report names it (#260).
     /// </summary>
     internal bool CatalogCandidateCut => _catalogCandidateCut;
+
+    /// <summary>
+    /// Gets a value indicating whether the last search for a catalog, over an index rebuilt since the document opened, read
+    /// whole the object the reader took for the catalog as it opened (<see cref="FileStructure.CatalogFoundAs"/>), and found
+    /// it none: the rebuilt index serves another definition of it, or none (#381). One a limit cut, or left out of the
+    /// rebuilt index, was not read whole, and is not said to be none; nor is one the walks' guard cut, which the search reads
+    /// again only to look for a catalog among them (<see cref="FindCatalog"/>).
+    /// </summary>
+    internal bool OpeningCatalogNotServed => _openingCatalogNotServed;
 
     /// <summary>
     /// Gets a value indicating whether the trailer's <c>/Root</c>, as the reader holds it now — through a rebuilt index too,

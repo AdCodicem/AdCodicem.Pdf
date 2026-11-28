@@ -191,7 +191,7 @@ public sealed class TestPdfBuilder
         foreach (var (number, offset) in offsets.OrderBy(pair => pair.Key))
         {
             writer.WriteLine($"{number} 1");
-            writer.WriteRaw(Encoding.ASCII.GetBytes($"{offset:D10} {0:D5} n \r\n"));
+            writer.WriteRaw(Encoding.ASCII.GetBytes($"{offset:D10} {0:D5} n \n"));
         }
 
         writer.WriteLine("trailer");
@@ -259,13 +259,13 @@ public sealed class TestPdfBuilder
         {
             WriteLine("xref");
             WriteLine($"0 {size}");
-            WriteRaw(Encoding.ASCII.GetBytes($"{0:D10} {65535:D5} f \r\n"));
+            WriteRaw(Encoding.ASCII.GetBytes($"{0:D10} {65535:D5} f \n"));
 
             for (var number = 1; number < size; number++)
             {
                 var offset = offsets.TryGetValue(number, out var value) ? value + offsetError : 0;
                 var kind = offsets.ContainsKey(number) ? 'n' : 'f';
-                WriteRaw(Encoding.ASCII.GetBytes($"{offset:D10} {0:D5} {kind} \r\n"));
+                WriteRaw(Encoding.ASCII.GetBytes($"{offset:D10} {0:D5} {kind} \n"));
             }
         }
 

@@ -7,6 +7,42 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-28 — Batch 31, first pull request: rows not in the 20-byte form, a catalog written in the trailer, and what `file.root-invalid` says after a rebuild ([#464])
+
+- **The question.** Measured on `main` at `be09587`: a classic table's row out of ISO 32000-1's 20-byte form (7.5.4) —
+  iPRES t03-008's eight-digit offset, two JHOVE posters' line feeds alone — passed in silence ([#107]); so did a trailer
+  whose `/Root` is the catalog written in place, which the reader takes as it is ([#111]). Once a rebuild changed what
+  `/Root` leads to, `file.root-invalid` described what the rebuilt index serves rather than what the chain read, and
+  could say no object is a catalog where the reader took one as the document opened ([#381]).
+- **Settled with the maintainer** on 2026-11-27, each as recommended: `xref.entry-width-wrong` and `file.root-direct`,
+  both warnings (ADR 45); a `/Root` in a dictionary the end of the file leaves unclosed documented, not judged.
+- **What changed.** The reader notes, per table, how many rows miss the form and the first one, judging a row's end of
+  line as a run: a third end-of-line byte counts where another row of the subsection follows, not before the trailer,
+  where many writers put a blank line. A row in the form takes an inlined check; the rest, a classifier out of the loop.
+  `file.root-invalid` says what the chain read where a rebuild serves another definition since, and names the catalog
+  taken at opening when the index rebuilt since serves that number as none — a fact the reader records during the
+  rebuild's search, so the rule loads nothing. The test builder writes 20-byte rows.
+- **Review** (ADR 54): one round, four lenses, no blocker, no major. Two minors fixed: a relocated table lost its count;
+  an end of line judged by two bytes missed Windows text mode's ` \r\r\n`. Seventeen nits fixed, among them a regression
+  under `ThrowOnLimit` (the rule's load rethrew a kept limit), a guard-cut direct catalog neither rule reported, and
+  classic tables opening 10 to 25 % slower, the row's tokens kept out of registers across the loop. Real damage: the
+  reader's output identical over 403 documents and 13,423 damaged variants.
+- **Mutation** (ADR 53 amended): 64 mutants over the row-form check, its per-window reset and relocation copy, the two
+  rules' conditions, the comparison of the chain's entry with the rebuilt one, and the opening catalog's flag. 41
+  killed, one of them only once compiled with warnings lifted; 12 by tests the step added — rows in 20 bytes whose
+  fields are not in the form, a row a first window ends within, a `/Root` the chain read elsewhere, an in-use object 0,
+  a catalog the walks' guard cuts; 11 equivalent, confirmed by a second agent.
+- **The issues.** Closes [#107], [#111] and [#381]. Batch 31's second pull request holds [#321], [#330], [#332] and
+  [#333].
+- **Checks.** The batch check at the head; the 72 timing and memory tests alone; the corpus differential against `main`:
+  the reader's output identical, findings differing by `xref.entry-width-wrong` on the three documents, and over the
+  damaged variants by the two new rules alone, ten reports at the cap moving one finding to the suppressed count;
+  `Remote corpus` run 149 green on the library code; CI green; the site. Every changed and coverable line covered, as
+  Codecov counts them. `IndexBenchmarks` against `main`, twice, alternated: a classic table 4 % slower, an update 7 %, a
+  hybrid file 4 %, spread numbers and streams unchanged, allocations unchanged.
+- **For callers.** Two new warnings, `xref.entry-width-wrong` and `file.root-direct`; `file.root-invalid`'s words change
+  where a rebuild ran. Objects and the reader's diagnostics are unchanged.
+
 ## 2026-11-27 — Batch 30: LZW and strings without needless arrays, and the rebuild's scan keeping its lexer ([#462])
 
 - **The question.** Measured on `main` at `626e73c`: LZW allocated an array for nearly every code, 10.8 MB to decode a
@@ -1772,6 +1808,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#459]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/459
 [#462]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/462
 [#463]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/463
+[#464]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/464
 [#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
 [#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
 [#446]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/446

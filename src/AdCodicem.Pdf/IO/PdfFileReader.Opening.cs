@@ -55,6 +55,7 @@ internal sealed partial class PdfFileReader
         {
             _structure.RootUsable = false;
             _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
+            _structure.RootResolvedByChain = !_repaired;
             _structure.RootChainCut =
                 _structure.RootAsWritten is PdfReference chained && _structure.RootResolved is PdfNull && IsChainCut(chained.Id, out var loopsBackTo)
                     ? DescribeChainCut(loopsBackTo)

@@ -134,6 +134,12 @@ internal sealed class FileStructure
     public PdfObject? RootResolved { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether <see cref="RootResolved"/> was read through the index the chain gave: no rebuild had
+    /// run when it was resolved. A rebuild run since may serve another definition of the object (#381).
+    /// </summary>
+    public bool RootResolvedByChain { get; set; }
+
+    /// <summary>
     /// Gets, where <see cref="RootAsWritten"/> led through a chain of references that reached no value when the document
     /// opened, how that chain ends (<see cref="PdfFileReader.DescribeChainCut"/>); null otherwise (#173).
     /// </summary>

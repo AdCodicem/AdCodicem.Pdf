@@ -326,6 +326,226 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("offset short", 3, "whose offset {short} is not ten digits")]
+    [InlineData("generation short", 3, "whose generation 0000 is not five digits")]
+    [InlineData("two spaces", 3, "whose fields are not parted by single spaces")]
+    [InlineData("two spaces before the keyword", 3, "whose fields are not parted by single spaces")]
+    [InlineData("offset of nine digits and two spaces", 3, "whose offset {nine} is not ten digits")]
+    [InlineData("generation of four digits and two spaces", 3, "whose fields are not parted by single spaces")]
+    [InlineData("two spaces before the keyword, then a carriage return and a line feed", 3, "whose fields are not parted by single spaces")]
+    [InlineData("a sign before the offset", 3, "whose offset +{nine} is not ten digits")]
+    [InlineData("a sign before the generation", 3, "whose generation +0000 is not five digits")]
+    [InlineData("tab after the offset", 3, "whose fields are not parted by single spaces")]
+    [InlineData("tab before the keyword", 3, "whose fields are not parted by single spaces")]
+    [InlineData("line feed", 3, "which ends with one end-of-line byte, not two")]
+    [InlineData("carriage return", 3, "which ends with one end-of-line byte, not two")]
+    [InlineData("line feed", 2, "which ends with one end-of-line byte, not two")]
+    [InlineData("space, carriage return and line feed", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("space, carriage return and line feed", 3, null)]
+    [InlineData("a blank line after the row", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("a blank line after the row", 3, null)]
+    [InlineData("carriage return doubled", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("carriage return doubled", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("two spaces before the end of line", 2, "which ends with more than two end-of-line bytes")]
+    [InlineData("two spaces before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("two carriage returns", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("line feed and carriage return", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("line feed and carriage return", 2, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("tab before the end of line", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("space alone", 3, "whose end of line is neither a space and a carriage return or a line feed, nor a carriage return and a line feed")]
+    [InlineData("carriage return and line feed", 2, null)]
+    [InlineData("carriage return and line feed", 3, null)]
+    [InlineData("space and carriage return", 2, null)]
+    [InlineData("space and carriage return", 3, null)]
+    [InlineData("space and line feed", 3, null)]
+    public void A_table_row_not_written_in_twenty_bytes_is_named_and_the_table_read_as_written(string row, int number, string? fault)
+    {
+        // Object 2's row, or object 3's, the table's last, written as ISO 32000-1 (7.5.4) writes no row: a field short of
+        // digits or signed, a second space, an end of line of one byte or of more than two, or of two that are no end of
+        // line — some in 20 bytes all the same. The reader
+        // reads it by its tokens, so the objects read as written; the three ends of line ISO 32000-1 allows are no fault. Past
+        // the last row, which no row follows for a reader to misread, a third byte — a blank line before the trailer, as many
+        // writers write it — is not judged.
+        var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var at = sound.IndexOf("trailer", StringComparison.Ordinal) - (20 * (4 - number));
+        var offset = sound.Substring(at, 10);
+        var written = row switch
+        {
+            "offset short" => $"{offset[2..]} 00000 n \n",
+            "generation short" => $"{offset} 0000 n \n",
+            "two spaces" => $"{offset}  00000 n\n",
+            "two spaces before the keyword" => $"{offset} 00000  n\n",
+            "offset of nine digits and two spaces" => $"{offset[1..]}  00000 n\r\n",
+            "generation of four digits and two spaces" => $"{offset} 0000  n\r\n",
+            "two spaces before the keyword, then a carriage return and a line feed" => $"{offset} 00000  n\r\n",
+            "a sign before the offset" => $"+{offset[1..]} 00000 n\r\n",
+            "a sign before the generation" => $"{offset} +0000 n\r\n",
+            "tab after the offset" => $"{offset}\t00000 n \n",
+            "tab before the keyword" => $"{offset} 00000\tn \n",
+            "line feed" => $"{offset} 00000 n\n",
+            "carriage return" => $"{offset} 00000 n\r",
+            "space, carriage return and line feed" => $"{offset} 00000 n \r\n",
+            "a blank line after the row" => $"{offset} 00000 n\r\n\n",
+            "carriage return doubled" => $"{offset} 00000 n\r\r\n",
+            "two spaces before the end of line" => $"{offset} 00000 n  \n",
+            "two carriage returns" => $"{offset} 00000 n\r\r",
+            "line feed and carriage return" => $"{offset} 00000 n\n\r",
+            "tab before the end of line" => $"{offset} 00000 n\t\n",
+            "space alone" => $"{offset} 00000 n ",
+            "carriage return and line feed" => $"{offset} 00000 n\r\n",
+            "space and carriage return" => $"{offset} 00000 n \r",
+            _ => $"{offset} 00000 n \n",
+        };
+        var file = Encoding.Latin1.GetBytes(string.Concat(sound.AsSpan(0, at), written, sound.AsSpan(at + 20)));
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(2).AsDictionary()!.IsOfType(PdfName.Pages).Should().BeTrue();
+        document.GetObject(3).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+
+        if (fault is null)
+        {
+            report.Findings.Should().BeEmpty();
+            return;
+        }
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryWidthWrong);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object {number}, at offset {at}, {fault.Replace("{short}", offset[2..], StringComparison.Ordinal).Replace("{nine}", offset[1..], StringComparison.Ordinal)}."));
+    }
+
+    [Theory]
+    [InlineData(4, 0)]
+    [InlineData(3448, 8)]
+    public void A_table_whose_rows_end_with_one_byte_is_reported_once_naming_the_first_and_counting_them(int rows, int spaces)
+    {
+        // Every row ends with a line feed alone, as a file whose carriage returns a transfer stripped has them: the table is
+        // reported once, its first row named and its rows counted. The 3,448 rows end within the first window the reader reads
+        // a table in, but the trailer keyword runs past it: the rows are read again in a larger window, and counted once.
+        var template = PdfTemplate.Sound.Replace("0 4\n", string.Create(CultureInfo.InvariantCulture, $"0 {rows}{new string(' ', spaces)}\n"), StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n" + string.Concat(Enumerable.Repeat("0000000000 00000 f \n", rows - 4)), StringComparison.Ordinal)
+            .Replace("/Size 4", string.Create(CultureInfo.InvariantCulture, $"/Size {rows}"), StringComparison.Ordinal);
+        var text = Encoding.Latin1.GetString(PdfTemplate.Build(template));
+        var table = text.IndexOf("xref\n", StringComparison.Ordinal);
+        var end = text.IndexOf("trailer", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, table), text[table..end].Replace(" \n", "\n", StringComparison.Ordinal), text.AsSpan(end)));
+        var first = PdfTemplate.OffsetOf(file, "0000000000 65535 f");
+        var keyword = PdfTemplate.OffsetOf(file, "trailer") - table;
+        keyword.Should().BeLessThan(PdfFileReader.XRefWindow);
+        (rows < 10 || keyword + "trailer".Length > PdfFileReader.XRefWindow).Should().BeTrue("the trailer keyword runs past the first window");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryWidthWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds {rows} rows not in the 20-byte form; the first is the row for object 0, at offset {first}, which ends with one end-of-line byte, not two."));
+    }
+
+    [Fact]
+    public void A_row_the_first_window_ends_within_is_named_as_the_larger_window_reads_it()
+    {
+        // A table of 780 subsections that each number objects 0 to 3 again, under a MaxIndexEntries its rows' bytes exceed: the
+        // rows are read in the first window the reader reads a table in, which ends past object 1's row in the last
+        // subsection, after its carriage return written twice, and before the line feed that follows them. A larger window
+        // reads the rows again, the line feed among them: the row is named for the three bytes it ends with.
+        var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var table = sound.IndexOf("xref\n", StringComparison.Ordinal);
+        var rows = sound.Substring(sound.IndexOf("0 4\n", StringComparison.Ordinal) + 4, 80);
+        var odd = string.Concat(rows.AsSpan(0, 38), "\r\r\n", rows.AsSpan(40));
+        var subsections = string.Concat(Enumerable.Repeat("0 4\n" + rows, 728)) + string.Concat(Enumerable.Repeat("0 4\r\n" + rows, 51));
+        var file = Encoding.Latin1.GetBytes(sound[..table] + "xref\n" + subsections + "0 4\n" + odd + sound[sound.IndexOf("trailer", StringComparison.Ordinal)..]);
+        var row = table + 5 + subsections.Length + 4 + 20;
+        (row + 20 - table).Should().Be(PdfFileReader.XRefWindow, "the first window ends after the two carriage returns");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 100 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryWidthWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} holds a row not in the 20-byte form: the row for object 1, at offset {row}, which ends with more than two end-of-line bytes."));
+    }
+
+    [Theory]
+    [InlineData(3, " \n", 18, false)]
+    [InlineData(3, " \n", 19, false)]
+    [InlineData(2, " \r\n", 20, false)]
+    [InlineData(2, " \r\n", 21, true)]
+    [InlineData(3, "\n", 19, false)]
+    [InlineData(3, "\n", 20, true)]
+    public void A_row_whose_end_of_line_a_length_bound_cuts_is_the_guard_s_and_not_judged(int number, string endOfLine, int bytesOfTheRow, bool judged)
+    {
+        // MaxXRefSectionLength ends the table's window within object 2's row or object 3's, past its n: the row is read, but
+        // what lies past the cut — its end of line, or the byte after it — is the guard's, which says the section was read in
+        // part. A space and a carriage return the window ends with are an end of line ISO 32000-1 allows; the line feed past
+        // them, once the window holds it, makes three bytes. A line feed alone is judged once the window holds the byte after it.
+        var sound = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound));
+        var row = sound.IndexOf("trailer", StringComparison.Ordinal) - (20 * (4 - number));
+        var file = Encoding.Latin1.GetBytes(string.Concat(sound.AsSpan(0, row + 18), endOfLine, sound.AsSpan(row + 20)));
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = (int)(row - table) + bytesOfTheRow } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
+        report.Findings.Select(finding => finding.RuleId).Contains(PdfValidationRuleIds.XRefEntryWidthWrong).Should().Be(judged);
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData(null, -3)]
+    [InlineData(0, -3)]
+    [InlineData(-3, 0)]
+    [InlineData(-3, -3)]
+    public void A_table_whose_rows_end_with_one_byte_is_reported_once_however_the_chain_found_it(int? xrefStm, int prev)
+    {
+        // The older table's rows end with a line feed alone. The update names it by /Prev, and by /XRefStm or not, each exactly
+        // or three bytes before it, where the search near an offset finds it: the table is reported once, however it was found.
+        var text = new StringBuilder("%PDF-1.7\n");
+        var offsets = new int[5];
+        string[] bodies = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"];
+
+        for (var number = 1; number <= 3; number++)
+        {
+            offsets[number] = text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n{bodies[number - 1]}\nendobj\n");
+        }
+
+        var older = text.Length;
+        text.Append("xref\n0 4\n0000000000 65535 f\n");
+
+        for (var number = 1; number <= 3; number++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n\n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{older}\n%%EOF\n");
+        offsets[4] = text.Length;
+        text.Append("4 0 obj\n(x)\nendobj\n");
+        var update = text.Length;
+        var stream = xrefStm is { } shift ? string.Create(CultureInfo.InvariantCulture, $" /XRefStm {older + shift}") : string.Empty;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n4 1\n{offsets[4]:D10} 00000 n \n");
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 5 /Root 1 0 R{stream} /Prev {older + prev} >>\nstartxref\n{update}\n%%EOF\n");
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.XRefEntryWidthWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {older} holds 4 rows not in the 20-byte form; the first is the row for object 0, at offset {older + 9}, which ends with one end-of-line byte, not two."));
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("t")]
     [InlineData("trai")]
