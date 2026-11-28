@@ -1004,7 +1004,7 @@ internal sealed partial class PdfFileReader
     /// row starts: it lexes the row's tokens again rather than take them. Passed by value from that loop, they kept its
     /// tokens out of registers through every row, and the description compiled there grew its frame by about 800 bytes —
     /// a table of 300,000 rows opened a seventh slower, one of a row a subsection a fifth (<c>IndexBenchmarks</c>,
-    /// <c>Table</c> and <c>Spread</c>); passed their places, within a twentieth.
+    /// <c>Table</c> and <c>Spread</c>); passed their places, a few hundredths at most.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void NoteRowForm(ReadOnlySpan<byte> window, int start, bool followed, XRefSectionRecord section, int number, long absolute)
