@@ -950,13 +950,9 @@ internal sealed partial class PdfFileReader
 
             // A row read by its tokens reads as it was meant, whatever its width, but a reader that seeks rows by their fixed
             // width misreads every row after it: the first is described, the others counted.
-            if (!IsInTwentyBytes(window, offsetToken, generationToken, kindToken) &&
-                FormOf(window, offsetToken, generationToken, kindToken, followed: i + 1 < count) is not (RowForm.Twenty or RowForm.Unjudged) and var form)
+            if (!IsInTwentyBytes(window, offsetToken.Start, offsetToken.End, generationToken.Start, generationToken.End, kindToken.End))
             {
-                section.WidthWrongRows++;
-                section.WidthWrongRow ??= string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"the row for object {number}, at offset {absolute + offsetToken.Start}, {Describe(form, window, offsetToken, generationToken)}");
+                NoteRowForm(window, offsetToken.Start, i + 1 < count, section, number, absolute);
             }
 
             if (kindToken.IsKeyword("f"u8))
@@ -982,25 +978,53 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Determines, at a glance, whether the row whose tokens are <paramref name="offset"/>, <paramref name="generation"/> and
-    /// <paramref name="kind"/> is in its 20 bytes, as most rows are: the tokens where those 20 bytes place them, each number
-    /// starting with a digit — so all digits, being an integer —, the end of line one of the three pairs ISO 32000-1 allows,
-    /// and no third byte of it the window holds. False for any other row, which <see cref="FormOf"/> then judges.
+    /// Determines, at a glance, whether the row whose offset starts at <paramref name="start"/> is in its 20 bytes, as most
+    /// rows are: its offset ending at <paramref name="offsetEnd"/>, its generation running from
+    /// <paramref name="generationStart"/> to <paramref name="generationEnd"/> and its keyword ending at <paramref name="end"/>
+    /// where those 20 bytes place them, each number starting with a digit — so all digits, being an integer —, the end of
+    /// line one of the three pairs ISO 32000-1 allows, and no third byte of it the window holds. False for any other row,
+    /// which <see cref="NoteRowForm"/> then judges.
     /// </summary>
-    /// <remarks>
-    /// The common row is so told without a call, and the call it saves is what kept the index's own additions inlined in the
-    /// loop that reads the rows.
-    /// </remarks>
-    private static bool IsInTwentyBytes(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind)
+    private static bool IsInTwentyBytes(ReadOnlySpan<byte> window, int start, int offsetEnd, int generationStart, int generationEnd, int end)
     {
-        var start = offset.Start;
-        var end = kind.End;
-
-        return offset.End == start + 10 && generation.Start == start + 11 && generation.End == start + 16 && end == start + 18 &&
+        return offsetEnd == start + 10 && generationStart == start + 11 && generationEnd == start + 16 && end == start + 18 &&
             end + 2 < window.Length && window[start + 10] == (byte)' ' && window[start + 16] == (byte)' ' &&
             PdfCharacters.IsDigit(window[start]) && PdfCharacters.IsDigit(window[start + 11]) &&
             window[end + 2] is not ((byte)' ' or (byte)'\r' or (byte)'\n') &&
             (window[end], window[end + 1]) is ((byte)' ', (byte)'\r') or ((byte)' ', (byte)'\n') or ((byte)'\r', (byte)'\n');
+    }
+
+    /// <summary>
+    /// Counts in <paramref name="section"/> the row for object <paramref name="number"/>, whose offset starts at
+    /// <paramref name="start"/> in the window, where it departs from the 20 bytes ISO 32000-1 writes it in
+    /// (<see cref="FormOf"/>), and describes the first such row of the table's reading.
+    /// </summary>
+    /// <remarks>
+    /// Called for the rows <see cref="IsInTwentyBytes"/> does not tell, out of the loop that reads the rows, from where the
+    /// row starts: it lexes the row's tokens again rather than take them. Passed by value from that loop, they kept its
+    /// tokens out of registers through every row, and the description compiled there grew its frame by about 800 bytes —
+    /// a table of 300,000 rows opened a seventh slower, one of a row a subsection a fifth (<c>IndexBenchmarks</c>,
+    /// <c>Table</c> and <c>Spread</c>); passed their places, within a twentieth.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void NoteRowForm(ReadOnlySpan<byte> window, int start, bool followed, XRefSectionRecord section, int number, long absolute)
+    {
+        // The row's tokens lexed again from its first, as the loop lexed them.
+        var lexer = new PdfLexer(window, start);
+        var offset = lexer.Read();
+        var generation = lexer.Read();
+        var kind = lexer.Read();
+        var form = FormOf(window, offset, generation, kind, followed);
+
+        if (form is RowForm.Twenty or RowForm.Unjudged)
+        {
+            return;
+        }
+
+        section.WidthWrongRows++;
+        section.WidthWrongRow ??= string.Create(
+            CultureInfo.InvariantCulture,
+            $"the row for object {number}, at offset {absolute + offset.Start}, {Describe(form, window, offset, generation)}");
     }
 
     /// <summary>
@@ -1012,10 +1036,8 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// A row whose end of line the window does not hold is not judged: a larger window reads it again, or a guard cut it,
-    /// and what lies past the cut is the guard's. Called for the rows <see cref="IsInTwentyBytes"/> does not tell, and kept
-    /// out of the loop that reads the rows, whose own calls it would crowd out of the inlining.
+    /// and what lies past the cut is the guard's.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static RowForm FormOf(ReadOnlySpan<byte> window, PdfToken offset, PdfToken generation, PdfToken kind, bool followed)
     {
         var end = kind.End;
