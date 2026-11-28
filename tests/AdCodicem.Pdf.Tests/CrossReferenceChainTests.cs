@@ -8397,10 +8397,12 @@ public class CrossReferenceChainTests
     {
         // The newest table's /XRefStm reads the middle revision's stream, at its header or 1 byte into its object number, and
         // the middle table's /XRefStm names it again; the middle table's /Prev falls 7 bytes short of the stream's header,
-        // and the oldest table, which alone indexes object 5, lies within reach. The stream named again is not taken, a
-        // section the chain reached (#330), and is told by its data: the header 1 byte before where its reading started is
-        // that stream's, passed over with it, and the search takes the oldest table, which reads the chain whole. It is no
-        // stream before the one named again, taken where it comes nearest, which ended the chain there, object 5 lost (#156).
+        // and the oldest table, which alone indexes object 5, lies within reach. The stream named again gives no /Prev, and
+        // may be the middle table's own: it is passed over, as the stream an /XRefStm read is where it gives none, though a
+        // stream read only through a newer table's /XRefStm is one the /Prev may take (#330), and is told by its data: the
+        // header 1 byte before where its reading started is that stream's, passed over with it, and the search takes the
+        // oldest table, which reads the chain whole. It is no stream before the one named again, taken where it comes
+        // nearest, which ended the chain there, object 5 lost (#156, #332).
         var (file, oldest, stream, middle, newest) = HybridFiles.NamingTheUpdatesStreamAgainAtOrInsideItsNumber(insideItsNumber);
         var named = insideItsNumber ? stream + 1 : stream;
         using var document = PdfDocument.Open(file);
@@ -8431,8 +8433,9 @@ public class CrossReferenceChainTests
         // its second, and the middle table's /XRefStm names it again; the middle table's /Prev names a place 513 to 515 bytes
         // past the stream's first byte, so that the bytes the search near it reads start at a sign of the run or at the digit
         // past it, and the oldest table, which alone indexes object 5, lies out of reach. The header the search finds at the
-        // digit is the stream named again, told by where its reading found the digits, whatever signs the window holds: not
-        // taken, a section the chain reached (#330), the /Prev's section missing and object 5 found by rebuilding the index.
+        // digit is the stream named again, told by where its number ends, whatever signs the window holds: not taken, a
+        // stream that gives no /Prev, which may be the middle table's own (#330, #332), the /Prev's section missing and
+        // object 5 found by rebuilding the index.
         // Where the window did not hold the sign the reading started at, the header was taken as a stream of its own, found
         // moved, the chain ending there, nothing rebuilding the index, and object 5 read as null (#156, #327).
         var (file, _, stream, middle, newest) = HybridFiles.NamingTheUpdatesStreamAgainAtOrInsideItsNumber(atSecondSign, header, prevFrom);
@@ -8803,8 +8806,9 @@ public class CrossReferenceChainTests
         // Where that table is the newest, its /XRefStm reads stream 10, and the search near its /Prev passes over stream 11 as
         // possibly the table's own and takes the second revision's table, the chain read whole. Where a fourth revision copies
         // the /XRefStm again, the third revision's table names stream 10 again, which the fourth's read: the search tells the
-        // streams near its /Prev by it as by a stream the /XRefStm read, without taking it, a section the chain reached
-        // (#330). It took stream 11 instead, the chain ending, or looping, there, the index rebuilt as the document opened,
+        // streams near its /Prev by it as by a stream the /XRefStm read, and passes it over, as it gives no /Prev, though a
+        // stream read only through a newer table's /XRefStm is one the /Prev may take (#330). It took stream 11 instead,
+        // the chain ending, or looping, there, the index rebuilt as the document opened,
         // and the validator saying the file held no catalog, or that the chain loops. Stream 11, never read, is reported once
         // the chain is read, its objects missing from the index: object 5 reads as the oldest table writes it, and object 11,
         // the stream itself, as null (#156).
