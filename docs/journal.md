@@ -7,6 +7,23 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-28 — Dependabot's open pull requests taken in one
+
+- **The question.** Nine Dependabot pull requests were open. The maintainer asked for them to be handled in one pull
+  request.
+- **What was left.** Seven brought nothing `main` lacks: the 2026-11-25 backlog update had taken their versions, or
+  newer (#153, #233, #242, #269, #272, #285), and #445's NuGet group was taken by that update and #461 together.
+  Dependabot had not closed them, so this session did. Two carried new versions: #460 (`actions/create-github-app-token`
+  3.4.0, `ossf/scorecard-action` 2.6.0, `github/codeql-action/upload-sarif` 4.39.4) and #461 (Testcontainers 4.17.0,
+  itext 9.8.1.1).
+- **What changed.** Those five updates, in `Directory.Packages.props` and two workflows. Each action's pinned hash was
+  checked against its tag with `git ls-remote`. #460 and #461 stay open until this merges: their branches then
+  conflict with `main`, and Dependabot closes a pull request whose update it finds already there.
+- **#444**, the first grouped security pull request, was merged by the maintainer on 2026-11-27, not by the bypass:
+  #439 still waits on a merge Dependabot makes itself.
+- **Checks.** Release build without warnings; `dotnet list package --vulnerable --include-transitive` finds nothing;
+  the unit suite. The integration suite, which Testcontainers drives, skipped without Docker here and runs in CI.
+
 ## 2026-11-28 — Batch 31, first pull request: rows not in the 20-byte form, a catalog written in the trailer, and what `file.root-invalid` says after a rebuild ([#464])
 
 - **The question.** Measured on `main` at `be09587`: a classic table's row out of ISO 32000-1's 20-byte form (7.5.4) —
