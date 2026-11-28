@@ -10883,6 +10883,27 @@ public class CrossReferenceChainTests
         }
     }
 
+    [Fact]
+    public void A_newer_revision_s_stream_that_gives_no_prev_past_the_table_whose_prev_names_nothing_is_not_taken_near_that_prev()
+    {
+        // The second revision's table names through /Prev a byte that holds no section, and the only section near it is the
+        // third revision's stream, written right past that table, which gives no /Prev and only the newest table's /XRefStm
+        // names: newer than the table, it is no section that /Prev means, and taking it would blame that /XRefStm for what
+        // the /Prev got wrong. The section is reported missing, and the index rebuilt (#330).
+        var (file, table, stream) = HybridFiles.PrevNamingNothingBeforeANewerRevisionsStream();
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().StartWith(
+            [(PdfDiagnosticCodes.XRefSectionMissing, table + 1)]);
+        document.Diagnostics.Should().NotContain(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.XRefHybridStreamLost || diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Reader.Structure.Sections.Should().NotContain(section =>
+            section.Offset == stream && section.NamedBy == "/Prev");
+        Text(document, 4).Should().Be("four");
+        Text(document, 5).Should().Be("five");
+        Text(document, 6).Should().Be("six");
+    }
+
     [Theory]
     [InlineData(30)]
     [InlineData(-9)]

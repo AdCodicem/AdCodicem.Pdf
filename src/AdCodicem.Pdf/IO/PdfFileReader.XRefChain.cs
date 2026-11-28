@@ -1333,7 +1333,9 @@ internal sealed partial class PdfFileReader
     /// the dictionary its first reading kept as the chain reads it (<see cref="StreamPrevious"/>). One that gives none hands
     /// the chain nothing on, as the stream of a newer revision gives none that an update writes right past the older
     /// sections, past the table whose <c>/Prev</c> falls short of its own section: it is tried once every other place was,
-    /// as a hybrid table's own stream is (<see cref="ReadAgainOrder.Last"/>). One whose <c>/Prev</c> reaches what the chain
+    /// as a hybrid table's own stream is (<see cref="ReadAgainOrder.Last"/>), but where it starts past the section whose
+    /// <c>/Prev</c> names the offset, which under updates appended to the file makes it newer than that section, and no
+    /// section that <c>/Prev</c> means, it is passed over (<see cref="ReadAgainOrder.Reached"/>). One whose <c>/Prev</c> reaches what the chain
     /// has reached (<see cref="ReachedAt"/>) — but another stream read only through a newer table's <c>/XRefStm</c>, which
     /// that <c>/Prev</c> would read again in its turn — is a newer revision's, whose reading would end the chain in a loop at
     /// that <c>/Prev</c>: passed over, as any section the chain reached is (<see cref="ReadAgainOrder.Reached"/>). Any other
@@ -1348,15 +1350,17 @@ internal sealed partial class PdfFileReader
     /// (<see cref="ReachedAt"/>).
     /// </remarks>
     /// <param name="stream">The record of the stream, as the newer table's <c>/XRefStm</c> read it.</param>
+    /// <param name="namedFrom">Where the section whose <c>/Prev</c> names the offset was read.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
     /// <param name="sectionsAt">What the chain first named, or read, at each position it reached.</param>
-    private ReadAgainOrder ReadAgainPlace(XRefSectionRecord stream, HashSet<long> named, Dictionary<long, XRefSectionRecord> sectionsAt)
+    private ReadAgainOrder ReadAgainPlace(
+        XRefSectionRecord stream, long namedFrom, HashSet<long> named, Dictionary<long, XRefSectionRecord> sectionsAt)
     {
         var given = StreamPrevious(stream.Trailer);
 
         if (given == NoStreamPrevious)
         {
-            return ReadAgainOrder.Last;
+            return stream.Offset + stream.Padding > namedFrom ? ReadAgainOrder.Reached : ReadAgainOrder.Last;
         }
 
         var reached = given >= 0 ? ReachedAt(given, named, out _) : -1;
@@ -1375,10 +1379,13 @@ internal sealed partial class PdfFileReader
         /// <summary>Where it comes nearest, as any section the search finds.</summary>
         Nearest,
 
-        /// <summary>Once every other place was tried: it gives no <c>/Prev</c>.</summary>
+        /// <summary>Once every other place was tried: it gives no <c>/Prev</c>, and starts before the section whose <c>/Prev</c> names the offset.</summary>
         Last,
 
-        /// <summary>Never: its <c>/Prev</c> reaches what the chain has reached, and reading it would end the chain in a loop.</summary>
+        /// <summary>
+        /// Never: its <c>/Prev</c> reaches what the chain has reached, and reading it would end the chain in a loop; or it gives
+        /// none, and starts past the section whose <c>/Prev</c> names the offset, a newer revision's.
+        /// </summary>
         Reached,
     }
 

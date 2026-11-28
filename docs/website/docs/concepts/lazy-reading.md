@@ -140,8 +140,9 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   offset it names or found moved near it, the rows the stream gave as the newer table's standing — the search near that
   offset takes such a stream where it comes nearest only where the stream's own `/Prev` names a section the chain has
   not reached: one that gives none, as the stream of a newer revision written right past the section that `/Prev` falls
-  short of gives none, is tried once every other place was, and one whose `/Prev` leads back to what the chain reached
-  is passed over, its reading ending the chain in a loop
+  short of gives none, is tried once every other place was, but passed over where it starts past the section whose
+  `/Prev` names the offset, newer than that section; and one whose `/Prev` leads back to what the chain reached is passed
+  over, its reading ending the chain in a loop
   ([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330)) —,
   or what the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
   section, another byte of that section's header's object number, or one a few bytes off where the search near it

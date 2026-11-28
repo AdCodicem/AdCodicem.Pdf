@@ -49,8 +49,9 @@ internal sealed partial class PdfFileReader
     /// one it names, the newer table's <c>/XRefStm</c> then reported (<see cref="XRefSectionRecord.ReadOnlyThroughXRefStm"/>,
     /// #330), whether or not the table's own <c>/XRefStm</c> names it again, in the order its own <c>/Prev</c> gives it
     /// (<see cref="ReadAgainPlace"/>): a newer revision's stream an update writes right past the section the <c>/Prev</c>
-    /// falls short of gives none, and is tried once every other place was, and one whose <c>/Prev</c> leads back to what the
-    /// chain reached is passed over. Where the stream the <c>/XRefStm</c> read is a
+    /// falls short of gives none, and is tried once every other place was, but passed over where it starts past the section
+    /// whose <c>/Prev</c> names the offset, newer than that section; and one whose <c>/Prev</c> leads back to what the chain
+    /// reached is passed over. Where the stream the <c>/XRefStm</c> read is a
     /// cross-reference stream — or where the table's <c>/XRefStm</c> names again a stream a newer table's <c>/XRefStm</c>
     /// read —, a stream near the offset may be the table's own, which the <c>/Prev</c> does not mean
     /// (<see cref="MayBeTablesOwn"/>), but only one that starts no sooner than that stream, which is told by its data, not
@@ -301,11 +302,12 @@ internal sealed partial class PdfFileReader
             // its first reading kept, where the search first comes to it (ReadAgainPlace): a newer revision's own stream, which
             // an update writes past the older sections, often right past the table whose /Prev falls short, gives none, or one
             // that leads back to what the chain reached, and is no section that /Prev means — tried once every other place
-            // was, where it gives none, as a hybrid table's own stream is, or passed over as reached, where taking it would end
-            // the chain in a loop. One whose /Prev leads to a section the chain has not reached keeps its nearest-first place,
-            // an older revision's (#330).
+            // was, where it gives none and starts before the section whose /Prev names the offset, as a hybrid table's own
+            // stream is; passed over as reached where it gives none and starts past that section, newer than it, or where
+            // taking it would end the chain in a loop. One whose /Prev leads to a section the chain has not reached keeps its
+            // nearest-first place, an older revision's (#330).
             if (readAgain && !retry && candidate != takeAt &&
-                ReadAgainPlace(reachedThere!, named!, sectionsAt!) is var placed && placed != ReadAgainOrder.Nearest)
+                ReadAgainPlace(reachedThere!, section.NamedFrom, named!, sectionsAt!) is var placed && placed != ReadAgainOrder.Nearest)
             {
                 if (placed == ReadAgainOrder.Last)
                 {

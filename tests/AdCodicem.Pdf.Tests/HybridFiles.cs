@@ -1956,6 +1956,44 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved three times by a writer that writes each update's cross-reference stream first, right past
+    /// the <c>%%EOF</c> that ends the file it updates, as Acrobat's PDFMaker does. The first revision writes the catalog, the
+    /// page tree and the page, and object 5, <c>(five)</c>, indexed by a table. The second writes
+    /// cross-reference stream 8, which indexes object 4 and itself and gives no <c>/Prev</c>, then object 4, <c>(four)</c>,
+    /// more than 512 bytes past the oldest table's end, and a table, at <c>Table</c>, which indexes nothing, names stream 8
+    /// through <c>/XRefStm</c>, and through <c>/Prev</c> the byte past its own first one, a stale offset that holds no
+    /// section. The third writes cross-reference stream 9, at <c>Stream</c>, right past the second revision's <c>%%EOF</c>,
+    /// which indexes object 6 and itself and gives no <c>/Prev</c>, object 6, <c>(six)</c>, and a table, the newest, which
+    /// indexes nothing and names the second revision's table through <c>/Prev</c> and stream 9 through
+    /// <c>/XRefStm</c>: the search near the stale offset comes to stream 9, and to no other section.
+    /// </summary>
+    public static (byte[] File, long Table, long Stream) PrevNamingNothingBeforeANewerRevisionsStream()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var five = file.Object(5, "(five)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(five)}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var previousStream = file.Position;
+        var four = previousStream + 700;
+        var previousRows = StreamRows((1, four, 0), (1, previousStream, 0));
+        var previousObject = Invariant($"8 0 obj\n<< /Type /XRef /Size 9 /W [1 4 2] /Index [4 1 8 1] /Length {previousRows.Length} >>\nstream\n{previousRows}\nendstream\nendobj\n");
+        file.Raw(previousObject.PadRight((int)(four - previousStream)));
+        file.Object(4, "(four)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 9 /Root 1 0 R /Prev {table + 1} /XRefStm {previousStream} >>\nstartxref\n{table}\n%%EOF\n"));
+        var stream = file.Position;
+        var six = stream + 160;
+        var rows = StreamRows((1, six, 0), (1, stream, 0));
+        var streamObject = Invariant($"9 0 obj\n<< /Type /XRef /Size 10 /W [1 4 2] /Index [6 1 9 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n");
+        file.Raw(streamObject.PadRight((int)(six - stream)));
+        file.Object(6, "(six)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {table} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, table, stream);
+    }
+
+    /// <summary>
     /// A one-page document saved twice, or three times where <paramref name="middle"/> says so, whose newer tables name one
     /// cross-reference stream at its header or at a place inside its object number (#332). The oldest table, at
     /// <c>Oldest</c>, indexes the catalog, the page tree, the page and object 5, <c>(old five)</c>; then object 4,
