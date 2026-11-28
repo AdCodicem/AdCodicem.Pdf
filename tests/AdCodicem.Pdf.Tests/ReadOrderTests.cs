@@ -627,6 +627,49 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void An_object_zero_a_chain_a_limit_cut_gives_in_use_is_not_said_to_be_a_catalog_the_reader_took()
+    {
+        // No object is a catalog, and MaxXRefSectionCount 2 leaves the oldest of three sections unread. The newest names
+        // object 7, no catalog, for /Root, and gives object 0 a row in use: opening rebuilds the index with what the chain
+        // gave, object 0 among it, whose search reads 0 as no object. The reader took no catalog as the document opened.
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("/Type /Catalog", "/Type /Outlines", StringComparison.Ordinal) + """
+            4 0 obj
+            (update)
+            endobj
+            xref
+            4 1
+            {row:4}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:1} >>
+            startxref
+            {xref:2}
+            %%EOF
+            7 0 obj
+            << /Type /Outlines >>
+            endobj
+            xref
+            0 1
+            0000000009 00000 n
+            7 1
+            {row:7}
+            trailer
+            << /Size 8 /Root 7 0 R /Prev {xref:2} >>
+            startxref
+            {xref:3}
+            %%EOF
+
+            """);
+        using var document = PdfDocument.Open(
+            file,
+            new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 7 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader could read is a catalog.");
+    }
+
+    [Fact]
     public void A_root_a_guard_hid_as_the_document_opened_is_not_judged_once_a_rebuild_finds_it()
     {
         // /Root names object 1, which only the oldest of three sections indexes, and MaxXRefSectionCount 2 leaves that section

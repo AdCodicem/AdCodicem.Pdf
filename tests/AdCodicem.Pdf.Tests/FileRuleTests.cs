@@ -605,13 +605,22 @@ public class FileRuleTests
     [InlineData(
         Outlines + "5 0 obj\n<<                                                                                                                                                                                                        /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n5 1\n{row:5}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n5 0 obj\n(short)\nendobj\n",
         128, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader could read is a catalog.")]
+    [InlineData(
+        Outlines + "xref\n0 4\n{free}\n9999999999 00000 n \n{row:2}\n{row:3}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
+        0, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader could read is a catalog.")]
+    [InlineData(
+        Outlines + "5 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n0000000005 00000 n \n{row:2}\n{row:3}\n5 1\n{row:5}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
+        0, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. The reader took object 5, which is one, for the catalog.")]
     public void A_root_that_leads_to_no_catalog_ends_with_what_the_reader_knows_of_the_catalog(string template, int maxObjectLength, string message)
     {
         // A later definition of object 1 only a rebuild finds; a chain whose only row frees object 0; a chain whose rows are
         // all of a reserved type; a candidate MaxObjectLength cuts before its /Type; a /Root that names a reference to the
-        // catalog; a /Root the chain does not place, which a rebuild finds cut; and a candidate the chain's search meets cut,
-        // which the rebuilt index defines again whole. The finding says what the reader knows: the catalog a rebuild made /Root
-        // lead to, the cut one it takes as read, or none among the objects it read whole or could read (#132, #260).
+        // catalog; a /Root the chain does not place, which a rebuild finds cut; a candidate the chain's search meets cut,
+        // which the rebuilt index defines again whole; a /Root whose row leads nowhere, which only the rebuild that resolving
+        // it sets off reads; and a /Root whose row is a few bytes off, which the reader finds near it without a rebuild. The
+        // finding says what the reader knows: the catalog a rebuild made /Root lead to, the cut one it takes as read, or none
+        // among the objects it read whole or could read (#132, #260); and what /Root names as the chain read it only where the
+        // chain read it and a rebuild serves it otherwise since.
         var file = PdfTemplate.Build(template);
         var options = maxObjectLength > 0 ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } } : null;
         using var document = PdfDocument.Open(file, options);
